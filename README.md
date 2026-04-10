@@ -74,7 +74,7 @@ php artisan serve
 
 ## 👥 Proponents
 
-**AMA Computer College Santiago Campus** *Bachelor of Science in Information Technology*
+**AMA Computer College - Santiago Campus** *Bachelor of Science in Information Technology*
 
 | Name | Role |
 | :--- | :--- |
@@ -97,4 +97,4 @@ This project is developed exclusively for the **Department of Education — Scho
 ### 💡 About the Project
 Made with ❤️ for better school monitoring and student welfare in Santiago City.
 
-**Repository maintained by:** [Angellie D. Marcos](https://github.com/angelliemarcos6-cyber)
+**Repository maintained by:** [Angellie D. Marcos](https://github.com/angemarcos04)
