@@ -79,9 +79,9 @@ php artisan serve
 | Name | Role |
 | :--- | :--- |
 | **Niel Patrick G. Batarao** | Project Lead / Researcher |
-| **Angellie D. Marcos** | Lead Developer / Cybersecurity |
-| **Lhord Czedrick T. Pascua** | System Analyst / Documentation |
-| **Kian Carlo T. Catu** | UI/UX Designer / QA |
+| **Angellie D. Marcos** | Lead Developer |
+| **Lhord Czedrick T. Pascua** | Documentation |
+| **Kian Carlo T. Catu** | Documentation |
 
 ---
 
