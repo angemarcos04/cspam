@@ -66,9 +66,35 @@ CSPAMS serves as the **digital backbone** for the two flagship monitoring progra
 - PHP 8.2+, Node.js 18+, Composer, MySQL/PostgreSQL
 
 ### Backend
-```bash
 composer install
 cp .env.example .env
 php artisan key:generate
 php artisan migrate:fresh --seed
 php artisan serve
+
+## 👥 Proponents
+
+**AMA Computer College Santiago Campus** *Bachelor of Science in Information Technology*
+
+| Name | Role |
+| :--- | :--- |
+| **Niel Patrick G. Batarao** | Project Lead / Researcher |
+| **Angellie D. Marcos** | Lead Developer / Cybersecurity |
+| **Lhord Czedrick T. Pascua** | System Analyst / Documentation |
+| **Kian Carlo T. Catu** | UI/UX Designer / QA |
+
+---
+
+## 📄 License
+
+This project is developed exclusively for the **Department of Education — Schools Division Office (SDO) Santiago City**. 
+
+> [!IMPORTANT]
+> **All rights reserved.** Reproduction, distribution, or unauthorized use of this software and its documentation without explicit permission from the proponents and SDO Santiago City is strictly prohibited.
+
+---
+
+### 💡 About the Project
+Made with ❤️ for better school monitoring and student welfare in Santiago City.
+
+**Repository maintained by:** [Angellie D. Marcos](https://github.com/angelliemarcos6-cyber)
