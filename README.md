@@ -36,34 +36,42 @@ CSPAMS serves as the **digital backbone** for the two flagship monitoring progra
 - Secure download of uploaded school files
 - Instant Reverb notifications for new concerns or submissions
 
-<div align="center">
+ ## 🛠️ Technology Stack
 
-## 🛠️ Technology Stack
 
-| Layer | Technology |
-| :--- | :--- |
-| **Backend** | Laravel 11 (PHP 8.2+) + Sanctum |
-| **Admin Panel** | Filament PHP |
-| **Frontend** | React + TypeScript + Vite + Tailwind |
-| **Real-time** | Laravel Reverb + Echo |
-| **Database** | PostgreSQL / MySQL (JSONB for forms) |
-| **File Storage** | Private disk (TARGETS-MET & SMEA files) |
+| Layer           | Technology                              |
 
-</div>
+|-----------------|-----------------------------------------|
+
+| Backend         | Laravel 11 (PHP 8.2+) + Sanctum         |
+
+| Admin Panel     | Filament PHP                            |
+
+| Frontend        | React + TypeScript + Vite + Tailwind    |
+
+| Real-time       | Laravel Reverb + Echo                   |
+
+| Database        | PostgreSQL / MySQL (JSONB for forms)    |
+
+| File Storage    | Private disk (TARGETS-MET & SMEA files) |
+
 
 ---
 
-<div align="center">
 
 ## 🔐 Access Control
 
-| Role | Login Method | Responsibilities |
-| :--- | :--- | :--- |
-| **SMM&E Monitor** | Email + Password | Review all submissions, manage concerns, generate reports |
-| **School Head** | 6-digit School Code | Submit compliance packages, flag welfare concerns |
 
-</div>
+| Role              | Login Method         | Responsibilities |
 
+|-------------------|----------------------|------------------|
+
+| **SMM&E Monitor** | Email + Password     | Review all submissions, manage concerns, generate reports |
+
+| **School Head**   | 6-digit School Code | Submit compliance packages, flag welfare concerns |
+
+
+--- 
 ## 🚀 Quick Start (Local Development)
 
 ### Prerequisites
