@@ -1,0 +1,1631 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\School;
+use App\Models\Section;
+use App\Models\Student;
+use App\Models\User;
+use App\Models\AccountSetupToken;
+use App\Models\AuditLog;
+use App\Models\FormSubmissionHistory;
+use App\Notifications\SchoolHeadPasswordResetNotification;
+use App\Support\Auth\SchoolHeadAccountSetupService;
+use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\Response;
+use Tests\Concerns\InteractsWithSeededCredentials;
+use Tests\TestCase;
+
+class SchoolHeadAccountManagementTest extends TestCase
+{
+    use InteractsWithSeededCredentials;
+    use RefreshDatabase;
+
+    public function test_monitor_can_create_school_head_with_temporary_password_and_required_first_login_reset(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '911111',
+            'schoolName' => 'Test Setup Link School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+            'schoolHeadAccount' => [
+                'name' => 'Setup Link Head',
+                'email' => 'setup.head@cspams.local',
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
+            ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local')
+            ->assertJsonPath('meta.schoolHeadAccount.onboardingFlow', 'temporary_password')
+            ->assertJsonPath('meta.schoolHeadAccount.lifecycleState', 'temporary_password_active')
+            ->assertJsonPath('meta.schoolHeadAccount.recommendedAction', 'none')
+            ->assertJsonPath('meta.schoolHeadAccount.temporaryPasswordExpired', false);
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+        $this->assertArrayHasKey('temporaryPassword', $provisioning);
+        $this->assertIsString($provisioning['temporaryPassword']);
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $provisioning['temporaryPassword']);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'setup.head@cspams.local')->firstOrFail();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNotNull($schoolHead->password_changed_at);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertSame((string) $provisioning['temporaryPassword'], $schoolHead->temporary_password_display);
+        $this->assertNotSame((string) $provisioning['temporaryPassword'], (string) $schoolHead->getRawOriginal('temporary_password_display'));
+        $this->assertNotNull($schoolHead->email_verified_at);
+        $this->assertNotNull($schoolHead->verified_by_user_id);
+        $this->assertNotNull($schoolHead->verified_at);
+        $this->assertTrue(Hash::check((string) $provisioning['temporaryPassword'], (string) $schoolHead->password));
+        $this->assertNotSame((string) $provisioning['temporaryPassword'], (string) $schoolHead->password);
+
+        $recordsWhileTempActive = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $recordsWhileTempActive->assertOk();
+        $tempActiveRecord = collect($recordsWhileTempActive->json('data'))
+            ->firstWhere('schoolId', '911111');
+        $this->assertIsArray($tempActiveRecord);
+        $this->assertSame(
+            (string) $provisioning['temporaryPassword'],
+            data_get($tempActiveRecord, 'schoolHeadAccount.temporaryPasswordDisplay'),
+        );
+
+        Notification::assertNothingSent();
+        $schoolHead->loadMissing('school');
+        $schoolCode = (string) $schoolHead->school?->school_code;
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => (string) $provisioning['temporaryPassword'],
+        ]);
+
+        $login->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true)
+            ->assertJsonPath('message', 'Password reset is required before dashboard access.');
+
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'current_password' => (string) $provisioning['temporaryPassword'],
+            'new_password' => 'NewSchool@2026!123',
+            'new_password_confirmation' => 'NewSchool@2026!123',
+        ]);
+
+        $resetRequired->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', 'setup.head@cspams.local')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
+
+        $loginWithNewPassword = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => 'NewSchool@2026!123',
+        ]);
+
+        $loginWithNewPassword->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', 'setup.head@cspams.local')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+
+        $createdRecord = collect($records->json('data'))
+            ->firstWhere('schoolId', '911111');
+
+        $this->assertIsArray($createdRecord);
+        $this->assertArrayNotHasKey('temporaryPassword', (array) ($createdRecord['schoolHeadAccount'] ?? []));
+        $this->assertNull(data_get($createdRecord, 'schoolHeadAccount.temporaryPasswordDisplay'));
+        $this->assertSame('active_ready', data_get($createdRecord, 'schoolHeadAccount.lifecycleState'));
+    }
+
+    public function test_school_head_setup_completion_requires_monitor_activation_before_login(): void
+    {
+        $this->seed();
+
+        $newPassword = 'PendingVerify@2026!';
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->where('email', 'schoolhead.103811@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $issuedSetup = $setupService->issue($schoolHead);
+
+        $setup = $this->postJson('/api/auth/setup-account', [
+            'token' => $issuedSetup['plainToken'],
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
+        ]);
+
+        $setup->assertOk()
+            ->assertJsonPath(
+                'message',
+                'Account setup completed. Your Division Monitor must verify and activate your account before sign-in.',
+            );
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::PENDING_VERIFICATION->value, $schoolHead->accountStatus()->value);
+        $this->assertNull($schoolHead->verified_by_user_id);
+        $this->assertNull($schoolHead->verified_at);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))
+            ->firstWhere('schoolId', (string) $school->school_code);
+        $this->assertIsArray($record);
+        $this->assertSame('setup_link', data_get($record, 'schoolHeadAccount.onboardingFlow'));
+        $this->assertSame('pending_verification', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('activate_account', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
+
+        $blockedLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => '103811',
+            'password' => $newPassword,
+        ]);
+
+        $blockedLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresMonitorApproval', true)
+            ->assertJsonPath('accountStatus', AccountStatus::PENDING_VERIFICATION->value);
+
+        $activate = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/activate",
+            ['reason' => 'Verified after reviewing School Head onboarding details.'],
+        );
+
+        $activate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.verifiedByName', 'Division Monitor');
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertNotNull($schoolHead->verified_by_user_id);
+        $this->assertNotNull($schoolHead->verified_at);
+
+        $login = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => '103811',
+            'password' => $newPassword,
+        ]);
+
+        $login->assertOk()
+            ->assertJsonPath('user.role', 'school_head');
+    }
+
+    public function test_monitor_can_update_school_head_status_and_issue_password_reset_link(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $codeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::SUSPENDED->value,
+            ],
+        );
+
+        $codeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $codeIssue->json('data.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $suspend = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::SUSPENDED->value,
+                'flagged' => true,
+                'reason' => 'Repeated incomplete submissions from this account.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $suspend->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::SUSPENDED->value)
+            ->assertJsonPath('data.account.flagged', true);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::SUSPENDED->value, $schoolHead->accountStatus()->value);
+        $this->assertNotNull($schoolHead->flagged_at);
+        $this->assertSame('Repeated incomplete submissions from this account.', $schoolHead->flagged_reason);
+
+        $activate = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'flagged' => false,
+                'reason' => 'Issue resolved after monitor verification.',
+            ],
+        );
+
+        $activate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.flagged', false);
+
+        $flagDelete = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'deleteRecordFlagged' => true,
+                'reason' => 'Duplicate account record flagged for deletion.',
+            ],
+        );
+
+        $flagDelete->assertOk()
+            ->assertJsonPath('data.account.deleteRecordFlagged', true)
+            ->assertJsonPath('data.account.deleteRecordReason', 'Duplicate account record flagged for deletion.');
+
+        $schoolHead->refresh();
+        $this->assertNotNull($schoolHead->delete_record_flagged_at);
+        $this->assertSame('Duplicate account record flagged for deletion.', $schoolHead->delete_record_flag_reason);
+
+        $unflagDelete = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'deleteRecordFlagged' => false,
+                'reason' => 'Deletion flag cleared after account validation.',
+            ],
+        );
+
+        $unflagDelete->assertOk()
+            ->assertJsonPath('data.account.deleteRecordFlagged', false);
+
+        $schoolHead->refresh();
+        $this->assertNull($schoolHead->delete_record_flagged_at);
+        $this->assertNull($schoolHead->delete_record_flag_reason);
+
+        $resetCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'password_reset',
+            ],
+        );
+
+        $resetCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $resetChallengeId = (string) $resetCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $resetChallengeId);
+
+        $resetLink = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/password-reset-link",
+            [
+                'reason' => 'Password reset requested by the school head.',
+                'verificationChallengeId' => $resetChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $resetLink->assertStatus(Response::HTTP_OK)
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.account.onboardingFlow', 'standard')
+            ->assertJsonPath('data.account.lifecycleState', 'password_reset_required')
+            ->assertJsonPath('data.account.recommendedAction', 'send_password_reset_link')
+            ->assertJsonPath('data.account.temporaryPasswordIssuedAt', null)
+            ->assertJsonPath('data.account.temporaryPasswordExpiresAt', null)
+            ->assertJsonPath('data.account.temporaryPasswordExpired', false);
+
+        /** @var array<string, mixed> $resetPayload */
+        $resetPayload = (array) $resetLink->json('data');
+        $this->assertArrayNotHasKey('resetLink', $resetPayload);
+
+        Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
+        /** @var SchoolHeadPasswordResetNotification|null $notification */
+        $notification = $sent->last();
+        $resetUrl = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
+        $this->assertNotSame('', $resetUrl);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+    }
+
+    public function test_reissuing_setup_link_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        Schema::dropIfExists('account_setup_tokens');
+
+        $response = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/setup-link",
+            [
+                'reason' => 'Re-onboarding requested by monitor.',
+            ],
+        );
+
+        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+    }
+
+    public function test_creating_school_head_account_still_works_when_account_setup_token_storage_is_missing(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        Schema::dropIfExists('account_setup_tokens');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '922222',
+            'schoolName' => 'No Token Storage School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+            'schoolHeadAccount' => [
+                'name' => 'No Token Head',
+                'email' => 'no.token.head@cspams.local',
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
+            ->assertJsonPath('meta.schoolHeadAccount.email', 'no.token.head@cspams.local');
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $provisioning['temporaryPassword']);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'no.token.head@cspams.local')->firstOrFail();
+        $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertSame((string) $provisioning['temporaryPassword'], $schoolHead->temporary_password_display);
+    }
+
+    public function test_monitor_can_regenerate_temporary_password_for_active_school_head_account(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $schoolCode = (string) $school->school_code;
+        $oldPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+        $oldPasswordHash = (string) $schoolHead->password;
+        $expiredIssuedAt = now()->subDays(10);
+        $schoolHead->forceFill([
+            'temporary_password_issued_at' => $expiredIssuedAt,
+        ])->save();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $issueCode = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'temporary_password',
+            ],
+        );
+
+        $issueCode->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $issueCode->json('data.challengeId');
+
+        $regenerate = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/temporary-password",
+            [
+                'reason' => 'School Head did not receive the original bootstrap password.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $regenerate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value)
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonPath('data.account.onboardingFlow', 'temporary_password')
+            ->assertJsonPath('data.account.lifecycleState', 'temporary_password_active')
+            ->assertJsonPath('data.account.temporaryPasswordExpired', false);
+
+        /** @var array<string, mixed> $receipt */
+        $receipt = (array) $regenerate->json('data');
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', (string) $receipt['temporaryPassword']);
+        $this->assertSame((string) $receipt['temporaryPassword'], data_get($receipt, 'account.temporaryPasswordDisplay'));
+
+        $schoolHead->refresh();
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertTrue(Hash::check((string) $receipt['temporaryPassword'], (string) $schoolHead->password));
+        $this->assertNotSame($oldPasswordHash, (string) $schoolHead->password);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertTrue($schoolHead->temporary_password_issued_at->greaterThan($expiredIssuedAt));
+        $this->assertSame((string) $receipt['temporaryPassword'], $schoolHead->temporary_password_display);
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))->firstWhere('id', (string) $school->id);
+        $this->assertIsArray($record);
+        $this->assertArrayNotHasKey('temporaryPassword', (array) ($record['schoolHeadAccount'] ?? []));
+        $this->assertSame((string) $receipt['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
+        $schoolCode = (string) $school->school_code;
+
+        $oldLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $oldPassword,
+        ]);
+
+        $oldLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid school code or password.');
+
+        $tempLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => (string) $receipt['temporaryPassword'],
+        ]);
+
+        $tempLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true);
+
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'current_password' => (string) $receipt['temporaryPassword'],
+            'new_password' => 'UpdatedSchool@2026!123',
+            'new_password_confirmation' => 'UpdatedSchool@2026!123',
+        ]);
+
+        $resetRequired->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
+
+        $newLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => 'UpdatedSchool@2026!123',
+        ]);
+
+        $newLogin->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.email', $schoolHead->email);
+    }
+
+    public function test_monitor_cannot_regenerate_temporary_password_for_non_active_school_head_accounts(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $cases = [
+            AccountStatus::PENDING_SETUP->value => 'Accounts pending setup should continue using setup links until setup is completed.',
+            AccountStatus::PENDING_VERIFICATION->value => 'Activate the account before issuing a new temporary password.',
+            AccountStatus::LOCKED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+            AccountStatus::SUSPENDED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+            AccountStatus::ARCHIVED->value => 'Temporary passwords can only be regenerated for active School Head accounts.',
+        ];
+
+        foreach ($cases as $status => $message) {
+            $schoolHead->forceFill([
+                'account_status' => $status,
+                'must_reset_password' => false,
+                'temporary_password_issued_at' => null,
+            ])->save();
+
+            $response = $this->withToken($monitorToken)->postJson(
+                "/api/dashboard/records/{$school->id}/school-head-account/temporary-password",
+                [
+                    'reason' => 'Need a replacement bootstrap credential.',
+                    'verificationChallengeId' => '11111111-1111-1111-1111-111111111111',
+                    'verificationCode' => '123456',
+                ],
+            );
+
+            $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+                ->assertJsonPath('message', $message);
+        }
+    }
+
+    public function test_temporary_password_remains_valid_until_required_password_reset_is_completed(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '933333',
+            'schoolName' => 'Expired Temp Password School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+            'schoolHeadAccount' => [
+                'name' => 'Expired Temp Head',
+                'email' => 'expired.temp.head@cspams.local',
+            ],
+        ]);
+
+        /** @var array<string, mixed> $provisioning */
+        $provisioning = (array) $response->json('meta.schoolHeadAccount');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'expired.temp.head@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $schoolHead->forceFill([
+            'temporary_password_issued_at' => now()->subHours(73),
+        ])->save();
+
+        $continuedLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => (string) $provisioning['temporaryPassword'],
+        ]);
+
+        $continuedLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('requiresPasswordReset', true)
+            ->assertJsonPath('message', 'Password reset is required before dashboard access.');
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+        $record = collect((array) $records->json('data'))->firstWhere('schoolId', '933333');
+        $this->assertIsArray($record);
+        $this->assertSame('temporary_password_active', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('none', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertFalse((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
+        $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordExpiresAt'));
+        $this->assertSame((string) $provisioning['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
+
+        $resetRequired = $this->postJson('/api/auth/reset-required-password', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'current_password' => (string) $provisioning['temporaryPassword'],
+            'new_password' => 'TempPasswordReset@2026!123',
+            'new_password_confirmation' => 'TempPasswordReset@2026!123',
+        ]);
+
+        $resetRequired->assertOk()
+            ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->temporary_password_issued_at);
+        $this->assertNull($schoolHead->temporary_password_display);
+    }
+
+    public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $missingVerification = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'changed.schoolhead@cspams.local',
+                'reason' => 'School Head requested to update email.',
+            ],
+        );
+
+        $missingVerification->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['verificationChallengeId', 'verificationCode']);
+
+        $verificationCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'email_change',
+            ],
+        );
+
+        $verificationCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $verificationCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $emailChange = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'changed.schoolhead@cspams.local',
+                'reason' => 'School Head requested to update email.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $emailChange->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value)
+            ->assertJsonPath('data.account.onboardingFlow', 'setup_link')
+            ->assertJsonPath('data.account.lifecycleState', 'pending_setup')
+            ->assertJsonPath('data.account.recommendedAction', 'send_setup_link');
+
+        /** @var array<string, mixed> $emailChangePayload */
+        $emailChangePayload = (array) $emailChange->json('data');
+        $this->assertArrayNotHasKey('setupLink', $emailChangePayload);
+        $this->assertContains((string) ($emailChangePayload['delivery'] ?? ''), ['sent', 'logged']);
+        $this->assertIsString($emailChangePayload['expiresAt'] ?? null);
+        $this->assertNotSame('', (string) ($emailChangePayload['expiresAt'] ?? ''));
+
+        $schoolHead->refresh();
+        $this->assertSame('changed.schoolhead@cspams.local', $schoolHead->email);
+        $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
+        $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
+        $this->assertDatabaseHas('account_setup_tokens', [
+            'user_id' => $schoolHead->id,
+            'used_at' => null,
+        ]);
+
+        $schoolHead->forceFill(['account_status' => AccountStatus::LOCKED->value])->save();
+
+        $lockedVerificationIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'email_change',
+            ],
+        );
+
+        $lockedVerificationIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $lockedChallengeId = (string) $lockedVerificationIssue->json('data.challengeId');
+        $this->assertNotSame('', $lockedChallengeId);
+
+        $lockedEmailChange = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'locked.schoolhead@cspams.local',
+                'reason' => 'School Head requested to update email.',
+                'verificationChallengeId' => $lockedChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $lockedEmailChange->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
+            ->assertJsonPath('data.delivery', null)
+            ->assertJsonPath('data.expiresAt', null)
+            ->assertJsonMissing(['setupLink' => null]);
+
+        $schoolHead->refresh();
+        $this->assertSame('locked.schoolhead@cspams.local', $schoolHead->email);
+        $this->assertSame(AccountStatus::LOCKED->value, $schoolHead->accountStatus()->value);
+        $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
+    }
+
+    public function test_locked_school_head_email_change_forces_password_reset_and_blocks_old_credentials_after_reactivation(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $this->assertNotSame('', $schoolCode);
+        $oldPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $lockCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::LOCKED->value,
+            ],
+        );
+
+        $lockCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $lockChallengeId = (string) $lockCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $lockChallengeId);
+
+        $lockAccount = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::LOCKED->value,
+                'reason' => 'Account locked for email ownership transfer.',
+                'verificationChallengeId' => $lockChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $lockAccount->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value);
+
+        $emailCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'email_change',
+            ],
+        );
+
+        $emailCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $emailChallengeId = (string) $emailCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $emailChallengeId);
+
+        $emailChange = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'transferred.schoolhead@cspams.local',
+                'reason' => 'Transfer account ownership to a new School Head.',
+                'verificationChallengeId' => $emailChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $emailChange->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::LOCKED->value)
+            ->assertJsonPath('data.account.mustResetPassword', true)
+            ->assertJsonMissing(['setupLink' => null]);
+
+        $schoolHead->refresh();
+        $this->assertSame('transferred.schoolhead@cspams.local', $schoolHead->email);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNull($schoolHead->password_changed_at);
+
+        $reactivateAttempt = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Reactivated after email transfer; password reset required.',
+            ],
+        );
+
+        $reactivateAttempt->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Password reset is required before activation. Issue a password reset link first.');
+
+        $resetCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'password_reset',
+            ],
+        );
+
+        $resetCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $resetChallengeId = (string) $resetCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $resetChallengeId);
+
+        $resetLink = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/password-reset-link",
+            [
+                'reason' => 'Transfer requires password reset.',
+                'verificationChallengeId' => $resetChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $resetLink->assertOk()
+            ->assertJsonMissing(['resetLink' => null]);
+
+        Notification::assertSentTo($schoolHead, SchoolHeadPasswordResetNotification::class);
+        $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
+        /** @var SchoolHeadPasswordResetNotification|null $notification */
+        $notification = $sent->last();
+        $resetUrl = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
+        $this->assertNotSame('', $resetUrl);
+
+        $urlParts = parse_url($resetUrl);
+        $this->assertIsArray($urlParts);
+
+        $query = [];
+        $fragment = (string) ($urlParts['fragment'] ?? '');
+        $fragmentQuery = '';
+        if (str_contains($fragment, '?')) {
+            [, $fragmentQuery] = explode('?', $fragment, 2);
+        }
+        parse_str($fragmentQuery, $query);
+
+        $token = (string) ($query['token'] ?? '');
+        $email = (string) ($query['email'] ?? '');
+        $role = (string) ($query['role'] ?? '');
+
+        $this->assertNotSame('', $token);
+        $this->assertSame('transferred.schoolhead@cspams.local', $email);
+        $this->assertSame('school_head', $role);
+
+        $newPassword = 'NewPassword123!';
+
+        $resetPassword = $this->postJson('/api/auth/reset-password', [
+            'role' => $role,
+            'email' => $email,
+            'token' => $token,
+            'password' => $newPassword,
+            'password_confirmation' => $newPassword,
+        ]);
+
+        $resetPassword->assertOk()
+            ->assertJsonPath('message', 'Password reset successfully. Please sign in with your new password.');
+
+        $activate = $this->withToken($monitorToken)->patchJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'accountStatus' => AccountStatus::ACTIVE->value,
+                'reason' => 'Activated after password reset completion.',
+            ],
+        );
+
+        $activate->assertOk()
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value);
+
+        $loginOld = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $oldPassword,
+        ]);
+
+        $loginOld->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid school code or password.');
+
+        $loginNew = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $newPassword,
+        ]);
+
+        $loginNew->assertOk();
+        $this->assertNotSame('', (string) $loginNew->json('token'));
+    }
+
+    public function test_remove_account_and_school_permanently_deletes_school_and_preserves_reason(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'School was entered in error and must be removed completely.',
+            ],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 1);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+
+        $audit = AuditLog::query()
+            ->where('action', 'account_and_school.removed')
+            ->where('auditable_id', $school->id)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($audit);
+        $this->assertSame(
+            'School was entered in error and must be removed completely.',
+            data_get($audit?->metadata, 'reason'),
+        );
+    }
+
+    public function test_remove_account_and_school_does_not_require_verification(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'School was entered in error and must be removed completely.',
+            ],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 1);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_monitor_can_remove_pending_setup_school_head_account(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead.103811@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
+        $this->assertNull($schoolHead->verified_at);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 1);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_monitor_can_remove_pending_verification_school_head_account(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->where('email', 'schoolhead.103811@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        /** @var SchoolHeadAccountSetupService $setupService */
+        $setupService = app(SchoolHeadAccountSetupService::class);
+        $issuedSetup = $setupService->issue($schoolHead);
+
+        $setup = $this->postJson('/api/auth/setup-account', [
+            'token' => $issuedSetup['plainToken'],
+            'password' => 'PendingVerify@2026!',
+            'password_confirmation' => 'PendingVerify@2026!',
+        ]);
+
+        $setup->assertOk();
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::PENDING_VERIFICATION->value, $schoolHead->accountStatus()->value);
+        $this->assertNull($schoolHead->verified_at);
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 1);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_remove_account_and_school_also_deletes_linked_user_rows_hidden_by_school_head_relation_filtering(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser->forceFill([
+            'name' => 'Legacy Linked Account',
+            'email' => 'legacy.linked@cspams.local',
+            'password' => Hash::make('LegacyLinked@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_linked',
+        ])->save();
+
+        $hiddenLinkedUser->createToken('legacy-linked-token');
+
+        if (Schema::hasTable('account_setup_tokens')) {
+            AccountSetupToken::query()->create([
+                'user_id' => $hiddenLinkedUser->id,
+                'issued_by_user_id' => $hiddenLinkedUser->id,
+                'token_hash' => hash('sha256', 'legacy-linked-token'),
+                'expires_at' => now()->addDay(),
+            ]);
+        }
+
+        $this->assertFalse(
+            $school->schoolHeadAccounts()->whereKey($hiddenLinkedUser->id)->exists(),
+            'The regression fixture must be excluded by the filtered schoolHeadAccounts() relation.',
+        );
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [
+                'reason' => 'Remove school and every linked account row.',
+            ],
+        );
+
+        $remove->assertOk()
+            ->assertJsonPath('data.deletedCount', 2);
+
+        $this->assertDatabaseMissing('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseMissing('users', [
+            'id' => $hiddenLinkedUser->id,
+        ]);
+        $this->assertDatabaseMissing('schools', [
+            'id' => $school->id,
+        ]);
+        $this->assertDatabaseMissing('personal_access_tokens', [
+            'tokenable_type' => User::class,
+            'tokenable_id' => $hiddenLinkedUser->id,
+        ]);
+
+        if (Schema::hasTable('account_setup_tokens')) {
+            $this->assertDatabaseMissing('account_setup_tokens', [
+                'user_id' => $hiddenLinkedUser->id,
+            ]);
+        }
+    }
+
+    public function test_remove_account_and_school_blocks_when_any_linked_user_has_monitor_access(): void
+    {
+        $this->seed();
+        Notification::fake();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $linkedMonitor = new User();
+        $linkedMonitor->forceFill([
+            'name' => 'Linked Monitor',
+            'email' => 'linked.monitor@cspams.local',
+            'password' => Hash::make('LinkedMonitor@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_monitor',
+        ])->save();
+        $linkedMonitor->assignRole(UserRoleResolver::MONITOR);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [],
+        );
+
+        $remove->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'One of the linked accounts has monitor access and cannot be deleted here.');
+
+        $this->assertDatabaseHas('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseHas('users', [
+            'id' => $linkedMonitor->id,
+        ]);
+        $this->assertDatabaseHas('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_batch_remove_account_and_school_deletes_multiple_flagged_schools(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $firstSchoolHead */
+        $firstSchoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $secondSchoolHead */
+        $secondSchoolHead = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
+        /** @var School $firstSchool */
+        $firstSchool = School::query()->findOrFail($firstSchoolHead->school_id);
+        /** @var School $secondSchool */
+        $secondSchool = School::query()->findOrFail($secondSchoolHead->school_id);
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $firstSchool->id, (string) $secondSchool->id],
+            'reason' => 'Batch remove flagged schools.',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 2)
+            ->assertJsonPath('data.deletedSchoolIds', [(string) $firstSchool->id, (string) $secondSchool->id])
+            ->assertJsonPath('data.missingSchoolIds', [])
+            ->assertJsonPath('data.blocked', []);
+
+        $this->assertDatabaseMissing('users', ['id' => $firstSchoolHead->id]);
+        $this->assertDatabaseMissing('users', ['id' => $secondSchoolHead->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $firstSchool->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $secondSchool->id]);
+    }
+
+    public function test_batch_remove_account_and_school_reports_missing_and_blocked_schools(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $linkedMonitor = new User();
+        $linkedMonitor->forceFill([
+            'name' => 'Linked Monitor',
+            'email' => 'linked.monitor.batch@cspams.local',
+            'password' => Hash::make('LinkedMonitor@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_monitor',
+        ])->save();
+        $linkedMonitor->assignRole(UserRoleResolver::MONITOR);
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $school->id, '999999'],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 0)
+            ->assertJsonPath('data.deletedSchoolIds', [])
+            ->assertJsonPath('data.missingSchoolIds', ['999999']);
+
+        $blocked = $response->json('data.blocked');
+        $this->assertIsArray($blocked);
+        $this->assertCount(1, $blocked);
+        $this->assertSame((string) $school->id, data_get($blocked[0], 'schoolId'));
+        $this->assertSame('One of the linked accounts has monitor access and cannot be deleted here.', data_get($blocked[0], 'message'));
+    }
+
+    public function test_batch_remove_account_and_school_also_deletes_hidden_linked_users_by_school_id(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser->forceFill([
+            'name' => 'Legacy Linked Account',
+            'email' => 'legacy.batch.linked@cspams.local',
+            'password' => Hash::make('LegacyLinked@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => AccountStatus::ACTIVE->value,
+            'school_id' => $school->id,
+            'account_type' => 'legacy_linked',
+        ])->save();
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/school-head-accounts', [
+            'schoolIds' => [(string) $school->id],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.deletedCount', 1)
+            ->assertJsonPath('data.deletedSchoolIds', [(string) $school->id]);
+
+        $this->assertDatabaseMissing('users', ['id' => $schoolHead->id]);
+        $this->assertDatabaseMissing('users', ['id' => $hiddenLinkedUser->id]);
+        $this->assertDatabaseMissing('schools', ['id' => $school->id]);
+    }
+
+    public function test_missing_school_target_returns_clean_not_found_message_for_remove_account_and_school(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->deleteJson('/api/dashboard/records/999999/school-head-account');
+
+        $response->assertStatus(Response::HTTP_NOT_FOUND)
+            ->assertJsonPath('message', 'School record not found. It may have been archived or permanently deleted.');
+    }
+
+    public function test_archiving_school_archives_linked_school_head_and_blocks_future_school_head_login(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $schoolCode = (string) $schoolHead->school?->school_code;
+        $schoolHeadPassword = $this->demoPasswordForLogin('school_head', $schoolCode);
+
+        $schoolHeadLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $schoolHeadPassword,
+        ]);
+        $schoolHeadLogin->assertOk();
+        $schoolHeadToken = (string) $schoolHeadLogin->json('token');
+
+        $archive = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}");
+        $archive->assertOk();
+
+        $school->refresh();
+        $this->assertNotNull($school->deleted_at);
+
+        $schoolHead->refresh();
+        $this->assertSame(AccountStatus::ARCHIVED->value, $schoolHead->accountStatus()->value);
+
+        $emailLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => 'schoolhead1@cspams.local',
+            'password' => $schoolHeadPassword,
+        ]);
+
+        $emailLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['login']);
+
+        $schoolCodeLogin = $this->postJson('/api/auth/login', [
+            'role' => 'school_head',
+            'login' => $schoolCode,
+            'password' => $schoolHeadPassword,
+        ]);
+
+        $schoolCodeLogin->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('accountStatus', AccountStatus::ARCHIVED->value)
+            ->assertJsonPath('message', 'Your account is archived and can no longer sign in.');
+
+        $me = $this->withToken($schoolHeadToken)->getJson('/api/auth/me');
+        $me->assertStatus(Response::HTTP_UNAUTHORIZED)
+            ->assertJsonPath('message', 'Unauthenticated.');
+    }
+
+    public function test_monitor_can_permanently_delete_archived_school_and_linked_school_head_data(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->with('school')
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $academicYearId = (int) DB::table('academic_years')->value('id');
+
+        $section = Section::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYearId,
+            'name' => 'Section Hard Delete',
+            'grade_level' => 'Grade 6',
+            'capacity' => 30,
+            'status' => 'active',
+        ]);
+
+        $student = Student::query()->create([
+            'school_id' => $school->id,
+            'section_id' => $section->id,
+            'academic_year_id' => $academicYearId,
+            'lrn' => 'HD-' . (string) $school->id . '-001',
+            'first_name' => 'Hard',
+            'last_name' => 'Delete',
+            'status' => 'enrolled',
+            'risk_level' => 'none',
+        ]);
+
+        $history = FormSubmissionHistory::query()->create([
+            'form_type' => 'indicator_submission',
+            'submission_id' => 1,
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYearId,
+            'action' => 'submitted',
+            'to_status' => 'submitted',
+            'actor_id' => $schoolHead->id,
+            'notes' => 'Hard delete coverage.',
+            'metadata' => ['source' => 'test'],
+        ]);
+
+        $expectedStudentCount = Student::query()->where('school_id', $school->id)->count();
+        $expectedSectionCount = Section::query()->where('school_id', $school->id)->count();
+        $expectedHistoryCount = FormSubmissionHistory::query()->where('school_id', $school->id)->count();
+        $expectedLinkedUserCount = User::query()->where('school_id', $school->id)->count();
+
+        $archive = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}");
+        $archive->assertOk();
+
+        $permanentDelete = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}/permanent");
+        $permanentDelete->assertOk()
+            ->assertJsonPath('data.schoolName', $school->name)
+            ->assertJsonPath('data.deletedUsers', 1)
+            ->assertJsonPath('data.dependencies.students', $expectedStudentCount)
+            ->assertJsonPath('data.dependencies.sections', $expectedSectionCount)
+            ->assertJsonPath('data.dependencies.histories', $expectedHistoryCount)
+            ->assertJsonPath('data.dependencies.linkedUsers', $expectedLinkedUserCount);
+
+        $this->assertNull(School::withTrashed()->find($school->id));
+        $this->assertDatabaseMissing('users', ['id' => $schoolHead->id]);
+        $this->assertDatabaseMissing('sections', ['id' => $section->id]);
+        $this->assertDatabaseMissing('students', ['id' => $student->id]);
+        $this->assertDatabaseMissing('form_submission_histories', ['id' => $history->id]);
+    }
+
+    public function test_monitor_must_archive_school_before_permanent_delete(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()
+            ->where('email', 'schoolhead1@cspams.local')
+            ->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $response = $this->withToken($monitorToken)->deleteJson("/api/dashboard/records/{$school->id}/permanent");
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Archive the school record before permanently deleting it.');
+    }
+
+    public function test_account_type_column_rejects_null_values(): void
+    {
+        $this->seed();
+
+        if (! Schema::hasColumn('users', 'account_type')) {
+            $this->markTestSkipped('Users account_type column is not available.');
+        }
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+
+        $this->expectException(\Illuminate\Database\QueryException::class);
+        $schoolHead->forceFill(['account_type' => null])->save();
+    }
+}
+

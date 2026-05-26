@@ -1,0 +1,426 @@
+import { describe, expect, it } from "vitest";
+import {
+  buildSubmissionUploadedFileFingerprint,
+  getActiveReportVisibleFiles,
+  resolveActiveWorkspaceVisibleFileDefinitions,
+  defaultRequiredSubmissionFileTypesForSchoolType,
+  getActiveReportFileTypes,
+  getActiveWorkspaceFileTypes,
+  getSecondaryHistoricalVisibleFiles,
+  getSecondaryHistoricalFileTypes,
+  getSubmissionUploadedFileTypes,
+  isSubmissionFileUploaded,
+  resolveSubmissionSchoolId,
+  resolveSecondarySubmittedReportFileDefinitions,
+  resolveSubmissionPresentationSchoolType,
+  resolveSubmittedReportVisibleFileDefinitions,
+  resolveSubmissionRequirementProfile,
+  resolveExactSubmissionItemByMetricCode,
+  resolveVisibleSubmissionFileDefinitions,
+} from "@/utils/submissionRequirements";
+import type { IndicatorSubmissionItem } from "@/types";
+
+describe("defaultRequiredSubmissionFileTypesForSchoolType", () => {
+  it("returns only core file types for public schools", () => {
+    expect(defaultRequiredSubmissionFileTypesForSchoolType("public")).toEqual(["bmef", "smea"]);
+  });
+
+  it("returns only private fm-qad file types for private schools", () => {
+    const result = defaultRequiredSubmissionFileTypesForSchoolType("private");
+
+    expect(result).toContain("fm_qad_001");
+    expect(result).toContain("fm_qad_041");
+    expect(result).not.toContain("bmef");
+    expect(result).not.toContain("smea");
+  });
+});
+
+describe("resolveSubmissionRequirementProfile", () => {
+  it("returns the public create-school hint for public schools", () => {
+    expect(resolveSubmissionRequirementProfile("public").createSchoolHint).toBe(
+      "Public School Head workspace uses BMEF and SMEA as the active package requirements.",
+    );
+  });
+
+  it("returns the private create-school hint for private schools", () => {
+    expect(resolveSubmissionRequirementProfile("private").createSchoolHint).toBe(
+      "Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package.",
+    );
+  });
+});
+
+describe("submission presentation helpers", () => {
+  it("prefers top-level schoolType over nested school.type for School Head presentation decisions", () => {
+    expect(resolveSubmissionPresentationSchoolType({
+      schoolType: "private",
+      school: {
+        id: "1",
+        schoolCode: "123456",
+        name: "Sample School",
+        type: "public",
+      },
+    } as never, "public")).toBe("private");
+  });
+
+  it("prefers top-level schoolId over nested school.id for strict School Head scoping", () => {
+    expect(resolveSubmissionSchoolId({
+      schoolId: "school-1",
+      school: {
+        id: "school-2",
+        schoolCode: "123456",
+        name: "Sample School",
+        type: "public",
+      },
+    } as never)).toBe("school-1");
+  });
+
+  it("prefers normalized presentation workspace file types over raw completion required file types", () => {
+    expect(getActiveWorkspaceFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+      },
+      presentation: {
+        activeWorkspaceFileTypes: ["fm_qad_001", "fm_qad_002"],
+      },
+    } as never, "private")).toEqual(["fm_qad_001", "fm_qad_002"]);
+  });
+
+  it("derives secondary historical file types from uploaded file types only as a fallback", () => {
+    expect(getSecondaryHistoricalFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["bmef", "fm_qad_001"],
+      },
+    } as never, "private")).toEqual(["bmef"]);
+  });
+
+  it("derives uploaded file types from raw completion flags and file metadata as a shared fallback", () => {
+    expect(getSubmissionUploadedFileTypes({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        uploadedFileTypes: ["fm_qad_002"],
+      },
+    } as never)).toEqual(["fm_qad_001", "fm_qad_002", "bmef"]);
+  });
+
+  it("uses the shared uploaded-file helper for direct uploaded-state checks", () => {
+    expect(isSubmissionFileUploaded({
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: true,
+        isComplete: false,
+      },
+    } as never, "smea")).toBe(true);
+  });
+
+  it("prefers actual file entries over broad raw compatibility flags in active private file-state helpers", () => {
+    expect(getSubmissionUploadedFileTypes({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        uploadedFileTypes: ["fm_qad_001"],
+      },
+    } as never)).toEqual(["fm_qad_001", "bmef"]);
+  });
+
+  it("changes the uploaded-file fingerprint when a private FM-QAD upload appears", () => {
+    const emptyFingerprint = buildSubmissionUploadedFileFingerprint({
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    } as never);
+    const uploadedFingerprint = buildSubmissionUploadedFileFingerprint({
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+      },
+    } as never);
+
+    expect(uploadedFingerprint).not.toBe(emptyFingerprint);
+  });
+
+  it("prefers normalized report file types over raw required file types", () => {
+    expect(getActiveReportFileTypes({
+      schoolType: "private",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+      },
+    } as never, "private")).toEqual(["fm_qad_001"]);
+  });
+
+  it("derives active visible report files from normalized presentation types instead of the full file map", () => {
+    const result = getActiveReportVisibleFiles({
+      schoolType: "private",
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef.pdf",
+          sizeBytes: 1024,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+      },
+    } as never, "private");
+
+    expect(Object.keys(result)).toEqual(["fm_qad_001"]);
+  });
+
+  it("derives secondary visible report files from normalized historical types instead of the full file map", () => {
+    const result = getSecondaryHistoricalVisibleFiles({
+      schoolType: "private",
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef.pdf",
+          sizeBytes: 1024,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-14T08:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["bmef", "fm_qad_001"],
+      },
+      presentation: {
+        activeReportFileTypes: ["fm_qad_001"],
+        secondaryHistoricalFileTypes: ["bmef"],
+      },
+    } as never, "private");
+
+    expect(Object.keys(result)).toEqual(["bmef"]);
+  });
+});
+
+describe("resolveVisibleSubmissionFileDefinitions", () => {
+  it("shows only private requirement tabs for private schools with no uploads yet", () => {
+    const result = resolveVisibleSubmissionFileDefinitions({ schoolType: "private" });
+
+    expect(result.map((definition) => definition.type)).toContain("fm_qad_001");
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+
+  it("keeps uploaded file tabs visible even when they are not currently required", () => {
+    const result = resolveVisibleSubmissionFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+      uploadedFileTypes: ["bmef", "fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["bmef", "fm_qad_001"]);
+  });
+});
+
+describe("resolveSubmittedReportVisibleFileDefinitions", () => {
+  it("shows only the private requirement set for private-school submitted report cards", () => {
+    const result = resolveSubmittedReportVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["fm_qad_001", "fm_qad_002"]);
+  });
+
+  it("does not surface legacy uploaded public core files for private-school submitted report cards", () => {
+    const result = resolveSubmittedReportVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+});
+
+describe("resolveActiveWorkspaceVisibleFileDefinitions", () => {
+  it("prefers the assigned school type over stale submission-derived required file types", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["bmef", "smea"],
+    });
+
+    expect(result.map((definition) => definition.type)).toContain("fm_qad_001");
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+
+  it("shows only the active private requirement set for private-school workspaces", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(
+      defaultRequiredSubmissionFileTypesForSchoolType("private"),
+    );
+  });
+
+  it("does not surface legacy uploaded public core files as active private-school workspace tabs", () => {
+    const result = resolveActiveWorkspaceVisibleFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).not.toContain("bmef");
+    expect(result.map((definition) => definition.type)).not.toContain("smea");
+  });
+});
+
+describe("resolveSecondarySubmittedReportFileDefinitions", () => {
+  it("surfaces uploaded legacy public core files as secondary historical files for private schools", () => {
+    const result = resolveSecondarySubmittedReportFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001"],
+      uploadedFileTypes: ["bmef", "smea", "fm_qad_001"],
+    });
+
+    expect(result.map((definition) => definition.type)).toEqual(["bmef", "smea"]);
+  });
+
+  it("does not include active required private files in the secondary historical list", () => {
+    const result = resolveSecondarySubmittedReportFileDefinitions({
+      schoolType: "private",
+      requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+      uploadedFileTypes: ["fm_qad_001", "fm_qad_002"],
+    });
+
+    expect(result).toEqual([]);
+  });
+});
+
+describe("resolveExactSubmissionItemByMetricCode", () => {
+  function indicator(metricCode: string): IndicatorSubmissionItem {
+    return {
+      id: metricCode,
+      metric: {
+        id: metricCode,
+        code: metricCode,
+        name: metricCode,
+        category: "test",
+        framework: "imeta",
+        dataType: "number",
+      },
+      targetValue: null,
+      actualValue: null,
+      varianceValue: null,
+      complianceStatus: "met",
+      remarks: null,
+    };
+  }
+
+  it("returns the unique exact metric-code match", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER"), indicator("RR")], "NER")?.id).toBe("NER");
+  });
+
+  it("returns null when duplicate exact metric-code rows exist", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER"), indicator("NER")], "NER")).toBeNull();
+  });
+
+  it("does not use loose normalized matching", () => {
+    expect(resolveExactSubmissionItemByMetricCode([indicator("NER")], " ner ")).toBeNull();
+  });
+});

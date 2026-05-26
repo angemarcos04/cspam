@@ -1,0 +1,532 @@
+import type { IndicatorSubmissionItem } from "@/types";
+
+const SCHOOL_YEAR_START_MONTH = 6;
+
+export const SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL = "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES";
+export const KEY_PERFORMANCE_CATEGORY_LABEL = "KEY PERFORMANCE INDICATORS";
+export const KEY_PERFORMANCE_METRIC_CODES = new Set([
+  "NER",
+  "RR",
+  "DR",
+  "TR",
+  "NIR",
+  "PR",
+  "ALS_COMPLETER_PCT",
+  "GPI",
+  "IQR",
+  "CR",
+  "CSR",
+  "PLM_NEARLY_PROF",
+  "PLM_PROF",
+  "PLM_HIGH_PROF",
+  "AE_PASS_RATE",
+  "VIOLENCE_REPORT_RATE",
+  "LEARNER_SATISFACTION",
+  "RIGHTS_AWARENESS",
+  "RBE_MANIFEST",
+]);
+
+export const METRIC_LABEL_OVERRIDES: Record<string, string> = {
+  IMETA_HEAD_NAME: "NAME OF SCHOOL HEAD",
+  IMETA_ENROLL_TOTAL: "TOTAL NUMBER OF ENROLMENT",
+  IMETA_SBM_LEVEL: "SBM LEVEL OF PRACTICE",
+  PCR_K: "Pupil/Student Classroom Ratio (Kindergarten)",
+  PCR_G1_3: "Pupil/Student Classroom Ratio (Grades 1 to 3)",
+  PCR_G4_6: "Pupil/Student Classroom Ratio (Grades 4 to 6)",
+  PCR_G7_10: "Pupil/Student Classroom Ratio (Grades 7 to 10)",
+  PCR_G11_12: "Pupil/Student Classroom Ratio (Grades 11 to 12)",
+  WASH_RATIO: "Water and Sanitation facility to pupil ratio",
+  COMFORT_ROOMS: "Number of Comfort rooms",
+  TOILET_BOWLS: "a. Toilet bowl",
+  URINALS: "b. Urinal",
+  HANDWASH_FAC: "Handwashing Facilities",
+  LEARNING_MAT_RATIO: "Ideal learning materials to learner ratio",
+  PSR_OVERALL: "Pupil/student seat ratio",
+  PSR_K: "a. Kindergarten",
+  PSR_G1_6: "b. Grades 1 - 6",
+  PSR_G7_10: "c. Grades 7 - 10",
+  PSR_G11_12: "d. Grades 11 - 12",
+  ICT_RATIO: "ICT Package/E-classroom package to sections ratio",
+  ICT_LAB: "a. ICT Laboratory",
+  SCIENCE_LAB: "Science Laboratory",
+  INTERNET_ACCESS: "Do you have internet access? (Y/N)",
+  ELECTRICITY: "Do you have electricity (Y/N)",
+  FENCE_STATUS: "Do you have a complete fence/gate? (Evident/Partially/Not Evident)",
+  TEACHERS_TOTAL: "No. of Teachers",
+  TEACHERS_MALE: "a. Male",
+  TEACHERS_FEMALE: "b. Female",
+  TEACHERS_PWD_TOTAL: "Teachers with Physical Disability",
+  TEACHERS_PWD_MALE: "a. Male",
+  TEACHERS_PWD_FEMALE: "b. Female",
+  FUNCTIONAL_SGC: "Functional SGC",
+  FEEDING_BENEFICIARIES: "School-Based Feeding Program Beneficiaries",
+  CANTEEN_INCOME: "School-Managed Canteen (Annual income)",
+  TEACHER_COOP_INCOME: "Teachers Cooperative Managed Canteen - if there is (Annual income)",
+  SAFETY_PLAN: "Security and Safety (Contingency Plan)",
+  SAFETY_EARTHQUAKE: "a. Earthquake",
+  SAFETY_TYPHOON: "b. Typhoon",
+  SAFETY_COVID: "c. COVID-19",
+  SAFETY_POWER: "d. Power interruption",
+  SAFETY_IN_PERSON: "e. In-person classes",
+  TEACHERS_PFA: "No. of Teachers trained on Psychological First Aid (PFA)",
+  TEACHERS_OCC_FIRST_AID: "No. of Teachers trained on Occupational First Aid",
+  NER: "Net Enrollment Rate",
+  RR: "Retention Rate",
+  DR: "Drop-out Rate",
+  TR: "Transition Rate",
+  NIR: "Net Intake Rate",
+  PR: "Participation Rate",
+  ALS_COMPLETER_PCT: "ALS Completion Rate",
+  GPI: "Gender Parity Index (GPI)",
+  IQR: "Interquartile Ratio",
+  CR: "Completion Rate",
+  CSR: "Cohort Survival Rate",
+  PLM_NEARLY_PROF: "Learning Mastery: Nearly Proficient (50%-74%)",
+  PLM_PROF: "Learning Mastery: Proficient (75%-89%)",
+  PLM_HIGH_PROF: "Learning Mastery: Highly Proficient (90%-100%)",
+  AE_PASS_RATE: "A&E Test Pass Rate",
+  VIOLENCE_REPORT_RATE: "Learners Reporting School Violence",
+  LEARNER_SATISFACTION: "Learner Satisfaction",
+  RIGHTS_AWARENESS: "Learners Aware of Education Rights",
+  RBE_MANIFEST: "Schools/LCs Manifesting RBE Indicators",
+};
+
+export function normalizeSchoolYearLabel(value: string | null | undefined): string | null {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return null;
+  }
+
+  const exact = text.match(/^(\d{4})\s*[-–—]\s*(\d{4})$/);
+  if (exact) {
+    return `${exact[1]}-${exact[2]}`;
+  }
+
+  const embedded = text.match(/(\d{4})\D+(\d{4})/);
+  if (embedded) {
+    return `${embedded[1]}-${embedded[2]}`;
+  }
+
+  return null;
+}
+
+export function schoolYearStartValue(value: string): number | null {
+  const normalized = normalizeSchoolYearLabel(value);
+  if (!normalized) return null;
+
+  const match = normalized.match(/^(\d{4})-(\d{4})$/);
+  if (!match) return null;
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end !== start + 1) {
+    return null;
+  }
+  return start;
+}
+
+export function deriveSchoolYearLabel(dateInput: string | null | undefined): string {
+  const parsed = new Date(dateInput ?? "");
+  const now = Number.isFinite(parsed.getTime()) ? parsed : new Date();
+  const startYear = now.getMonth() + 1 >= SCHOOL_YEAR_START_MONTH ? now.getFullYear() : now.getFullYear() - 1;
+  return `${startYear}-${startYear + 1}`;
+}
+
+export function toDisplayValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value).trim();
+}
+
+// Generic report-number formatting is intentionally conservative. Whole numbers
+// stay whole, while true decimal measures such as ratios and indices keep up to
+// 2 decimals unless a stricter metric family rule is introduced later.
+function formatReportNumber(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return Number.isInteger(value)
+    ? value.toLocaleString()
+    : value.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+}
+
+function formatReportInteger(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return Math.round(value).toLocaleString();
+}
+
+function formatReportPercentage(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
+}
+
+function formatReportCurrency(value: number, currency: string): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+
+  return `${currency} ${value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function normalizeBooleanDisplay(value: unknown): string {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "yes" || normalized === "true" || normalized === "1") {
+    return "Yes";
+  }
+  if (normalized === "no" || normalized === "false" || normalized === "0") {
+    return "No";
+  }
+
+  return String(value ?? "").trim() || "-";
+}
+
+function metricValueType(indicator: IndicatorSubmissionItem | null | undefined): string {
+  return String(indicator?.metric?.inputSchema?.valueType ?? "").trim().toLowerCase();
+}
+
+function metricCurrency(indicator: IndicatorSubmissionItem | null | undefined): string {
+  return String(indicator?.metric?.inputSchema?.currency ?? "PHP").trim() || "PHP";
+}
+
+function formatMetricScopedReportValue(
+  raw: unknown,
+  indicator: IndicatorSubmissionItem | null | undefined,
+): string {
+  if (raw === null || raw === undefined) {
+    return "-";
+  }
+
+  const valueType = metricValueType(indicator);
+  const currency = metricCurrency(indicator);
+
+  if (valueType === "yes_no") {
+    return normalizeBooleanDisplay(raw);
+  }
+
+  if (valueType === "text" || valueType === "enum") {
+    return formatSubmittedReportValue(raw);
+  }
+
+  const numeric = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(numeric)) {
+    return formatSubmittedReportValue(raw);
+  }
+
+  if (valueType === "currency") {
+    return formatReportCurrency(numeric, currency);
+  }
+
+  if (valueType === "percentage") {
+    return formatReportPercentage(numeric);
+  }
+
+  if (valueType === "integer") {
+    return formatReportInteger(numeric);
+  }
+
+  return formatReportNumber(numeric);
+}
+
+export function formatSubmittedReportValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "-";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return "-";
+    }
+
+    const cleaned = trimmed.replace(/^\d{4}-\d{4}\s*:?\s*/, "").trim();
+    return cleaned || "-";
+  }
+
+  if (Array.isArray(value)) {
+    const joined = value
+      .map((entry) => formatSubmittedReportValue(entry))
+      .filter((entry) => entry !== "-")
+      .join(", ");
+    return joined || "-";
+  }
+
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return formatSubmittedReportValue(
+      record.display
+      ?? record.label
+      ?? record.value
+      ?? record.scalar_value
+      ?? record.raw_value
+      ?? "",
+    );
+  }
+
+  return String(value);
+}
+
+export function typedYearValues(payload: Record<string, unknown> | null | undefined): Record<string, string> {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  const typed = payload as { values?: unknown };
+  if (!typed.values || typeof typed.values !== "object") {
+    return {};
+  }
+
+  const values: Record<string, string> = {};
+  for (const [year, value] of Object.entries(typed.values as Record<string, unknown>)) {
+    const normalized = toDisplayValue(value);
+    if (normalized.length > 0) {
+      values[year] = normalized;
+    }
+  }
+
+  return values;
+}
+
+function typedScalarValue(payload: Record<string, unknown> | null | undefined): string {
+  if (!payload || typeof payload !== "object") {
+    return "";
+  }
+
+  const typed = payload as Record<string, unknown>;
+  return (
+    toDisplayValue(typed.value)
+    || toDisplayValue(typed.scalar_value)
+    || toDisplayValue(typed.raw_value)
+  );
+}
+
+function typedScalarRawValue(payload: Record<string, unknown> | null | undefined): unknown {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const typed = payload as Record<string, unknown>;
+  if (typed.value !== undefined && typed.value !== null && String(typed.value).trim() !== "") {
+    return typed.value;
+  }
+  if (typed.scalar_value !== undefined && typed.scalar_value !== null && String(typed.scalar_value).trim() !== "") {
+    return typed.scalar_value;
+  }
+  if (typed.raw_value !== undefined && typed.raw_value !== null && String(typed.raw_value).trim() !== "") {
+    return typed.raw_value;
+  }
+
+  return null;
+}
+
+function typedCompositeValue(payload: Record<string, unknown> | null | undefined): string {
+  const valuesByYear = typedYearValues(payload);
+  const sortedYears = sortSchoolYears(Object.keys(valuesByYear));
+  if (sortedYears.length === 0) {
+    return "";
+  }
+
+  if (sortedYears.length === 1) {
+    return valuesByYear[sortedYears[0]] ?? "";
+  }
+
+  return sortedYears
+    .map((year) => valuesByYear[year] ?? "")
+    .filter((value) => value.length > 0)
+    .join(", ");
+}
+
+function typedYearRawValue(
+  payload: Record<string, unknown> | null | undefined,
+  selectedYear: string | null | undefined,
+): unknown {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const typed = payload as { values?: unknown };
+  if (!typed.values || typeof typed.values !== "object") {
+    return null;
+  }
+
+  const values = typed.values as Record<string, unknown>;
+  const normalizedYear = String(selectedYear ?? "").trim();
+  if (normalizedYear && Object.prototype.hasOwnProperty.call(values, normalizedYear)) {
+    return values[normalizedYear];
+  }
+
+  const normalizedSelectedSchoolYear = normalizeSchoolYearLabel(normalizedYear);
+  if (normalizedSelectedSchoolYear) {
+    for (const [year, value] of Object.entries(values)) {
+      if (normalizeSchoolYearLabel(year) === normalizedSelectedSchoolYear) {
+        return value;
+      }
+    }
+  }
+
+  const definedEntries = Object.entries(values).filter(([, value]) => String(value ?? "").trim() !== "");
+  if (definedEntries.length === 1) {
+    return definedEntries[0]?.[1] ?? null;
+  }
+
+  return null;
+}
+
+function selectedYearDisplaySegment(
+  displayRaw: unknown,
+  selectedYear: string | null | undefined,
+): string {
+  const normalizedDisplay = toDisplayValue(displayRaw);
+  if (!normalizedDisplay) {
+    return "";
+  }
+
+  const normalizedYear = String(selectedYear ?? "").trim();
+  const normalizedSchoolYear = normalizeSchoolYearLabel(normalizedYear);
+  if (!normalizedYear) {
+    return normalizedDisplay;
+  }
+
+  const segments = normalizedDisplay
+    .split("|")
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
+
+  for (const segment of segments) {
+    if (segment.startsWith(`${normalizedYear}:`)) {
+      return segment.slice(normalizedYear.length + 1).trim();
+    }
+    if (segment.startsWith(`${normalizedYear} `)) {
+      return segment.slice(normalizedYear.length).trim();
+    }
+
+    if (normalizedSchoolYear) {
+      const segmentYear = normalizeSchoolYearLabel(segment);
+      if (segmentYear === normalizedSchoolYear) {
+        const yearMatch = segment.match(/(\d{4}\s*[-–—]\s*\d{4})/);
+        if (yearMatch?.[0]) {
+          return segment.slice(segment.indexOf(yearMatch[0]) + yearMatch[0].length).replace(/^[:\s]+/, "").trim();
+        }
+      }
+    }
+  }
+
+  if (segments.length === 1) {
+    const segment = segments[0] ?? "";
+    if (segment.startsWith(`${normalizedYear}:`)) {
+      return segment.slice(normalizedYear.length + 1).trim();
+    }
+    if (segment.startsWith(`${normalizedYear} `)) {
+      return segment.slice(normalizedYear.length).trim();
+    }
+  }
+
+  return normalizedDisplay;
+}
+
+export function resolveSubmissionItemDisplayValue(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  kind: "target" | "actual",
+  options?: { selectedYear?: string | null },
+): string {
+  if (!indicator) {
+    return "-";
+  }
+
+  const typedRaw = kind === "target"
+    ? indicator.targetTypedValue
+    : indicator.actualTypedValue;
+  const displayRaw = kind === "target"
+    ? indicator.targetDisplay
+    : indicator.actualDisplay;
+  const valueRaw = kind === "target"
+    ? indicator.targetValue
+    : indicator.actualValue;
+
+  const typed = typedRaw && typeof typedRaw === "object"
+    ? (typedRaw as Record<string, unknown>)
+    : null;
+  const selectedYear = String(options?.selectedYear ?? "").trim();
+
+  if (selectedYear) {
+    // Selected-year report cells must prefer structured year data over a joined
+    // full-series display string. The joined display remains useful for
+    // reference/history contexts, but it is not the source of truth for a
+    // single selected-year report cell.
+    const selectedYearTypedValue = typedYearRawValue(typed, selectedYear);
+    if (selectedYearTypedValue !== null && selectedYearTypedValue !== undefined && String(selectedYearTypedValue).trim() !== "") {
+      return formatMetricScopedReportValue(selectedYearTypedValue, indicator);
+    }
+
+    const selectedYearDisplayValue = selectedYearDisplaySegment(displayRaw, selectedYear);
+    if (selectedYearDisplayValue.length > 0) {
+      return formatMetricScopedReportValue(selectedYearDisplayValue, indicator);
+    }
+
+    const selectedYearScalarValue = typedScalarRawValue(typed);
+    if (selectedYearScalarValue !== null && selectedYearScalarValue !== undefined) {
+      return formatMetricScopedReportValue(selectedYearScalarValue, indicator);
+    }
+  }
+
+  return formatSubmittedReportValue(
+    toDisplayValue(displayRaw)
+    || typedScalarValue(typed)
+    || typedCompositeValue(typed)
+    || toDisplayValue(valueRaw)
+    || "-",
+  );
+}
+
+export function indicatorCategoryLabel(metricCode: string | null | undefined): string {
+  if (metricCode && KEY_PERFORMANCE_METRIC_CODES.has(metricCode)) {
+    return KEY_PERFORMANCE_CATEGORY_LABEL;
+  }
+  return SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL;
+}
+
+export function indicatorDisplayLabel(metricCode: string | null | undefined, fallbackName: string): string {
+  if (metricCode && METRIC_LABEL_OVERRIDES[metricCode]) {
+    return METRIC_LABEL_OVERRIDES[metricCode];
+  }
+  return fallbackName;
+}
+
+export function sortSchoolYears(years: Iterable<string>): string[] {
+  return [...new Set(Array.from(years, (year) => year.trim()).filter((year) => year.length > 0))]
+    .sort((a, b) => {
+      const aStart = schoolYearStartValue(a);
+      const bStart = schoolYearStartValue(b);
+      if (aStart !== null && bStart !== null) {
+        return aStart - bStart;
+      }
+      if (aStart !== null) return -1;
+      if (bStart !== null) return 1;
+      return a.localeCompare(b);
+    });
+}
+
+export function schoolTypeLabel(value: string | null | undefined): string {
+  if (!value) return "N/A";
+  const normalized = value.toLowerCase();
+  if (normalized === "public") return "Public";
+  if (normalized === "private") return "Private";
+  return value;
+}
