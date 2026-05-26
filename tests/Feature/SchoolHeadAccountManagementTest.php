@@ -666,17 +666,17 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $continuedLogin->assertStatus(Response::HTTP_FORBIDDEN)
-            ->assertJsonPath('requiresPasswordReset', true)
-            ->assertJsonPath('message', 'Password reset is required before dashboard access.');
+            ->assertJsonMissingPath('requiresPasswordReset')
+            ->assertJsonPath('message', 'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.');
 
         $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
         $records->assertOk();
         $record = collect((array) $records->json('data'))->firstWhere('schoolId', '933333');
         $this->assertIsArray($record);
-        $this->assertSame('temporary_password_active', data_get($record, 'schoolHeadAccount.lifecycleState'));
-        $this->assertSame('none', data_get($record, 'schoolHeadAccount.recommendedAction'));
-        $this->assertFalse((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
-        $this->assertNull(data_get($record, 'schoolHeadAccount.temporaryPasswordExpiresAt'));
+        $this->assertSame('temporary_password_expired', data_get($record, 'schoolHeadAccount.lifecycleState'));
+        $this->assertSame('regenerate_temporary_password', data_get($record, 'schoolHeadAccount.recommendedAction'));
+        $this->assertTrue((bool) data_get($record, 'schoolHeadAccount.temporaryPasswordExpired'));
+        $this->assertNotNull(data_get($record, 'schoolHeadAccount.temporaryPasswordExpiresAt'));
         $this->assertSame((string) $provisioning['temporaryPassword'], data_get($record, 'schoolHeadAccount.temporaryPasswordDisplay'));
 
         $resetRequired = $this->postJson('/api/auth/reset-required-password', [
@@ -687,14 +687,13 @@ class SchoolHeadAccountManagementTest extends TestCase
             'new_password_confirmation' => 'TempPasswordReset@2026!123',
         ]);
 
-        $resetRequired->assertOk()
-            ->assertJsonPath('user.role', 'school_head')
-            ->assertJsonPath('user.mustResetPassword', false);
+        $resetRequired->assertStatus(Response::HTTP_FORBIDDEN)
+            ->assertJsonPath('message', 'Temporary password has expired. Ask your Division Monitor to issue a new temporary password.');
 
         $schoolHead->refresh();
-        $this->assertFalse((bool) $schoolHead->must_reset_password);
-        $this->assertNull($schoolHead->temporary_password_issued_at);
-        $this->assertNull($schoolHead->temporary_password_display);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertNotNull($schoolHead->temporary_password_issued_at);
+        $this->assertNotNull($schoolHead->temporary_password_display);
     }
 
     public function test_school_head_email_change_requires_verification_and_does_not_reissue_setup_link_for_locked_accounts(): void

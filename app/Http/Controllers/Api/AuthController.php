@@ -2485,7 +2485,11 @@ class AuthController extends Controller
 
     private function schoolHeadTemporaryPasswordExpired(User $user, string $role): bool
     {
-        return false;
+        if ($role !== UserRoleResolver::SCHOOL_HEAD) {
+            return false;
+        }
+
+        return $user->temporaryPasswordExpired();
     }
 
     private function expiredTemporaryPasswordMessage(): string
@@ -2495,12 +2499,7 @@ class AuthController extends Controller
 
     private function schoolHeadTemporaryPasswordValidityHours(): int
     {
-        // Operational policy is deployment-config driven for now. Keep auth
-        // reading the same env-controlled window used by bootstrap and
-        // regeneration flows instead of introducing a separate runtime policy.
-        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
-
-        return max(1, $configured);
+        return 72;
     }
 
     private function normalizeSchoolCode(string $value): ?string

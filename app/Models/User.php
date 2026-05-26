@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Support\Domain\AccountStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -109,6 +110,23 @@ class User extends Authenticatable
         return $this->accountStatus()->allowsLogin();
     }
 
+    public function temporaryPasswordExpiresAt(): ?CarbonImmutable
+    {
+        if (! $this->must_reset_password || $this->temporary_password_issued_at === null) {
+            return null;
+        }
+
+        return CarbonImmutable::instance($this->temporary_password_issued_at)
+            ->addHours($this->temporaryPasswordValidityHours());
+    }
+
+    public function temporaryPasswordExpired(): bool
+    {
+        $expiresAt = $this->temporaryPasswordExpiresAt();
+
+        return $expiresAt !== null && $expiresAt->lte(CarbonImmutable::now());
+    }
+
     public function setEmailAttribute(mixed $value): void
     {
         $normalized = strtolower(trim((string) $value));
@@ -150,5 +168,12 @@ class User extends Authenticatable
     public function verifiedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'verified_by_user_id');
+    }
+
+    private function temporaryPasswordValidityHours(): int
+    {
+        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
+
+        return max(1, $configured);
     }
 }

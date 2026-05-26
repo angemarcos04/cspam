@@ -1010,12 +1010,12 @@ class SchoolRecordController extends Controller
             'mustResetPassword' => true,
             'accountStatus' => $account->accountStatus()->value,
             'onboardingFlow' => 'temporary_password',
-            'lifecycleState' => 'temporary_password_active',
-            'lifecycleStateLabel' => 'Temporary password active',
-            'recommendedAction' => 'none',
+            'lifecycleState' => $account->temporaryPasswordExpired() ? 'temporary_password_expired' : 'temporary_password_active',
+            'lifecycleStateLabel' => $account->temporaryPasswordExpired() ? 'Temporary password expired' : 'Temporary password active',
+            'recommendedAction' => $account->temporaryPasswordExpired() ? 'regenerate_temporary_password' : 'none',
             'temporaryPasswordIssuedAt' => $account->temporary_password_issued_at?->toISOString(),
-            'temporaryPasswordExpiresAt' => null,
-            'temporaryPasswordExpired' => false,
+            'temporaryPasswordExpiresAt' => $this->temporaryPasswordExpiresAt($account)?->toISOString(),
+            'temporaryPasswordExpired' => $account->temporaryPasswordExpired(),
             'temporaryPasswordDisplay' => $temporaryPassword,
             'temporaryPassword' => $temporaryPassword,
         ];
@@ -1036,7 +1036,7 @@ class SchoolRecordController extends Controller
 
     private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
     {
-        return null;
+        return $account->temporaryPasswordExpiresAt();
     }
 
     private function schoolHeadCandidatesQuery(): Builder

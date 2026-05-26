@@ -1242,8 +1242,9 @@ class SchoolHeadAccountController extends Controller
         }
 
         $temporaryPasswordIssuedAt = $account->temporary_password_issued_at?->toISOString();
-        $temporaryPasswordExpiresAt = null;
-        $temporaryPasswordExpired = false;
+        $temporaryPasswordExpiry = $this->temporaryPasswordExpiresAt($account);
+        $temporaryPasswordExpiresAt = $temporaryPasswordExpiry?->toISOString();
+        $temporaryPasswordExpired = $temporaryPasswordExpiry?->lte(CarbonImmutable::now()) ?? false;
         $lifecycleState = $this->lifecycleState($account, $status);
 
         return [
@@ -1593,6 +1594,10 @@ class SchoolHeadAccountController extends Controller
         }
 
         if ($status === AccountStatus::ACTIVE && $account->must_reset_password && $account->temporary_password_issued_at !== null) {
+            if ($account->temporaryPasswordExpired()) {
+                return 'temporary_password_expired';
+            }
+
             return 'temporary_password_active';
         }
 
@@ -1614,6 +1619,7 @@ class SchoolHeadAccountController extends Controller
     {
         return match ($state) {
             'temporary_password_active' => 'Temporary password active',
+            'temporary_password_expired' => 'Temporary password expired',
             'pending_setup' => 'Pending setup',
             'pending_verification' => 'Pending verification',
             'password_reset_required' => 'Password change required',
@@ -1627,6 +1633,7 @@ class SchoolHeadAccountController extends Controller
         return match ($state) {
             'pending_setup' => 'send_setup_link',
             'pending_verification' => 'activate_account',
+            'temporary_password_expired' => 'regenerate_temporary_password',
             'password_reset_required' => 'send_password_reset_link',
             default => 'none',
         };
@@ -1634,6 +1641,6 @@ class SchoolHeadAccountController extends Controller
 
     private function temporaryPasswordExpiresAt(User $account): ?CarbonImmutable
     {
-        return null;
+        return $account->temporaryPasswordExpiresAt();
     }
 }
