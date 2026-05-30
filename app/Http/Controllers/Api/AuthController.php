@@ -2499,7 +2499,9 @@ class AuthController extends Controller
 
     private function schoolHeadTemporaryPasswordValidityHours(): int
     {
-        return 72;
+        $configured = (int) env('CSPAMS_SCHOOL_HEAD_TEMP_PASSWORD_EXPIRE_HOURS', 72);
+
+        return max(1, $configured);
     }
 
     private function normalizeSchoolCode(string $value): ?string
