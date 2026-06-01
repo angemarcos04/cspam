@@ -445,7 +445,8 @@ class AppServiceProvider extends ServiceProvider
             || str_contains($commandLine, 'filament:upgrade')
             || str_contains($commandLine, 'config:cache')
             || str_contains($commandLine, 'config:clear')
-            || str_contains($commandLine, 'optimize');
+            || str_contains($commandLine, 'optimize')
+            || str_contains($commandLine, 'migrate');
     }
 
     /**
