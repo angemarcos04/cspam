@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: cspam-backend
+    env: ruby
+    buildCommand: |
+      CACHE_STORE=file composer install --prefer-dist --no-dev
+      CACHE_STORE=file php artisan config:cache
+      CACHE_STORE=file php artisan route:cache
+      CACHE_STORE=file php artisan view:cache
+    startCommand: php artisan serve --host 0.0.0.0 --port $PORT
