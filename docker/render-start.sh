@@ -45,8 +45,8 @@ fi
 echo "[2/6] Install composer dependencies (safe rerun)"
 composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
-echo "[3/6] Clear Laravel caches first"
-if ! php artisan optimize:clear; then
+echo "[3/6] Clear Laravel caches first (using file cache to avoid DB connection)"
+if ! CACHE_STORE=file php artisan optimize:clear; then
   echo "FATAL: failed to clear Laravel caches"
   exit 1
 fi
@@ -57,16 +57,16 @@ if ! php artisan migrate --force; then
   exit 1
 fi
 
-echo "[5/6] Rebuild caches"
-if ! php artisan config:cache; then
+echo "[5/6] Rebuild caches (using file cache during startup)"
+if ! CACHE_STORE=file php artisan config:cache; then
   echo "FATAL: failed to rebuild config cache"
   exit 1
 fi
-if ! php artisan route:cache; then
+if ! CACHE_STORE=file php artisan route:cache; then
   echo "FATAL: failed to rebuild route cache"
   exit 1
 fi
-if ! php artisan view:cache; then
+if ! CACHE_STORE=file php artisan view:cache; then
   echo "FATAL: failed to rebuild view cache"
   exit 1
 fi
