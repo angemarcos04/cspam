@@ -446,6 +446,7 @@ class AppServiceProvider extends ServiceProvider
             || str_contains($commandLine, 'config:cache')
             || str_contains($commandLine, 'config:clear')
             || str_contains($commandLine, 'route:cache')
+            || str_contains($commandLine, 'view:cache')
             || str_contains($commandLine, 'migrate')
             || str_contains($commandLine, 'optimize');
     }
