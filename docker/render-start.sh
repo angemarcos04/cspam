@@ -31,7 +31,7 @@ if [ ! -d public ]; then
   exit 1
 fi
 
-echo "[1/6] Prepare writable dirs"
+echo "[1/7] Prepare writable dirs"
 mkdir -p \
   storage/framework/cache \
   storage/framework/sessions \
@@ -42,22 +42,32 @@ if ! chmod -R ug+rw storage bootstrap/cache; then
   exit 1
 fi
 
-echo "[2/6] Install composer dependencies (safe rerun)"
+echo "[2/7] Install composer dependencies (safe rerun)"
 composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
-echo "[3/6] Clear Laravel caches first (using file cache to avoid DB connection)"
+echo "[3/7] Clear Laravel caches first (using file cache to avoid DB connection)"
 if ! CACHE_STORE=file php artisan optimize:clear; then
   echo "FATAL: failed to clear Laravel caches"
   exit 1
 fi
 
-echo "[4/6] Run database migrations"
+echo "[4/7] Run database migrations"
 if ! php artisan migrate --force; then
   echo "FATAL: database migrations failed"
   exit 1
 fi
 
-echo "[5/6] Rebuild caches (using file cache during startup)"
+echo "[5/7] Seed required demo access data"
+if ! php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force; then
+  echo "FATAL: roles and permissions seeding failed"
+  exit 1
+fi
+if ! php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force; then
+  echo "FATAL: demo data seeding failed"
+  exit 1
+fi
+
+echo "[6/7] Rebuild caches (using file cache during startup)"
 if ! CACHE_STORE=file php artisan config:cache; then
   echo "FATAL: failed to rebuild config cache"
   exit 1
@@ -71,5 +81,5 @@ if ! CACHE_STORE=file php artisan view:cache; then
   exit 1
 fi
 
-echo "[6/6] Starting PHP server"
+echo "[7/7] Starting PHP server"
 exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php

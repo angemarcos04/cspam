@@ -205,6 +205,15 @@ class DemoDataSeeder extends Seeder
                 );
             }
 
+            $studentsAlreadySeeded = Student::query()
+                ->where('school_id', $school->id)
+                ->where('academic_year_id', $currentYear->id)
+                ->exists();
+
+            if ($studentsAlreadySeeded) {
+                continue;
+            }
+
             foreach ($sections as $section) {
                 for ($i = 0; $i < 10; $i++) {
                     $status = $statuses[array_rand($statuses)];
@@ -438,4 +447,3 @@ class DemoDataSeeder extends Seeder
         return $this->syncSeedPasswords;
     }
 }
-
