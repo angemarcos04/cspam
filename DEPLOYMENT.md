@@ -52,9 +52,19 @@ If using `SESSION_DRIVER=database`, ensure migrations ran and the `sessions` tab
 
 - `php artisan migrate --force`
 
-### 7) Run the queue worker for MFA email
+### 7) Choose monitor MFA email delivery mode
 
-`MonitorMfaCodeNotification` is queued (`ShouldQueue`). Without a running worker the MFA code email is never delivered and monitor sign-in stalls at the MFA step.
+`MonitorMfaCodeNotification` is queued (`ShouldQueue`) by default. Queued delivery is the recommended production mode, but it requires a running queue worker. If Render cannot run a separate worker for this project, set `CSPAMS_MONITOR_MFA_DELIVERY_MODE=sync` so the web service sends the monitor OTP through SMTP during login.
+
+**Option A: queued delivery + worker (recommended production setup)**
+
+```env
+CSPAMS_MONITOR_MFA_DELIVERY_MODE=queued
+QUEUE_CONNECTION=database
+CSPAMS_MONITOR_MFA_QUEUE=mail
+```
+
+Without a running worker the MFA code email is never delivered and monitor sign-in stalls at the MFA step.
 
 **Local / development:**
 
@@ -104,6 +114,16 @@ php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90 --s
 
 The included `render.yaml` defines both `cspam-backend` and `cspam-backend-worker`. If you do not see a separate Background Worker service in the Render dashboard, the worker is missing. MFA OTP email cannot send until that service exists, is deployed from `main`, and shows `CSPAMS queue worker starting...` followed by `Queue worker started` in its logs.
 
+**Option B: sync delivery without worker**
+
+Use this when the Render Background Worker is unavailable or not running. The web service sends the monitor MFA email directly through SMTP during the login request:
+
+```env
+CSPAMS_MONITOR_MFA_DELIVERY_MODE=sync
+```
+
+Sync mode keeps MFA enabled and keeps the same login challenge flow. It avoids stuck queue jobs, but login waits for SMTP, so keep `MAIL_TIMEOUT=10`. If Gmail rejects delivery, login returns the existing `mfa_delivery_failed` 503 response and does not expose the OTP.
+
 ### 7a) Render environment variables
 
 Set these on both the web service and the background worker:
@@ -124,6 +144,7 @@ DB_PASSWORD=<database password>
 
 QUEUE_CONNECTION=database
 CSPAMS_MONITOR_MFA_ENABLED=true
+CSPAMS_MONITOR_MFA_DELIVERY_MODE=queued
 CSPAMS_MONITOR_MFA_QUEUE=mail
 LOG_CHANNEL=stderr
 LOG_LEVEL=info

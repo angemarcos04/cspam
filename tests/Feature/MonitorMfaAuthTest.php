@@ -22,6 +22,7 @@ class MonitorMfaAuthTest extends TestCase
 
         config()->set('auth_mfa.monitor.enabled', true);
         config()->set('auth_mfa.monitor.test_code', '123456');
+        config()->set('auth_mfa.monitor.delivery_mode', 'queued');
         config()->set('mail.default', 'smtp');
         config()->set('mail.mailers.smtp.host', 'smtp.mail.test');
         config()->set('mail.mailers.smtp.username', 'smtp-user');
@@ -49,6 +50,43 @@ class MonitorMfaAuthTest extends TestCase
             ]);
 
         Notification::assertSentTo($monitor, MonitorMfaCodeNotification::class);
+    }
+
+    public function test_monitor_login_can_send_mfa_notification_synchronously(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.delivery_mode', 'sync');
+        Notification::fake();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+
+        $response = $this->postJson('/api/auth/login', $this->monitorLoginPayload());
+
+        $response->assertStatus(Response::HTTP_ACCEPTED)
+            ->assertJsonPath('requiresMfa', true)
+            ->assertJsonPath('delivery', 'sent')
+            ->assertJsonPath('deliveryMessage', 'A verification code was sent to your email.');
+
+        Notification::assertSentTo($monitor, MonitorMfaCodeNotification::class);
+    }
+
+    public function test_monitor_login_sync_mfa_delivery_failure_returns_service_unavailable(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.delivery_mode', 'sync');
+
+        Notification::shouldReceive('sendNow')
+            ->once()
+            ->andThrow(new \RuntimeException('SMTP rejected delivery.'));
+
+        $response = $this->postJson('/api/auth/login', $this->monitorLoginPayload());
+
+        $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
+            ->assertJsonPath('errorCode', 'mfa_delivery_failed')
+            ->assertJsonMissingPath('mfa')
+            ->assertJsonMissingPath('delivery')
+            ->assertJsonMissingPath('deliveryMessage');
     }
 
     public function test_monitor_login_invalid_credentials_returns_explicit_error_code(): void

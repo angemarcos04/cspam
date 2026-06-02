@@ -223,6 +223,7 @@ Artisan::command('app:check-verification-delivery', function (): int {
     $fromAddress = trim((string) config('mail.from.address', ''));
     $testCode = trim((string) config('auth_mfa.monitor.test_code', ''));
     $mfaEnabled = (bool) config('auth_mfa.monitor.enabled', false);
+    $deliveryMode = strtolower(trim((string) config('auth_mfa.monitor.delivery_mode', 'queued')));
     $configuredQueue = trim((string) config('auth_mfa.monitor.queue_connection', ''));
     $effectiveQueue = strtolower($configuredQueue !== '' ? $configuredQueue : trim((string) config('queue.default', 'database')));
     $issues = [];
@@ -231,6 +232,7 @@ Artisan::command('app:check-verification-delivery', function (): int {
     $this->line('  mailer: ' . $mailer);
     $this->line('  mail from: ' . ($fromAddress !== '' ? $fromAddress : '(missing)'));
     $this->line('  monitor MFA enabled: ' . ($mfaEnabled ? 'yes' : 'no'));
+    $this->line('  monitor MFA delivery mode: ' . ($deliveryMode !== '' ? $deliveryMode : '(missing)'));
     $this->line('  effective queue: ' . $effectiveQueue);
     $this->line('  monitor MFA test code: ' . ($testCode !== '' ? 'configured' : 'empty'));
 
@@ -248,6 +250,10 @@ Artisan::command('app:check-verification-delivery', function (): int {
 
     if ($mfaEnabled && $effectiveQueue === 'sync') {
         $issues[] = 'QUEUE_CONNECTION must not be sync when monitor MFA email is enabled.';
+    }
+
+    if (! in_array($deliveryMode, ['queued', 'sync'], true)) {
+        $issues[] = 'CSPAMS_MONITOR_MFA_DELIVERY_MODE must be queued or sync.';
     }
 
     if ($mailer === 'resend') {

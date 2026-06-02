@@ -21,6 +21,10 @@ return [
         // Queue name used for MFA email delivery jobs.
         'queue' => env('CSPAMS_MONITOR_MFA_QUEUE', 'mail'),
 
+        // Delivery mode for the monitor MFA email. "queued" requires a running queue
+        // worker; "sync" sends through the configured mailer during the login request.
+        'delivery_mode' => env('CSPAMS_MONITOR_MFA_DELIVERY_MODE', 'queued'),
+
         // One-time backup code count to issue on generation/reset.
         'backup_codes_count' => max(4, (int) env('CSPAMS_MONITOR_MFA_BACKUP_CODES_COUNT', 8)),
 

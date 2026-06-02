@@ -35,6 +35,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -162,8 +163,8 @@ class AuthController extends Controller
                 );
             }
 
-            $deliveryStatus = 'queued';
-            $deliveryMessage = 'A verification code email was queued for delivery.';
+            $deliveryStatus = $mfaChallenge['deliveryStatus'];
+            $deliveryMessage = $mfaChallenge['deliveryMessage'];
             if (MailDelivery::isSimulated()) {
                 $deliveryStatus = MailDelivery::simulatedStatus();
                 $deliveryMessage = MailDelivery::simulatedMessage('Verification code was generated, but will not reach real inboxes.');
@@ -2629,7 +2630,7 @@ class AuthController extends Controller
     }
 
     /**
-     * @return array{challengeId: string, expiresAt: string}
+     * @return array{challengeId: string, expiresAt: string, deliveryStatus: string, deliveryMessage: string}
      */
     private function issueMonitorMfaChallenge(User $user, string $login): array
     {
@@ -2653,8 +2654,15 @@ class AuthController extends Controller
 
         $this->storeMonitorMfaChallenge($challengeId, $challenge);
 
+        $notification = new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString());
+        $deliveryMode = $this->monitorMfaDeliveryMode();
+
         try {
-            $user->notify(new MonitorMfaCodeNotification($code, $expiresAt->toDateTimeString()));
+            if ($deliveryMode === 'sync') {
+                Notification::sendNow($user, $notification);
+            } else {
+                $user->notify($notification);
+            }
         } catch (\Throwable $exception) {
             Cache::forget($this->monitorMfaCacheKey($challengeId));
             throw $exception;
@@ -2663,7 +2671,18 @@ class AuthController extends Controller
         return [
             'challengeId' => $challengeId,
             'expiresAt' => $expiresAt->toISOString(),
+            'deliveryStatus' => $deliveryMode === 'sync' ? 'sent' : 'queued',
+            'deliveryMessage' => $deliveryMode === 'sync'
+                ? 'A verification code was sent to your email.'
+                : 'A verification code email was queued for delivery.',
         ];
+    }
+
+    private function monitorMfaDeliveryMode(): string
+    {
+        $mode = strtolower(trim((string) config('auth_mfa.monitor.delivery_mode', 'queued')));
+
+        return $mode === 'sync' ? 'sync' : 'queued';
     }
 
     /**
