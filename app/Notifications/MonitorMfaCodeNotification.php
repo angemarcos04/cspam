@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\Log;
 
 class MonitorMfaCodeNotification extends Notification implements ShouldQueue
 {
@@ -53,6 +54,16 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
+        Log::info('Monitor MFA email job rendering mail message.', [
+            'recipient' => (string) ($notifiable->email ?? ''),
+            'expires_at' => $this->expiresAt,
+            'mailer' => (string) config('mail.default', ''),
+            'smtp_host' => (string) config('mail.mailers.smtp.host', ''),
+            'smtp_port' => (string) config('mail.mailers.smtp.port', ''),
+            'smtp_scheme' => (string) config('mail.mailers.smtp.scheme', ''),
+            'from' => (string) config('mail.from.address', ''),
+        ]);
+
         return (new MailMessage())
             ->subject('CSPAMS Monitor Login Verification Code')
             ->greeting('Hello ' . ((string) ($notifiable->name ?? 'Division Monitor')) . ',')

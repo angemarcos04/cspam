@@ -6,6 +6,9 @@ use App\Models\User;
 use App\Support\Audit\AuthAuditLogger;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
+use Illuminate\Queue\Events\JobFailed;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
@@ -27,6 +30,16 @@ class AppServiceProvider extends ServiceProvider
         if (! $this->shouldSkipProductionConfigurationAudit()) {
             $this->assertSafeProductionRuntimeConfiguration();
         }
+
+        Queue::failing(function (JobFailed $event): void {
+            Log::error('Queue job failed.', [
+                'connection' => $event->connectionName,
+                'queue' => $event->job?->getQueue(),
+                'job_name' => $event->job?->resolveName(),
+                'exception_class' => $event->exception::class,
+                'exception_message' => $event->exception->getMessage(),
+            ]);
+        });
 
         RateLimiter::for('api', function (Request $request): Limit {
             $key = $request->user()?->id
