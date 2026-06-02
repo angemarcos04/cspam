@@ -127,6 +127,42 @@ class MonitorMfaAuthTest extends TestCase
         $me->assertOk()->assertJsonPath('user.role', 'monitor');
     }
 
+    public function test_monitor_mfa_verification_normalizes_six_digit_code_with_separator(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', $this->monitorLoginPayload());
+        $login->assertStatus(Response::HTTP_ACCEPTED)
+            ->assertJsonPath('requiresMfa', true);
+
+        $challengeId = (string) $login->json('mfa.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $verify = $this->postJson('/api/auth/verify-mfa', $this->verifyMfaPayload($challengeId, '1234-56'));
+
+        $verify->assertOk()
+            ->assertJsonPath('user.role', 'monitor')
+            ->assertJsonPath('tokenType', 'Bearer');
+    }
+
+    public function test_monitor_mfa_verification_rejects_malformed_code_without_echoing_it(): void
+    {
+        $this->seed();
+
+        $login = $this->postJson('/api/auth/login', $this->monitorLoginPayload());
+        $login->assertStatus(Response::HTTP_ACCEPTED)
+            ->assertJsonPath('requiresMfa', true);
+
+        $challengeId = (string) $login->json('mfa.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $verify = $this->postJson('/api/auth/verify-mfa', $this->verifyMfaPayload($challengeId, '12345'));
+
+        $verify->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertSee('Code must be a 6-digit verification code or an 8-character backup code (XXXX-XXXX).')
+            ->assertDontSee('12345');
+    }
+
     public function test_monitor_mfa_challenge_locks_after_max_invalid_attempts(): void
     {
         $this->seed();

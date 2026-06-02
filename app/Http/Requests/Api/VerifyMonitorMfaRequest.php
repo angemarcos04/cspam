@@ -23,7 +23,33 @@ class VerifyMonitorMfaRequest extends FormRequest
         $this->merge([
             'role' => $role,
             'login' => $this->normalizeLoginIdentifierForRole($this->input('login'), $role),
+            'code' => $this->normalizeMfaCode($this->input('code')),
         ]);
+    }
+
+    private function normalizeMfaCode(mixed $value): mixed
+    {
+        if (! is_scalar($value)) {
+            return $value;
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return $raw;
+        }
+
+        if (preg_match('/^[\d\s-]+$/', $raw) === 1) {
+            $digits = preg_replace('/\D+/', '', $raw) ?? '';
+
+            return strlen($digits) === 6 ? $digits : $raw;
+        }
+
+        $compact = strtoupper(preg_replace('/[^A-Za-z0-9]+/', '', $raw) ?? '');
+        if (strlen($compact) === 8) {
+            return substr($compact, 0, 4) . '-' . substr($compact, 4, 4);
+        }
+
+        return strtoupper($raw);
     }
 
     /**

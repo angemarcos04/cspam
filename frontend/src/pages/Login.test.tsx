@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
@@ -108,5 +108,71 @@ describe("Login", () => {
     expect(
       await screen.findByText("Your monitor credentials were accepted, but the verification code email could not be delivered. Check mail configuration or try again."),
     ).toBeTruthy();
+  });
+
+  it("keeps six-digit email MFA codes numeric and submits them unchanged", async () => {
+    authState.login.mockResolvedValueOnce({
+      status: "mfa_required",
+      challengeId: "11111111-1111-4111-8111-111111111111",
+      expiresAt: new Date(Date.now() + 600000).toISOString(),
+      login: "cspamsmonitor@gmail.com",
+      delivery: "sent",
+      deliveryMessage: "A verification code was sent to your email.",
+    });
+    authState.verifyMfa.mockResolvedValueOnce(undefined);
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    const codeInput = await screen.findByLabelText("Verification Code");
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+
+    expect((codeInput as HTMLInputElement).value).toBe("123456");
+
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    await waitFor(() => {
+      expect(authState.verifyMfa).toHaveBeenCalledWith({
+        role: "monitor",
+        login: "cspamsmonitor@gmail.com",
+        challengeId: "11111111-1111-4111-8111-111111111111",
+        code: "123456",
+      });
+    });
+  });
+
+  it("formats alphanumeric MFA backup codes as XXXX-XXXX", async () => {
+    authState.login.mockResolvedValueOnce({
+      status: "mfa_required",
+      challengeId: "22222222-2222-4222-8222-222222222222",
+      expiresAt: new Date(Date.now() + 600000).toISOString(),
+      login: "cspamsmonitor@gmail.com",
+      delivery: "sent",
+      deliveryMessage: "A verification code was sent to your email.",
+    });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    const codeInput = await screen.findByLabelText("Verification Code");
+    fireEvent.change(codeInput, { target: { value: "abcd1234" } });
+
+    expect((codeInput as HTMLInputElement).value).toBe("ABCD-1234");
   });
 });

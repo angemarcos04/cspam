@@ -25,7 +25,14 @@ function formatMfaExpiry(isoTimestamp: string): string {
 }
 
 function normalizeMfaCodeInput(rawValue: string): string {
-  const compact = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
+  const trimmed = rawValue.trim();
+  const digitsOnly = trimmed.replace(/\D/g, "");
+
+  if (/^[\d\s-]+$/.test(trimmed)) {
+    return digitsOnly.slice(0, 6);
+  }
+
+  const compact = trimmed.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
   if (compact.length <= 4) {
     return compact;
   }
@@ -165,7 +172,7 @@ export function Login() {
 
     if (pendingMfa) {
       if (!isValidMfaInput(mfaCode)) {
-        setError("Enter a 6-digit verification code or backup code in XXXX-XXXX format.");
+        setError("Enter the 6-digit email code or a backup code in XXXX-XXXX format.");
         return;
       }
     } else {
@@ -466,7 +473,7 @@ export function Login() {
                     className={formInputClass}
                   />
                   <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                    Enter the code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
+                    Enter the 6-digit code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
                     {formatMfaExpiry(pendingMfa.expiresAt)}.
                   </p>
                   <div className="mt-2 flex justify-end">
