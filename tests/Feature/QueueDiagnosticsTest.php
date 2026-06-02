@@ -30,6 +30,14 @@ class QueueDiagnosticsTest extends TestCase
         config()->set('diagnostics.queue.token', 'diagnostic-token');
         config()->set('queue.default', 'database');
         config()->set('auth_mfa.monitor.queue', 'mail');
+        config()->set('auth_mfa.monitor.delivery_mode', 'sync');
+        config()->set('mail.default', 'smtp');
+        config()->set('mail.from.address', 'cspams.local@gmail.com');
+        config()->set('mail.mailers.smtp.host', 'smtp.gmail.com');
+        config()->set('mail.mailers.smtp.port', 587);
+        config()->set('mail.mailers.smtp.scheme', 'smtp');
+        config()->set('mail.mailers.smtp.username', 'cspams.local@gmail.com');
+        config()->set('mail.mailers.smtp.password', 'secret-app-password');
 
         $this->withQueueDatabase(function (): void {
             DB::table('jobs')->insert([
@@ -52,6 +60,10 @@ class QueueDiagnosticsTest extends TestCase
             $response = $this->getJson('/api/ops/queue-diagnostics?token=diagnostic-token')
                 ->assertOk()
                 ->assertJsonPath('queueConnection', 'database')
+                ->assertJsonPath('mfa.deliveryMode', 'sync')
+                ->assertJsonPath('mail.mailer', 'smtp')
+                ->assertJsonPath('mail.smtpHost', 'smtp.gmail.com')
+                ->assertJsonPath('mail.smtpPasswordConfigured', true)
                 ->assertJsonPath('mailQueue', 'mail')
                 ->assertJsonPath('jobs.total', 1)
                 ->assertJsonPath('jobs.byQueue.0.queue', 'mail')
@@ -60,6 +72,7 @@ class QueueDiagnosticsTest extends TestCase
 
             $this->assertStringNotContainsString('123456', $response->getContent());
             $this->assertStringNotContainsString('654321', $response->getContent());
+            $this->assertStringNotContainsString('secret-app-password', $response->getContent());
         });
     }
 

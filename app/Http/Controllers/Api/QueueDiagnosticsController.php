@@ -27,6 +27,9 @@ class QueueDiagnosticsController extends Controller
         $failedJobsTable = (string) config('queue.failed.table', 'failed_jobs');
 
         return response()->json([
+            'app' => $this->appSummary(),
+            'mfa' => $this->mfaSummary(),
+            'mail' => $this->mailSummary(),
             'queueConnection' => (string) config('queue.default', ''),
             'mailQueue' => (string) config('auth_mfa.monitor.queue', 'mail'),
             'jobs' => $this->jobsSummary($jobsTable),
@@ -47,6 +50,48 @@ class QueueDiagnosticsController extends Controller
         }
 
         return trim((string) $request->query('token', ''));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function appSummary(): array
+    {
+        return [
+            'env' => (string) config('app.env', ''),
+            'debug' => (bool) config('app.debug', false),
+            'url' => (string) config('app.url', ''),
+            'frontendUrl' => (string) config('app.frontend_url', ''),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mfaSummary(): array
+    {
+        return [
+            'enabled' => (bool) config('auth_mfa.monitor.enabled', false),
+            'deliveryMode' => (string) config('auth_mfa.monitor.delivery_mode', 'queued'),
+            'queue' => (string) config('auth_mfa.monitor.queue', 'mail'),
+            'testCodeConfigured' => trim((string) config('auth_mfa.monitor.test_code', '')) !== '',
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mailSummary(): array
+    {
+        return [
+            'mailer' => (string) config('mail.default', ''),
+            'from' => (string) config('mail.from.address', ''),
+            'smtpHost' => (string) config('mail.mailers.smtp.host', ''),
+            'smtpPort' => (string) config('mail.mailers.smtp.port', ''),
+            'smtpScheme' => (string) config('mail.mailers.smtp.scheme', ''),
+            'smtpUsernameConfigured' => trim((string) config('mail.mailers.smtp.username', '')) !== '',
+            'smtpPasswordConfigured' => trim((string) config('mail.mailers.smtp.password', '')) !== '',
+        ];
     }
 
     /**

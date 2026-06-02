@@ -218,6 +218,19 @@ Queue job failed.
 
 The failure message should identify the Gmail SMTP problem without logging the OTP code or mail password.
 
+In sync mode, after a monitor login attempt the web service logs should show:
+
+```text
+Monitor MFA sync email delivery starting.
+Monitor MFA sync email delivery succeeded.
+```
+
+If Gmail rejects SMTP delivery in sync mode, the login response should be `503` with `mfa_delivery_failed`, and the web service logs should show:
+
+```text
+Monitor MFA sync email delivery failed.
+```
+
 ### 7c) Queue diagnostics without Render shell
 
 If the MFA response says the code was sent but no email arrives, temporarily set this env var on the Render web service:
@@ -240,11 +253,15 @@ https://cspam.vercel.app/api/ops/queue-diagnostics?token=<random-long-token>
 
 Expected signals:
 
+- `mfa.deliveryMode = queued` and no worker logs: email cannot send because no worker is processing the `mail` queue.
+- `mfa.deliveryMode = sync`: monitor MFA email is sent directly by the web service during login, so the worker is not required for monitor MFA.
+- Sync mode returns `503 mfa_delivery_failed`: Gmail SMTP rejected the send or the SMTP env vars are wrong.
+- Sync mode returns `202 delivery=sent` but no inbox email: check Spam, All Mail, Gmail filters, and that the recipient is `CSPAMS_MONITOR_EMAIL`.
 - `jobs.total > 0` with `jobs.byQueue[].queue = mail`: MFA mail jobs are stuck, so the Render Background Worker is not running, not deployed, or cannot reach the same database.
 - `jobs.total = 0` and `failedJobs.total > 0`: the worker is processing jobs, but Gmail/SMTP or mail config is failing. Check `failedJobs.recent[].exceptionSummary` and worker logs for `Queue job failed.`
 - `jobs.total = 0` and `failedJobs.total = 0`: the last MFA job was processed successfully or the login request did not queue a job against this database.
 
-The endpoint never returns queued job payloads because those payloads can contain the OTP before the worker sends it. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
+The endpoint reports mailer, SMTP host/port/scheme, sender, and whether SMTP username/password are configured. It never returns queued job payloads because those payloads can contain the OTP before the worker sends it, and it never returns app keys or mail passwords. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
 
 If these markers do not appear in the Render dashboard logs, confirm both services use:
 

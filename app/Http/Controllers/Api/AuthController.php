@@ -2659,11 +2659,15 @@ class AuthController extends Controller
 
         try {
             if ($deliveryMode === 'sync') {
+                $this->logMonitorMfaDelivery('Monitor MFA sync email delivery starting.', $user, $deliveryMode);
                 Notification::sendNow($user, $notification);
+                $this->logMonitorMfaDelivery('Monitor MFA sync email delivery succeeded.', $user, $deliveryMode);
             } else {
+                $this->logMonitorMfaDelivery('Monitor MFA email delivery queued.', $user, $deliveryMode);
                 $user->notify($notification);
             }
         } catch (\Throwable $exception) {
+            $this->logMonitorMfaDelivery('Monitor MFA sync email delivery failed.', $user, $deliveryMode, $exception);
             Cache::forget($this->monitorMfaCacheKey($challengeId));
             throw $exception;
         }
@@ -2683,6 +2687,31 @@ class AuthController extends Controller
         $mode = strtolower(trim((string) config('auth_mfa.monitor.delivery_mode', 'queued')));
 
         return $mode === 'sync' ? 'sync' : 'queued';
+    }
+
+    private function logMonitorMfaDelivery(
+        string $message,
+        User $user,
+        string $deliveryMode,
+        ?\Throwable $exception = null,
+    ): void {
+        $context = [
+            'delivery_mode' => $deliveryMode,
+            'recipient' => (string) $user->email,
+            'mailer' => (string) config('mail.default', ''),
+            'smtp_host' => (string) config('mail.mailers.smtp.host', ''),
+            'smtp_port' => (string) config('mail.mailers.smtp.port', ''),
+            'smtp_scheme' => (string) config('mail.mailers.smtp.scheme', ''),
+            'from' => (string) config('mail.from.address', ''),
+        ];
+
+        if ($exception !== null) {
+            $context['exception_class'] = $exception::class;
+            $context['exception_message'] = $exception->getMessage();
+        }
+
+        logger()->info($message, $context);
+        error_log($message . ' ' . json_encode($context));
     }
 
     /**
