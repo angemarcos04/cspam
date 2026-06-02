@@ -93,9 +93,10 @@ class DemoDataSeeder extends Seeder
             );
         }
 
-        $monitor = User::query()->firstOrNew(['email' => 'cspamsmonitor@gmail.com']);
+        $monitorEmail = $this->demoMonitorEmail();
+        $monitor = User::query()->firstOrNew(['email' => $monitorEmail]);
         $monitorWasRecentlyCreated = ! $monitor->exists;
-        $monitor->name = 'Division Monitor';
+        $monitor->name = $this->demoMonitorName();
         $monitor->account_status = AccountStatus::ACTIVE->value;
 
         if ($monitorWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
@@ -433,6 +434,22 @@ class DemoDataSeeder extends Seeder
         }
 
         return 'Demo@123456';
+    }
+
+    private function demoMonitorEmail(): string
+    {
+        $configured = strtolower(trim((string) env('CSPAMS_MONITOR_EMAIL', '')));
+
+        return filter_var($configured, FILTER_VALIDATE_EMAIL) !== false
+            ? $configured
+            : 'cspamsmonitor@gmail.com';
+    }
+
+    private function demoMonitorName(): string
+    {
+        $configured = trim((string) env('CSPAMS_MONITOR_NAME', ''));
+
+        return $configured !== '' ? $configured : 'Division Monitor';
     }
 
     private function shouldSyncSeedPasswords(): bool
