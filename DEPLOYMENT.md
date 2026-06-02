@@ -74,9 +74,13 @@ On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate wo
 
 **Render Background Worker (recommended):**
 
-Create a separate Render Background Worker from the same repo/branch as the web service.
+Important: `render.yaml` defines the worker for Render Blueprint deployments. If the web service was created manually in the Render dashboard, Render does not automatically create `cspam-backend-worker` just because this file exists in the repo. In that case, create the Background Worker manually or redeploy from the blueprint.
+
+Create a separate Render Background Worker from the same repo/branch as the web service:
 
 - Service type: `Background Worker`
+- Repository: `angemarcos04/cspam`
+- Branch: `main`
 - Root directory: repository root
 - Build command:
 
@@ -90,13 +94,15 @@ composer install --prefer-dist --no-dev --no-interaction --optimize-autoloader
 bash docker/worker-start.sh
 ```
 
+Copy all web service environment variables to the worker, especially `APP_KEY`, all `DB_*` values, `QUEUE_CONNECTION=database`, `CSPAMS_MONITOR_MFA_QUEUE=mail`, all `MAIL_*` values, `LOG_CHANNEL=stderr`, and `LOG_LEVEL=info`. Prefer a Render Environment Group if available so the web and worker services cannot drift.
+
 The worker script does not run migrations or seeders. It prepares Laravel cache and runs:
 
 ```bash
 php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90 --sleep=3
 ```
 
-The included `render.yaml` defines both `cspam-backend` and `cspam-backend-worker`. If you do not deploy from the blueprint, create the worker manually with the same settings.
+The included `render.yaml` defines both `cspam-backend` and `cspam-backend-worker`. If you do not see a separate Background Worker service in the Render dashboard, the worker is missing. MFA OTP email cannot send until that service exists, is deployed from `main`, and shows `CSPAMS queue worker starting...` followed by `Queue worker started` in its logs.
 
 ### 7a) Render environment variables
 

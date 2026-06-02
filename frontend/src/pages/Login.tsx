@@ -479,6 +479,7 @@ export function Login() {
                   </div>
                   {pendingMfa.delivery &&
                     pendingMfa.delivery !== "sent" &&
+                    pendingMfa.delivery !== "queued" &&
                     typeof pendingMfa.deliveryMessage === "string" &&
                     pendingMfa.deliveryMessage.trim().length > 0 && (
                       <p className="mt-2 text-xs font-semibold text-amber-700">{pendingMfa.deliveryMessage}</p>

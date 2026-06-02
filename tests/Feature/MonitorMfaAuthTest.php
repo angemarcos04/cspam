@@ -22,6 +22,10 @@ class MonitorMfaAuthTest extends TestCase
 
         config()->set('auth_mfa.monitor.enabled', true);
         config()->set('auth_mfa.monitor.test_code', '123456');
+        config()->set('mail.default', 'smtp');
+        config()->set('mail.mailers.smtp.host', 'smtp.mail.test');
+        config()->set('mail.mailers.smtp.username', 'smtp-user');
+        config()->set('mail.mailers.smtp.password', 'smtp-pass');
     }
 
     public function test_monitor_login_returns_mfa_challenge_and_sends_code_notification(): void
@@ -36,6 +40,8 @@ class MonitorMfaAuthTest extends TestCase
 
         $response->assertStatus(Response::HTTP_ACCEPTED)
             ->assertJsonPath('requiresMfa', true)
+            ->assertJsonPath('delivery', 'queued')
+            ->assertJsonPath('deliveryMessage', 'A verification code email was queued for delivery.')
             ->assertJsonStructure([
                 'requiresMfa',
                 'mfa' => ['challengeId', 'expiresAt'],
@@ -140,4 +146,3 @@ class MonitorMfaAuthTest extends TestCase
         ];
     }
 }
-

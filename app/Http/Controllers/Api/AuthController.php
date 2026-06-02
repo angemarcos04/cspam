@@ -162,8 +162,8 @@ class AuthController extends Controller
                 );
             }
 
-            $deliveryStatus = 'sent';
-            $deliveryMessage = 'A verification code was sent to your email.';
+            $deliveryStatus = 'queued';
+            $deliveryMessage = 'A verification code email was queued for delivery.';
             if (MailDelivery::isSimulated()) {
                 $deliveryStatus = MailDelivery::simulatedStatus();
                 $deliveryMessage = MailDelivery::simulatedMessage('Verification code was generated, but will not reach real inboxes.');

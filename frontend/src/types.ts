@@ -113,14 +113,14 @@ export interface SchoolHeadAccountActivationResult {
 export interface SchoolHeadSetupLinkResult {
   account: SchoolHeadAccountSummary;
   expiresAt: string;
-  delivery: "sent" | "failed" | string;
+  delivery: "queued" | "sent" | "failed" | string;
   deliveryMessage: string;
 }
 
 export interface SchoolHeadPasswordResetLinkResult {
   account: SchoolHeadAccountSummary;
   expiresAt: string;
-  delivery: "sent" | "failed" | string;
+  delivery: "queued" | "sent" | "failed" | string;
   deliveryMessage: string;
   enforced: boolean;
   message: string;
@@ -135,7 +135,7 @@ export interface SchoolHeadTemporaryPasswordResult {
 export interface SchoolHeadAccountActionVerificationCodeResult {
   challengeId: string;
   expiresAt: string;
-  delivery: "sent" | "failed" | string;
+  delivery: "queued" | "sent" | "failed" | string;
   deliveryMessage: string;
 }
 
@@ -144,7 +144,7 @@ export interface SchoolHeadAccountProfileUpsertResult {
   temporaryPassword?: string | null;
   message?: string | null;
   expiresAt?: string | null;
-  delivery?: "sent" | "failed" | string | null;
+  delivery?: "queued" | "sent" | "failed" | string | null;
   deliveryMessage?: string | null;
 }
 
