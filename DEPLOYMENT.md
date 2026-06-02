@@ -263,6 +263,14 @@ Expected signals:
 
 The endpoint reports mailer, SMTP host/port/scheme, sender, whether SMTP username/password are configured, and whether the Resend API key is configured. It never returns queued job payloads because those payloads can contain the OTP before the worker sends it, and it never returns app keys, mail passwords, or Resend API keys. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
 
+To test the configured mail transport without generating an OTP, send a POST request to:
+
+```text
+https://cspams.onrender.com/api/ops/mail-diagnostics/send?token=<random-long-token>
+```
+
+This sends a harmless diagnostic email to `CSPAMS_MONITOR_EMAIL`. If delivery fails, the response includes the sanitized provider error without exposing the Resend API key or mail password.
+
 If these markers do not appear in the Render dashboard logs, confirm both services use:
 
 ```env
