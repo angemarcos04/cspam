@@ -9,3 +9,22 @@ services:
     envVars:
       - key: PHP_VERSION
         value: "8.2"
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CSPAMS_MONITOR_MFA_QUEUE
+        value: mail
+
+  - type: worker
+    name: cspam-backend-worker
+    env: php
+    plan: standard
+    buildCommand: |
+      composer install --prefer-dist --no-dev --no-interaction --optimize-autoloader
+    startCommand: bash docker/worker-start.sh
+    envVars:
+      - key: PHP_VERSION
+        value: "8.2"
+      - key: QUEUE_CONNECTION
+        value: database
+      - key: CSPAMS_MONITOR_MFA_QUEUE
+        value: mail

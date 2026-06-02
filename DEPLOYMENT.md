@@ -72,6 +72,123 @@ php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90
 
 On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate worker service so it restarts automatically on failure. This repo now includes `docker/worker-start.sh` for that purpose. Make sure the worker's environment variables match the API server's (same `APP_KEY`, same `QUEUE_CONNECTION`, same DB connection).
 
+**Render Background Worker (recommended):**
+
+Create a separate Render Background Worker from the same repo/branch as the web service.
+
+- Service type: `Background Worker`
+- Root directory: repository root
+- Build command:
+
+```bash
+composer install --prefer-dist --no-dev --no-interaction --optimize-autoloader
+```
+
+- Start command:
+
+```bash
+bash docker/worker-start.sh
+```
+
+The worker script does not run migrations or seeders. It prepares Laravel cache and runs:
+
+```bash
+php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90 --sleep=3
+```
+
+The included `render.yaml` defines both `cspam-backend` and `cspam-backend-worker`. If you do not deploy from the blueprint, create the worker manually with the same settings.
+
+### 7a) Render environment variables
+
+Set these on both the web service and the background worker:
+
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_KEY=<same persistent Laravel app key>
+APP_URL=https://cspams.onrender.com
+FRONTEND_URL=https://cspam.vercel.app/
+
+DB_CONNECTION=pgsql
+DB_HOST=<Render internal DB host>
+DB_PORT=5432
+DB_DATABASE=<database name>
+DB_USERNAME=<database user>
+DB_PASSWORD=<database password>
+
+QUEUE_CONNECTION=database
+CSPAMS_MONITOR_MFA_ENABLED=true
+CSPAMS_MONITOR_MFA_QUEUE=mail
+
+MAIL_MAILER=smtp
+MAIL_SCHEME=smtp
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USERNAME=cspams.local@gmail.com
+MAIL_PASSWORD=<fresh Gmail App Password>
+MAIL_FROM_ADDRESS=cspams.local@gmail.com
+MAIL_FROM_NAME=CSPAMS
+MAIL_TIMEOUT=10
+```
+
+Blank or delete:
+
+```env
+MAIL_ENCRYPTION
+```
+
+Recommended seeded monitor receiver:
+
+```env
+CSPAMS_MONITOR_EMAIL=marcosangellie2004@gmail.com
+CSPAMS_DEMO_MONITOR_PASSWORD=Demo@123456
+CSPAMS_SYNC_DEMO_MONITOR_PASSWORD=true
+```
+
+Use host names, not full URLs, for Sanctum stateful domains:
+
+```env
+SANCTUM_STATEFUL_DOMAINS=cspam.vercel.app,cspams.onrender.com
+```
+
+Use full origins for CORS:
+
+```env
+CORS_ALLOWED_ORIGINS=https://cspam.vercel.app
+```
+
+### 7b) Render verification logs
+
+The web service startup should show:
+
+```text
+[DEBUG] Check verification delivery configuration
+Verification delivery status
+[7/7] Starting PHP server
+```
+
+The background worker startup should show:
+
+```text
+CSPAMS queue worker starting...
+Checking verification delivery configuration...
+Queue worker started
+```
+
+After a monitor login attempt, the worker logs should show:
+
+```text
+Monitor MFA email job rendering mail message.
+```
+
+If delivery fails, logs should show:
+
+```text
+Queue job failed.
+```
+
+The failure message should identify the Gmail SMTP problem without logging the OTP code or mail password.
+
 ### 8) Only enable realtime when Reverb is actually deployed
 
 The frontend now treats realtime as opt-in. Leave `VITE_REALTIME_ENABLED=false` unless you have a separate Reverb service running.
@@ -99,9 +216,9 @@ The config-check command exits with a non-zero code and prints the list of faili
 
 ## Runtime layout
 
-The production web container should only boot the HTTP stack. It must not run migrations or seeds as part of startup.
+The production web service should handle HTTP traffic. The production worker service should process queued jobs.
 
-- Web service: root `Dockerfile` default command, which runs `docker/render-start.sh` and starts `php-fpm` + `nginx`
+- Web service: `docker/render-start.sh`
 - Worker service: `docker/worker-start.sh`
 - Reverb service: `docker/reverb-start.sh` when realtime is enabled
 
