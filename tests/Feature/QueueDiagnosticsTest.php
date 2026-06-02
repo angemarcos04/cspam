@@ -38,6 +38,7 @@ class QueueDiagnosticsTest extends TestCase
         config()->set('mail.mailers.smtp.scheme', 'smtp');
         config()->set('mail.mailers.smtp.username', 'cspams.local@gmail.com');
         config()->set('mail.mailers.smtp.password', 'secret-app-password');
+        config()->set('services.resend.key', 'secret-resend-key');
 
         $this->withQueueDatabase(function (): void {
             DB::table('jobs')->insert([
@@ -64,6 +65,7 @@ class QueueDiagnosticsTest extends TestCase
                 ->assertJsonPath('mail.mailer', 'smtp')
                 ->assertJsonPath('mail.smtpHost', 'smtp.gmail.com')
                 ->assertJsonPath('mail.smtpPasswordConfigured', true)
+                ->assertJsonPath('mail.resendKeyConfigured', true)
                 ->assertJsonPath('mailQueue', 'mail')
                 ->assertJsonPath('jobs.total', 1)
                 ->assertJsonPath('jobs.byQueue.0.queue', 'mail')
@@ -73,6 +75,7 @@ class QueueDiagnosticsTest extends TestCase
             $this->assertStringNotContainsString('123456', $response->getContent());
             $this->assertStringNotContainsString('654321', $response->getContent());
             $this->assertStringNotContainsString('secret-app-password', $response->getContent());
+            $this->assertStringNotContainsString('secret-resend-key', $response->getContent());
         });
     }
 

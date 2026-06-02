@@ -261,7 +261,7 @@ Expected signals:
 - `jobs.total = 0` and `failedJobs.total > 0`: the worker is processing jobs, but Gmail/SMTP or mail config is failing. Check `failedJobs.recent[].exceptionSummary` and worker logs for `Queue job failed.`
 - `jobs.total = 0` and `failedJobs.total = 0`: the last MFA job was processed successfully or the login request did not queue a job against this database.
 
-The endpoint reports mailer, SMTP host/port/scheme, sender, and whether SMTP username/password are configured. It never returns queued job payloads because those payloads can contain the OTP before the worker sends it, and it never returns app keys or mail passwords. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
+The endpoint reports mailer, SMTP host/port/scheme, sender, whether SMTP username/password are configured, and whether the Resend API key is configured. It never returns queued job payloads because those payloads can contain the OTP before the worker sends it, and it never returns app keys, mail passwords, or Resend API keys. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
 
 If these markers do not appear in the Render dashboard logs, confirm both services use:
 

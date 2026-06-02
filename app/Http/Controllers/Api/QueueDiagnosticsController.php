@@ -91,6 +91,7 @@ class QueueDiagnosticsController extends Controller
             'smtpScheme' => (string) config('mail.mailers.smtp.scheme', ''),
             'smtpUsernameConfigured' => trim((string) config('mail.mailers.smtp.username', '')) !== '',
             'smtpPasswordConfigured' => trim((string) config('mail.mailers.smtp.password', '')) !== '',
+            'resendKeyConfigured' => trim((string) config('services.resend.key', '')) !== '',
         ];
     }
 
