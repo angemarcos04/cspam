@@ -4,6 +4,15 @@ This project's SPA uses **Sanctum stateful cookie sessions** (httpOnly). Product
 
 ## Checklist
 
+### Render Free Tier commands
+
+Render Free Tier does not provide shell access. Configure the service commands so Laravel cache/config clearing runs automatically on every deploy and service start:
+
+- Build Command: `bash scripts/render-build.sh`
+- Start Command: `bash scripts/render-start.sh`
+
+The startup script clears cached Laravel configuration before booting the app, which is important after changing Render environment variables such as `MAIL_MAILER`, `RESEND_API_KEY`, or `CSPAMS_MONITOR_MFA_DELIVERY_MODE`.
+
 ### 1) Set correct URLs
 
 - `APP_URL` = backend base URL (e.g., `https://api.example.com`)
@@ -159,6 +168,17 @@ MAIL_FROM_ADDRESS=cspams.local@gmail.com
 MAIL_FROM_NAME=CSPAMS
 MAIL_TIMEOUT=10
 ```
+
+For Resend on Render, use:
+
+```env
+MAIL_MAILER=resend
+MAIL_FROM_ADDRESS=onboarding@resend.dev
+MAIL_FROM_NAME=CSPAMS
+RESEND_API_KEY=<secret>
+```
+
+`onboarding@resend.dev` is only for limited Resend testing and can send only to the email address allowed by your Resend account. Production sending should use a verified Resend domain. Keep real secrets only in Render environment variables.
 
 Blank or delete:
 
