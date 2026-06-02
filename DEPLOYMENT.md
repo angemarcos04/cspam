@@ -191,6 +191,34 @@ Queue job failed.
 
 The failure message should identify the Gmail SMTP problem without logging the OTP code or mail password.
 
+### 7c) Queue diagnostics without Render shell
+
+If the MFA response says the code was sent but no email arrives, temporarily set this env var on the Render web service:
+
+```env
+CSPAMS_DIAGNOSTICS_TOKEN=<random-long-token>
+```
+
+Redeploy the web service, then open:
+
+```text
+https://cspams.onrender.com/api/ops/queue-diagnostics?token=<random-long-token>
+```
+
+You can also call it through the Vercel rewrite:
+
+```text
+https://cspam.vercel.app/api/ops/queue-diagnostics?token=<random-long-token>
+```
+
+Expected signals:
+
+- `jobs.total > 0` with `jobs.byQueue[].queue = mail`: MFA mail jobs are stuck, so the Render Background Worker is not running, not deployed, or cannot reach the same database.
+- `jobs.total = 0` and `failedJobs.total > 0`: the worker is processing jobs, but Gmail/SMTP or mail config is failing. Check `failedJobs.recent[].exceptionSummary` and worker logs for `Queue job failed.`
+- `jobs.total = 0` and `failedJobs.total = 0`: the last MFA job was processed successfully or the login request did not queue a job against this database.
+
+The endpoint never returns queued job payloads because those payloads can contain the OTP before the worker sends it. Delete `CSPAMS_DIAGNOSTICS_TOKEN` after debugging.
+
 If these markers do not appear in the Render dashboard logs, confirm both services use:
 
 ```env
