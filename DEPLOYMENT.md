@@ -119,6 +119,8 @@ DB_PASSWORD=<database password>
 QUEUE_CONNECTION=database
 CSPAMS_MONITOR_MFA_ENABLED=true
 CSPAMS_MONITOR_MFA_QUEUE=mail
+LOG_CHANNEL=stderr
+LOG_LEVEL=info
 
 MAIL_MAILER=smtp
 MAIL_SCHEME=smtp
@@ -188,6 +190,13 @@ Queue job failed.
 ```
 
 The failure message should identify the Gmail SMTP problem without logging the OTP code or mail password.
+
+If these markers do not appear in the Render dashboard logs, confirm both services use:
+
+```env
+LOG_CHANNEL=stderr
+LOG_LEVEL=info
+```
 
 ### 8) Only enable realtime when Reverb is actually deployed
 

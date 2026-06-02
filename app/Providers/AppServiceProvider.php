@@ -32,13 +32,16 @@ class AppServiceProvider extends ServiceProvider
         }
 
         Queue::failing(function (JobFailed $event): void {
-            Log::error('Queue job failed.', [
+            $context = [
                 'connection' => $event->connectionName,
                 'queue' => $event->job?->getQueue(),
                 'job_name' => $event->job?->resolveName(),
                 'exception_class' => $event->exception::class,
                 'exception_message' => $event->exception->getMessage(),
-            ]);
+            ];
+
+            Log::error('Queue job failed.', $context);
+            error_log('Queue job failed. ' . json_encode($context));
         });
 
         RateLimiter::for('api', function (Request $request): Limit {

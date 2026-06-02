@@ -54,7 +54,7 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
 
     public function toMail(object $notifiable): MailMessage
     {
-        Log::info('Monitor MFA email job rendering mail message.', [
+        $context = [
             'recipient' => (string) ($notifiable->email ?? ''),
             'expires_at' => $this->expiresAt,
             'mailer' => (string) config('mail.default', ''),
@@ -62,7 +62,10 @@ class MonitorMfaCodeNotification extends Notification implements ShouldQueue
             'smtp_port' => (string) config('mail.mailers.smtp.port', ''),
             'smtp_scheme' => (string) config('mail.mailers.smtp.scheme', ''),
             'from' => (string) config('mail.from.address', ''),
-        ]);
+        ];
+
+        Log::info('Monitor MFA email job rendering mail message.', $context);
+        error_log('Monitor MFA email job rendering mail message. ' . json_encode($context));
 
         return (new MailMessage())
             ->subject('CSPAMS Monitor Login Verification Code')

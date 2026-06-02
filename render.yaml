@@ -13,6 +13,10 @@ services:
         value: database
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
 
   - type: worker
     name: cspam-backend-worker
@@ -28,3 +32,7 @@ services:
         value: database
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
+      - key: LOG_CHANNEL
+        value: stderr
+      - key: LOG_LEVEL
+        value: info
