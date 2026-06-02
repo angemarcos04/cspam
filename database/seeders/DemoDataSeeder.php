@@ -99,7 +99,7 @@ class DemoDataSeeder extends Seeder
         $monitor->name = $this->demoMonitorName();
         $monitor->account_status = AccountStatus::ACTIVE->value;
 
-        if ($monitorWasRecentlyCreated || $this->shouldSyncSeedPasswords()) {
+        if ($monitorWasRecentlyCreated || $this->shouldSyncDemoMonitorPassword()) {
             $monitor->password = Hash::make($this->demoMonitorPassword());
             $monitor->must_reset_password = false;
             $monitor->password_changed_at = now();
@@ -450,6 +450,14 @@ class DemoDataSeeder extends Seeder
         $configured = trim((string) env('CSPAMS_MONITOR_NAME', ''));
 
         return $configured !== '' ? $configured : 'Division Monitor';
+    }
+
+    private function shouldSyncDemoMonitorPassword(): bool
+    {
+        $raw = strtolower(trim((string) env('CSPAMS_SYNC_DEMO_MONITOR_PASSWORD', 'true')));
+
+        return $this->shouldSyncSeedPasswords()
+            || ! in_array($raw, ['0', 'false', 'off', 'no'], true);
     }
 
     private function shouldSyncSeedPasswords(): bool
