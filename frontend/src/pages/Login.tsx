@@ -60,7 +60,10 @@ const LOGIN_FIELD_HINT = "Enter school code or monitor email";
 
 function describeApiOrigin(): string {
   try {
-    return new URL(getApiBaseUrl()).origin;
+    const baseUrl = getApiBaseUrl();
+    const resolvedUrl = typeof window === "undefined" ? baseUrl : new URL(baseUrl, window.location.origin).toString();
+
+    return new URL(resolvedUrl).origin;
   } catch {
     return getApiBaseUrl();
   }

@@ -7,7 +7,9 @@ function defaultApiBaseUrl(): string {
 }
 
 function sanitizeBaseUrl(baseUrl: string): string {
-  return baseUrl.replace(/\/+$/, "");
+  const sanitized = baseUrl.replace(/\/+$/, "");
+
+  return sanitized === "" && baseUrl.startsWith("/") ? "/" : sanitized;
 }
 
 function resolveApiBaseUrl(): string {
