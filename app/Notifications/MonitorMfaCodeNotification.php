@@ -2,11 +2,15 @@
 
 namespace App\Notifications;
 
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
-class MonitorMfaCodeNotification extends Notification
+class MonitorMfaCodeNotification extends Notification implements ShouldQueue
 {
+    use Queueable;
+
     public function __construct(
         private readonly string $code,
         private readonly string $expiresAt,
@@ -18,6 +22,33 @@ class MonitorMfaCodeNotification extends Notification
     public function via(object $notifiable): array
     {
         return ['mail'];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function viaConnections(): array
+    {
+        $configured = trim((string) config('auth_mfa.monitor.queue_connection', ''));
+        $connection = $configured !== ''
+            ? $configured
+            : trim((string) config('queue.default', 'database'));
+
+        if ($connection === '' || strtolower($connection) === 'sync') {
+            $connection = 'database';
+        }
+
+        return ['mail' => $connection];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function viaQueues(): array
+    {
+        $queue = trim((string) config('auth_mfa.monitor.queue', 'mail'));
+
+        return ['mail' => $queue !== '' ? $queue : 'mail'];
     }
 
     public function toMail(object $notifiable): MailMessage

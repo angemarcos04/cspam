@@ -81,5 +81,14 @@ if ! CACHE_STORE=file php artisan view:cache; then
   exit 1
 fi
 
-echo "[7/7] Starting PHP server"
+echo "[7/7] Starting queue worker and PHP server"
+php artisan queue:work \
+  --verbose \
+  --queue="${CSPAMS_QUEUE_NAMES:-mail,default}" \
+  --tries="${CSPAMS_QUEUE_TRIES:-3}" \
+  --timeout="${CSPAMS_QUEUE_TIMEOUT:-90}" \
+  --sleep="${CSPAMS_QUEUE_SLEEP:-3}" &
+QUEUE_WORKER_PID="$!"
+echo "Queue worker started with PID ${QUEUE_WORKER_PID}"
+
 exec php -S 0.0.0.0:${PORT:-10000} -t public public/index.php
