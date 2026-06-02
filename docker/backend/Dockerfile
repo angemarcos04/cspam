@@ -1,6 +1,7 @@
 FROM php:8.4-cli
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
     git \
     unzip \
     curl \
@@ -29,6 +30,6 @@ RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoload
 RUN mkdir -p storage/logs bootstrap/cache \
     && chown -R www-data:www-data storage bootstrap/cache
 
-RUN chmod +x docker/render-start.sh
+RUN chmod +x scripts/render-start.sh docker/render-start.sh
 
-CMD ["./docker/render-start.sh"]
+CMD ["bash", "scripts/render-start.sh"]

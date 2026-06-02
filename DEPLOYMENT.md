@@ -4,12 +4,14 @@ This project's SPA uses **Sanctum stateful cookie sessions** (httpOnly). Product
 
 ## Checklist
 
-### Render Free Tier commands
+### Render Free Tier Docker command
 
-Render Free Tier does not provide shell access. Configure the service commands so Laravel cache/config clearing runs automatically on every deploy and service start:
+Render Free Tier does not provide shell access. For the Docker-based Render web service, do not use Build Command / Start Command fields. Docker services build from the Dockerfile and use Docker Command to override the container command.
 
-- Build Command: `bash scripts/render-build.sh`
-- Start Command: `bash scripts/render-start.sh`
+Set:
+
+- Docker Command: `bash scripts/render-start.sh`
+- Pre-Deploy Command: leave blank on Free Tier
 
 The startup script clears cached Laravel configuration before booting the app, which is important after changing Render environment variables such as `MAIL_MAILER`, `RESEND_API_KEY`, or `CSPAMS_MONITOR_MFA_DELIVERY_MODE`.
 
@@ -327,7 +329,7 @@ The config-check command exits with a non-zero code and prints the list of faili
 
 The production web service should handle HTTP traffic. The production worker service should process queued jobs.
 
-- Web service: `docker/render-start.sh`
+- Web service: `bash scripts/render-start.sh` through the Render Docker Command
 - Worker service: `docker/worker-start.sh`
 - Reverb service: `docker/reverb-start.sh` when realtime is enabled
 

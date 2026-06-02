@@ -1,6 +1,7 @@
 FROM php:8.4-fpm-alpine
 
 RUN apk add --no-cache \
+    bash \
     curl \
     freetype-dev \
     gettext \
@@ -44,8 +45,9 @@ COPY docker/worker-start.sh /usr/local/bin/worker-start.sh
 COPY docker/reverb-start.sh /usr/local/bin/reverb-start.sh
 
 RUN chmod +x \
+    scripts/render-start.sh \
     /usr/local/bin/render-start.sh \
     /usr/local/bin/worker-start.sh \
     /usr/local/bin/reverb-start.sh
 
-CMD ["/usr/local/bin/render-start.sh"]
+CMD ["bash", "scripts/render-start.sh"]

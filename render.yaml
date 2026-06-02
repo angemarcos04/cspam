@@ -1,10 +1,10 @@
 services:
   - type: web
     name: cspam-backend
-    env: php
+    env: docker
     plan: standard
-    buildCommand: bash scripts/render-build.sh
-    startCommand: bash scripts/render-start.sh
+    dockerfilePath: ./Dockerfile
+    dockerCommand: bash scripts/render-start.sh
     envVars:
       - key: PHP_VERSION
         value: "8.2"
