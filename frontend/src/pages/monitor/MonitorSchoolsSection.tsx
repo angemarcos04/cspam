@@ -107,7 +107,7 @@ export function MonitorSchoolsSection({
   return (
     <>
       <div id="monitor-school-radar" className={`bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}>
-        <div className="grid gap-3 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
           <article className={categoryCardClass(!hasCategoryFilter)}>
             <button
               type="button"
