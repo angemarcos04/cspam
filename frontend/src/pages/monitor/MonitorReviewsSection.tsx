@@ -352,9 +352,6 @@ export function MonitorReviewsSection({
         id="monitor-queue-workspace"
         className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-queue-workspace")}`}
       >
-        <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-          <h2 className="text-base font-bold text-slate-900">Queue Review Workspace</h2>
-        </div>
         {queueWorkspaceSchoolFilterKeys && queueWorkspaceSchoolFilterKeys.size > 0 ? (
           <MonitorIndicatorPanel
             embedded

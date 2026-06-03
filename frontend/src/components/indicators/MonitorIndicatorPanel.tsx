@@ -185,15 +185,6 @@ function formatDateTime(value: string | null): string {
   return `${date.toLocaleDateString()} ${date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
-function formatHours(value: number | null): string {
-  if (value === null || !Number.isFinite(value)) return "N/A";
-  return `${value.toFixed(1)}h`;
-}
-
-function formatDays(value: number): string {
-  return `${value} day${value === 1 ? "" : "s"}`;
-}
-
 function formatFileSize(sizeBytes: number | null): string {
   if (!sizeBytes || sizeBytes <= 0) return "N/A";
   if (sizeBytes < 1024) return `${sizeBytes} B`;
@@ -1451,6 +1442,7 @@ export function MonitorIndicatorPanel({
     dateTo.length > 0 ||
     priorityFilter !== "all" ||
     assignedReviewerFilter !== "all";
+  const hasAnyFiltersActive = search.trim().length > 0 || statusFilter !== "all" || hasAdvancedFiltersActive;
 
   const activeFilterChips = useMemo(() => {
     const chips: string[] = [];
@@ -1482,31 +1474,36 @@ export function MonitorIndicatorPanel({
   return (
     <section className={panelClassName}>
       <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-slate-900">Division Review Center</h2>
             <p className="mt-0.5 text-xs text-slate-500">
-              End-to-end monitor review queue with SLA controls, decisions, and audit trail.
+              Review queue for submitted school reports.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => void refreshSubmissions()}
-            className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
-            Refresh
-          </button>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            <button
+              type="button"
+              onClick={() => void refreshSubmissions()}
+              className="inline-flex items-center gap-2 rounded-sm border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Refresh
+            </button>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+              <span>{lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}</span>
+              {schoolFilterKeys && (
+                <span className="rounded-full border border-primary-100 bg-primary-50 px-2 py-0.5 text-[11px] font-semibold text-primary-700">
+                  School filter active
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          {lastSyncedAt ? `Synced ${new Date(lastSyncedAt).toLocaleTimeString()}` : "Not synced yet"}
-          {schoolFilterKeys ? " - Global school filter is active" : ""}
-        </p>
       </div>
 
       <div className="border-b border-slate-100 px-5 py-4">
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Today's Work</p>
-        <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-3">
           <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
             <p className="text-[11px] font-medium text-slate-500">For review</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{kpi.forReview}</p>
@@ -1516,22 +1513,10 @@ export function MonitorIndicatorPanel({
             <p className="mt-1 text-lg font-bold text-slate-900">{kpi.overdue}</p>
           </article>
           <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-            <p className="text-[11px] font-medium text-slate-500">Returned today</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{kpi.returnedToday}</p>
-          </article>
-          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
             <p className="text-[11px] font-medium text-slate-500">Due in 24h</p>
             <p className="mt-1 text-lg font-bold text-slate-900">{kpi.dueIn24h}</p>
           </article>
-          <article className="rounded-sm border border-slate-200 bg-white px-3 py-2">
-            <p className="text-[11px] font-medium text-slate-500">Avg review time</p>
-            <p className="mt-1 text-lg font-bold text-slate-900">{formatHours(kpi.avgReviewTime)}</p>
-          </article>
         </div>
-        <p className="mt-2 text-xs text-slate-500">
-          Returned total: <span className="font-semibold text-slate-700">{kpi.returned}</span> | Validated today:{" "}
-          <span className="font-semibold text-slate-700">{kpi.validatedToday}</span>
-        </p>
       </div>
 
       <div className="border-b border-slate-100 px-5 py-3">
@@ -1604,26 +1589,6 @@ export function MonitorIndicatorPanel({
           </label>
 
           <div className="flex items-end gap-2">
-            <div className="inline-flex rounded-sm border border-slate-300 bg-white p-0.5">
-              <button
-                type="button"
-                onClick={() => setQueueDensity("comfortable")}
-                className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
-                  queueDensity === "comfortable" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                Comfortable
-              </button>
-              <button
-                type="button"
-                onClick={() => setQueueDensity("compact")}
-                className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
-                  queueDensity === "compact" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
-                }`}
-              >
-                Compact
-              </button>
-            </div>
             <button
               type="button"
               onClick={() => setShowAdvancedControls((current) => !current)}
@@ -1633,14 +1598,16 @@ export function MonitorIndicatorPanel({
               {showAdvancedControls ? "Hide advanced" : "More filters"}
               {hasAdvancedFiltersActive && !showAdvancedControls ? " - active" : ""}
             </button>
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-            >
-              <X className="h-3.5 w-3.5" />
-              Reset
-            </button>
+            {hasAnyFiltersActive && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                <X className="h-3.5 w-3.5" />
+                Reset filters
+              </button>
+            )}
           </div>
         </div>
 
@@ -1670,6 +1637,29 @@ export function MonitorIndicatorPanel({
 
         {showAdvancedControls && (
           <div className="mt-4 rounded-sm border border-slate-200 bg-slate-50 p-3">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">More filters</span>
+              <div className="inline-flex rounded-sm border border-slate-300 bg-white p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setQueueDensity("comfortable")}
+                  className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
+                    queueDensity === "comfortable" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  Comfortable
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQueueDensity("compact")}
+                  className={`rounded-sm px-2 py-1 text-[11px] font-semibold transition ${
+                    queueDensity === "compact" ? "bg-primary-50 text-primary-700" : "text-slate-600 hover:bg-slate-100"
+                  }`}
+                >
+                  Compact
+                </button>
+              </div>
+            </div>
             <div className="grid gap-3 lg:grid-cols-4">
               <label className="block">
                 <span className="mb-1 block text-xs font-medium text-slate-600">District / Region</span>
@@ -1956,15 +1946,10 @@ export function MonitorIndicatorPanel({
                   />
                 </th>
                 <th className="px-2 py-2 text-left">School</th>
-                <th className="px-2 py-2 text-left">District</th>
-                <th className="px-2 py-2 text-left">Submission Type</th>
+                <th className="px-2 py-2 text-left">Submission</th>
                 <th className="px-2 py-2 text-left">Period</th>
-                <th className="px-2 py-2 text-left">Submitted At</th>
-                <th className="px-2 py-2 text-center">Indicators</th>
+                <th className="px-2 py-2 text-left">Submitted</th>
                 <th className="px-2 py-2 text-center">Status</th>
-                <th className="px-2 py-2 text-center">Days Pending</th>
-                <th className="px-2 py-2 text-center">Priority</th>
-                <th className="px-2 py-2 text-left">Reviewer</th>
                 <th className="px-2 py-2 text-center">Actions</th>
               </tr>
             </thead>
@@ -1989,26 +1974,13 @@ export function MonitorIndicatorPanel({
                       <p className="font-semibold text-slate-900">{row.schoolName}</p>
                       <p className="text-xs text-slate-500">{row.schoolCode}</p>
                     </td>
-                    <td className="px-2 py-2 text-sm text-slate-700">
-                      <p>{row.district}</p>
-                      <p className="text-xs text-slate-500">{row.region}</p>
-                    </td>
                     <td className="px-2 py-2 text-sm text-slate-700">{row.submissionType}</td>
                     <td className="px-2 py-2 text-sm text-slate-700">{row.submission.reportingPeriod || "N/A"}</td>
                     <td className="px-2 py-2 text-sm text-slate-600">{formatDateTime(row.submittedAt)}</td>
-                    <td className="px-2 py-2 text-center text-sm text-slate-700">
-                      <p className="font-semibold">
-                        {row.metIndicatorCount}/{row.indicatorCount}
-                      </p>
-                      <p className="text-xs text-slate-500">{row.complianceRatePercent.toFixed(2)}%</p>
-                    </td>
                     <td className="px-2 py-2 text-center">
                       <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(row.status)}`}>
                         {workflowLabel(row.status)}
                       </span>
-                    </td>
-                    <td className="px-2 py-2 text-center text-sm text-slate-700">
-                      <p className="font-semibold">{formatDays(row.daysPending)}</p>
                       {isSubmitted && (
                         <span className={`mt-1 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${priorityTone(row.priority)}`}>
                           <Clock3 className="mr-1 h-3 w-3" />
@@ -2016,12 +1988,6 @@ export function MonitorIndicatorPanel({
                         </span>
                       )}
                     </td>
-                    <td className="px-2 py-2 text-center">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold ${priorityTone(row.priority)}`}>
-                        {priorityLabel(row.priority)}
-                      </span>
-                    </td>
-                    <td className="px-2 py-2 text-sm text-slate-700">{row.assignedReviewer}</td>
                     <td className="px-2 py-2 text-center">
                       <div className="flex flex-wrap items-center justify-center gap-1.5">
                         {isSubmitted && (
@@ -2093,8 +2059,9 @@ export function MonitorIndicatorPanel({
               })}
               {filteredRows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="px-2 py-8 text-center text-sm text-slate-500">
-                    No review queue rows match your current filters.
+                  <td colSpan={7} className="px-2 py-10 text-center text-sm text-slate-500">
+                    <p className="font-medium text-slate-600">No submissions need review.</p>
+                    <p className="mt-1 text-xs text-slate-500">Try changing filters or refreshing the queue.</p>
                   </td>
                 </tr>
               )}
@@ -2634,4 +2601,3 @@ export function MonitorIndicatorPanel({
     </section>
   );
 }
-
