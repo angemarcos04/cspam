@@ -3,6 +3,7 @@ import type {
   IndicatorMatrixRow,
   MonitorDrawerChecklistItem,
   MonitorDrawerKpiReportRow,
+  MonitorDrawerPackageRow,
   MonitorDrawerSchoolAchievementReportRow,
   MonitorDrawerYearDetail,
   MonitorDrawerYearOption,
@@ -14,6 +15,7 @@ import {
   deriveSchoolYearLabel,
   indicatorCategoryLabel,
   sortSchoolYears,
+  schoolYearStartValue,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
   buildSubmittedReportBlankStateLines,
@@ -24,7 +26,10 @@ import {
   submissionRows,
 } from "@/pages/schoolAdminSubmittedReportView";
 import { getSubmissionUploadedFileTypes, resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
-import type { IndicatorSubmission } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
+
+const BASE_SCHOOL_YEAR_START = 2025;
+const SCHOOL_YEAR_WINDOW_SIZE = 5;
 
 function toSubmissionActivityTime(submission: IndicatorSubmission | null | undefined): number {
   return new Date(
@@ -57,6 +62,45 @@ function resolveChecklistTone(statusLabel: MonitorDrawerChecklistItem["statusLab
     return "info";
   }
   return "success";
+}
+
+function currentSchoolYearStart(now: Date = new Date()): number {
+  const schoolYearLabel = deriveSchoolYearLabel(now.toISOString());
+  return schoolYearStartValue(schoolYearLabel) ?? now.getFullYear();
+}
+
+function buildFallbackSchoolYears(now: Date = new Date()): string[] {
+  const windowEndYear = Math.max(BASE_SCHOOL_YEAR_START + SCHOOL_YEAR_WINDOW_SIZE - 1, currentSchoolYearStart(now));
+  const windowStartYear = windowEndYear - (SCHOOL_YEAR_WINDOW_SIZE - 1);
+
+  return Array.from({ length: SCHOOL_YEAR_WINDOW_SIZE }, (_, offset) => {
+    const fromYear = windowStartYear + offset;
+    return `${fromYear}-${fromYear + 1}`;
+  });
+}
+
+function buildVisibleMonitorSchoolYearWindow(years: Iterable<string>, now: Date = new Date()): string[] {
+  const fallbackYears = buildFallbackSchoolYears(now);
+  const mergedYears = sortSchoolYears([...Array.from(years), ...fallbackYears]).filter((year) => {
+    const start = schoolYearStartValue(year);
+    return start !== null && start >= BASE_SCHOOL_YEAR_START;
+  });
+  const latestFive = mergedYears.slice(-SCHOOL_YEAR_WINDOW_SIZE);
+
+  if (latestFive.length === SCHOOL_YEAR_WINDOW_SIZE) {
+    return latestFive;
+  }
+
+  const latestStart =
+    schoolYearStartValue(latestFive[latestFive.length - 1] ?? "")
+    ?? schoolYearStartValue(fallbackYears[fallbackYears.length - 1] ?? "")
+    ?? currentSchoolYearStart(now);
+  const windowStart = latestStart - (SCHOOL_YEAR_WINDOW_SIZE - 1);
+
+  return Array.from({ length: SCHOOL_YEAR_WINDOW_SIZE }, (_, offset) => {
+    const fromYear = windowStart + offset;
+    return `${fromYear}-${fromYear + 1}`;
+  });
 }
 
 function buildMonitorChecklistSectionItems(
@@ -208,7 +252,7 @@ export function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSub
 }
 
 export function deriveAvailableMonitorSchoolDetailYears(submissions: IndicatorSubmission[]): string[] {
-  return sortSchoolYears(
+  return buildVisibleMonitorSchoolYearWindow(
     submissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
   ).reverse();
 }
@@ -241,6 +285,54 @@ export function resolveMonitorSchoolDetailYearSelection(
     sortedSelectedYearSubmissions,
     latestYearSubmission: sortedSelectedYearSubmissions[0] ?? null,
   };
+}
+
+function buildMonitorPackageRows(
+  checklistItems: MonitorDrawerChecklistItem[],
+  latestYearSubmission: IndicatorSubmission | null,
+): MonitorDrawerPackageRow[] {
+  const hasSubmission = Boolean(latestYearSubmission);
+
+  return checklistItems.map<MonitorDrawerPackageRow>((item) => {
+    const submittedAt = latestYearSubmission?.submittedAt ?? latestYearSubmission?.updatedAt ?? latestYearSubmission?.createdAt ?? null;
+
+    if (item.kind === "file") {
+      const fileEntry = latestYearSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
+      const hasUploadedFile = Boolean(fileEntry?.uploaded);
+      const statusLabel = hasSubmission ? item.statusLabel : "Not Submitted";
+      const fileViewUrl = hasUploadedFile ? (fileEntry?.viewUrl ?? null) : null;
+      const fileDownloadUrl = hasUploadedFile ? (fileEntry?.downloadUrl ?? null) : null;
+
+      return {
+        id: item.id,
+        label: item.label,
+        kind: item.kind,
+        statusLabel,
+        tone: statusLabel === "Not Submitted" ? "warning" : item.tone,
+        submittedAt: hasUploadedFile ? (fileEntry?.uploadedAt ?? submittedAt) : null,
+        detail: hasUploadedFile ? (fileEntry?.originalFilename ?? item.detail) : item.detail,
+        viewUrl: fileViewUrl,
+        downloadUrl: fileDownloadUrl,
+        actionLabel: fileViewUrl ? `View ${item.label}` : null,
+      };
+    }
+
+    const isComplete = item.statusLabel === "Complete" || item.statusLabel === "For Review" || item.statusLabel === "Returned";
+    const statusLabel = hasSubmission ? item.statusLabel : "Not Submitted";
+
+    return {
+      id: item.id,
+      label: item.label,
+      kind: item.kind,
+      statusLabel,
+      tone: statusLabel === "Not Submitted" ? "warning" : item.tone,
+      submittedAt: isComplete ? submittedAt : null,
+      detail: hasSubmission ? item.detail : "No submitted package exists for the selected year.",
+      viewUrl: null,
+      downloadUrl: null,
+      actionLabel: null,
+    };
+  });
 }
 
 export function buildMonitorDrawerYearDetail(
@@ -302,6 +394,7 @@ export function buildMonitorDrawerYearDetail(
     (item) => item.statusLabel === "Complete" || item.statusLabel === "Uploaded",
   ).length;
   const checklistMissingCount = checklistItems.length - checklistCompleteCount;
+  const packageRows = buildMonitorPackageRows(checklistItems, latestYearSubmission);
   const currentIssue = buildMonitorCurrentIssue(
     selectedYearWorkflowStatus,
     checklistMissingCount,
@@ -313,6 +406,7 @@ export function buildMonitorDrawerYearDetail(
     availableYears: availableYears.map<MonitorDrawerYearOption>((year) => ({ id: year, label: year })),
     ...currentIssue,
     checklistItems,
+    packageRows,
     checklistCompleteCount,
     checklistMissingCount,
     selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,

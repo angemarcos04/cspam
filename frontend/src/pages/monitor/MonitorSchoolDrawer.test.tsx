@@ -55,6 +55,32 @@ describe("MonitorSchoolDrawer", () => {
               { id: "school_achievements", label: "School Achievements", statusLabel: "For Review", tone: "info", detail: "Section values are available for this year.", kind: "section" },
               { id: "fm_qad_001", label: "FM-QAD-001", statusLabel: "For Review", tone: "info", detail: "File is present for the selected year.", kind: "file" },
             ],
+            packageRows: [
+              {
+                id: "school_achievements",
+                label: "School Achievements",
+                kind: "section",
+                statusLabel: "For Review",
+                tone: "info",
+                submittedAt: "2026-06-03T08:00:00.000Z",
+                detail: "Section values are available for this year.",
+                viewUrl: null,
+                downloadUrl: null,
+                actionLabel: null,
+              },
+              {
+                id: "fm_qad_001",
+                label: "FM-QAD-001",
+                kind: "file",
+                statusLabel: "For Review",
+                tone: "info",
+                submittedAt: "2026-06-03T08:00:00.000Z",
+                detail: "fm-qad-001.pdf",
+                viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+                downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+                actionLabel: "View FM-QAD-001",
+              },
+            ],
             checklistCompleteCount: 0,
             checklistMissingCount: 0,
             selectedYearLatestSubmissionId: "sub-1",
@@ -101,10 +127,12 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByRole("button", { name: "Submissions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "History (Reference)" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
-    expect(screen.getByText("Year Checklist")).toBeTruthy();
-    expect(screen.getByText("Submitted Report View")).toBeTruthy();
-    expect(screen.getByText("Data Sync")).toBeTruthy();
-    expect(screen.getByText("Critical Alerts")).toBeTruthy();
+    expect(screen.getByText("Submitted Packages")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View FM-QAD-001" })).toBeTruthy();
+    expect(screen.queryByText("Year Checklist")).toBeNull();
+    expect(screen.queryByText("Submitted Report View")).toBeNull();
+    expect(screen.queryByText("Data Sync")).toBeNull();
+    expect(screen.queryByText("Critical Alerts")).toBeNull();
     expect(screen.queryByText("Active Package Context")).toBeNull();
     expect(screen.queryByText("Monitor Package")).toBeNull();
     expect(screen.queryByText("Active package requirements: FM-QAD uploads only.")).toBeNull();
@@ -162,6 +190,32 @@ describe("MonitorSchoolDrawer", () => {
             { id: "school_achievements", label: "School Achievements", statusLabel: "Complete", tone: "success", detail: "Section values are available for this year.", kind: "section" },
             { id: "bmef", label: "BMEF", statusLabel: "Uploaded", tone: "success", detail: "File is present for the selected year.", kind: "file" },
           ],
+          packageRows: [
+            {
+              id: "school_achievements",
+              label: "School Achievements",
+              kind: "section",
+              statusLabel: "Complete",
+              tone: "success",
+              submittedAt: "2026-06-03T08:00:00.000Z",
+              detail: "Section values are available for this year.",
+              viewUrl: null,
+              downloadUrl: null,
+              actionLabel: null,
+            },
+            {
+              id: "bmef",
+              label: "BMEF",
+              kind: "file",
+              statusLabel: "Uploaded",
+              tone: "success",
+              submittedAt: "2026-06-03T08:00:00.000Z",
+              detail: "bmef.pdf",
+              viewUrl: "/api/submissions/sub-2025/view/bmef",
+              downloadUrl: "/api/submissions/sub-2025/download/bmef",
+              actionLabel: "View BMEF",
+            },
+          ],
           checklistCompleteCount: 2,
           checklistMissingCount: 0,
           selectedYearLatestSubmissionId: "sub-2025",
@@ -209,13 +263,38 @@ describe("MonitorSchoolDrawer", () => {
       selectedYearLabel: "2026-2027",
       selectedYearLatestSubmissionId: "sub-2026",
       reportSourceContext: ["Viewing finalized submitted report for SY 2026-2027."],
+      packageRows: [
+        {
+          id: "school_achievements",
+          label: "School Achievements",
+          kind: "section" as const,
+          statusLabel: "Complete" as const,
+          tone: "success" as const,
+          submittedAt: "2027-06-03T08:00:00.000Z",
+          detail: "Section values are available for this year.",
+          viewUrl: null,
+          downloadUrl: null,
+          actionLabel: null,
+        },
+        {
+          id: "bmef",
+          label: "BMEF",
+          kind: "file" as const,
+          statusLabel: "Uploaded" as const,
+          tone: "success" as const,
+          submittedAt: "2027-06-03T08:00:00.000Z",
+          detail: "bmef-2026.pdf",
+          viewUrl: "/api/submissions/sub-2026/view/bmef",
+          downloadUrl: "/api/submissions/sub-2026/download/bmef",
+          actionLabel: "View BMEF",
+        },
+      ],
       schoolAchievementRows: [{ key: "a2", label: "NAME OF SCHOOL HEAD", value: "John Doe" }],
       kpiRows: [{ key: "k2", label: "Net Enrollment Rate", target: "100.00%", actual: "99.00%", status: "met" }],
     };
 
     expect(screen.getAllByText("Viewing SY 2025-2026.").length).toBeGreaterThan(0);
-    expect(screen.getByText("Jane Doe")).toBeTruthy();
-    expect(screen.getByText("98.00%")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "View BMEF" }).getAttribute("href")).toBe("/api/submissions/sub-2025/view/bmef");
 
     rerender(
       <MonitorSchoolDrawer
@@ -232,8 +311,7 @@ describe("MonitorSchoolDrawer", () => {
     );
 
     expect(screen.getAllByText("Viewing SY 2026-2027.").length).toBeGreaterThan(0);
-    expect(screen.getByText("John Doe")).toBeTruthy();
-    expect(screen.getByText("99.00%")).toBeTruthy();
-    expect(screen.queryByText("Jane Doe")).toBeNull();
+    expect(screen.getByRole("link", { name: "View BMEF" }).getAttribute("href")).toBe("/api/submissions/sub-2026/view/bmef");
+    expect(screen.queryByText("bmef.pdf")).toBeNull();
   });
 });

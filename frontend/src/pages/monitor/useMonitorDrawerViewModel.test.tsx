@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { buildMonitorDrawerYearDetail } from "@/pages/monitor/monitorSchoolDetailYear";
+import {
+  buildMonitorDrawerYearDetail,
+  deriveAvailableMonitorSchoolDetailYears,
+} from "@/pages/monitor/monitorSchoolDetailYear";
 import { buildMonitorDrawerHistorySummary } from "@/pages/monitor/monitorSchoolDetailHistory";
 import {
   buildMonitorSchoolIndicatorMatrix,
@@ -144,6 +147,7 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.reportSourceContext[0]).toContain("2025-2026");
     expect(detail?.schoolAchievementRows[0]?.value).toBe("Jane Doe");
     expect(detail?.kpiRows[0]?.actual).toBe("98.00%");
+    expect(detail?.packageRows.find((row) => row.label === "BMEF")?.statusLabel).toBe("For Review");
   });
 
   it("builds private FM-QAD checklist items and keeps report values as placeholders when no finalized year report exists", () => {
@@ -222,6 +226,13 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.reportBlankStateLines[0]).toContain("No finalized submitted report package exists yet");
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-001" && item.statusLabel === "Uploaded")).toBe(true);
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-002" && item.statusLabel === "Missing")).toBe(true);
+  });
+
+  it("keeps a five-year academic-year window even when a school has no submissions", () => {
+    const years = deriveAvailableMonitorSchoolDetailYears([]);
+
+    expect(years).toHaveLength(5);
+    expect(years.every((year) => /^\d{4}-\d{4}$/.test(year))).toBe(true);
   });
 });
 

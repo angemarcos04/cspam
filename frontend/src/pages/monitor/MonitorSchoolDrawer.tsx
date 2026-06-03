@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
+  MonitorDrawerPackageRow,
   MonitorDrawerYearDetail,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
@@ -12,7 +13,6 @@ import type {
 } from "@/pages/monitor/monitorDrawerTypes";
 import type { SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
 import type { IndicatorSubmission } from "@/types";
-import { getActiveReportVisibleFiles, resolveSubmittedReportVisibleFileDefinitions } from "@/utils/submissionRequirements";
 interface MonitorSchoolDrawerViewState {
   isOpen: boolean;
   showNavigatorManual: boolean;
@@ -86,6 +86,18 @@ function sanitizeAnchorToken(value: string): string {
   return normalized || "row";
 }
 
+function packageRowStatusClass(tone: MonitorDrawerPackageRow["tone"]): string {
+  if (tone === "warning") {
+    return "border-amber-300 bg-amber-50 text-amber-700";
+  }
+
+  if (tone === "info") {
+    return "border-primary-200 bg-primary-50 text-primary-700";
+  }
+
+  return "border-emerald-200 bg-emerald-50 text-emerald-700";
+}
+
 export function MonitorSchoolDrawer({
   viewState,
   loadingState,
@@ -104,8 +116,6 @@ export function MonitorSchoolDrawer({
     expandedDrawerIndicatorRows,
   } = viewState;
   const {
-    syncedCountsLoadingSchoolKey,
-    syncedCountsError,
     isSchoolDrawerSubmissionsLoading,
     schoolDrawerSubmissionsError,
   } = loadingState;
@@ -135,13 +145,6 @@ export function MonitorSchoolDrawer({
     toggleDrawerIndicatorLabel,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
-  const visibleSubmittedReportFiles = resolveSubmittedReportVisibleFileDefinitions({
-    schoolType: schoolDetail?.schoolTypeRaw ?? null,
-  });
-  const visibleSubmittedReportFileEntries = getActiveReportVisibleFiles(
-    schoolDrawerYearDetail?.finalizedReportSubmission ?? null,
-    schoolDetail?.schoolTypeRaw ?? null,
-  );
 
   return (
     <>
@@ -241,24 +244,28 @@ export function MonitorSchoolDrawer({
                       </select>
                     </label>
                   </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    <button
-                      type="button"
-                      onClick={handleJumpToMissingIndicators}
-                      disabled={missingDrawerIndicatorKeys.length === 0}
-                      className="inline-flex items-center rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Jump to Missing {missingDrawerIndicatorKeys.length > 0 ? `(${missingDrawerIndicatorKeys.length})` : ""}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleJumpToReturnedIndicators}
-                      disabled={returnedDrawerIndicatorKeys.length === 0}
-                      className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      Jump to Returned {returnedDrawerIndicatorKeys.length > 0 ? `(${returnedDrawerIndicatorKeys.length})` : ""}
-                    </button>
-                  </div>
+                  {(missingDrawerIndicatorKeys.length > 0 || returnedDrawerIndicatorKeys.length > 0) && (
+                    <div className="flex flex-wrap gap-1.5">
+                      {missingDrawerIndicatorKeys.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleJumpToMissingIndicators}
+                          className="inline-flex items-center rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100"
+                        >
+                          Jump to Missing ({missingDrawerIndicatorKeys.length})
+                        </button>
+                      )}
+                      {returnedDrawerIndicatorKeys.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={handleJumpToReturnedIndicators}
+                          className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
+                        >
+                          Jump to Returned ({returnedDrawerIndicatorKeys.length})
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <p className="mt-2 text-[11px] text-slate-600">
                   {schoolDetail.schoolCode} | {schoolDetail.level} | {schoolDetail.type}
@@ -267,265 +274,103 @@ export function MonitorSchoolDrawer({
 
               {activeSchoolDrawerTab === "submissions" && (
                 <div className="space-y-3">
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Submission View</p>
-                          <p className="mt-1 text-sm font-semibold text-slate-900">
-                            {schoolDrawerYearDetail?.selectedYearLabel
-                              ? `Viewing SY ${schoolDrawerYearDetail.selectedYearLabel}.`
-                              : "Select an academic year to review this school."}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-600">
-                            {schoolDetail?.schoolTypeRaw === "private"
-                              ? "Private school requirements are shown below."
-                              : "Public school requirements are shown below."}
-                          </p>
-                          <p className="mt-1 text-[11px] text-slate-500">
-                            Older package lineage stays available in <span className="font-semibold text-slate-700">History (Reference)</span>.
-                          </p>
-                        </div>
-                      </div>
-                      <div
-                        className={`rounded-sm border px-3 py-2 text-sm font-semibold ${
-                          schoolDrawerYearDetail?.currentIssueTone === "warning"
-                            ? "border-amber-300 bg-amber-50 text-amber-800"
-                            : schoolDrawerYearDetail?.currentIssueTone === "success"
-                              ? "border-primary-200 bg-primary-50 text-primary-700"
-                              : "border-slate-200 bg-slate-50 text-slate-700"
-                        }`}
-                      >
-                        <p className="text-[11px] uppercase tracking-wide">Current Issue</p>
-                        <p className="mt-1">
-                          {schoolDrawerYearDetail?.currentIssueLabel ?? "No immediate issue."}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Selected Year</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.selectedYearLabel ?? "N/A"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Complete</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.checklistCompleteCount.toLocaleString() ?? "0"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Missing</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDrawerYearDetail?.checklistMissingCount.toLocaleString() ?? "0"}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Latest Activity</p>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {schoolDrawerYearDetail?.selectedYearLatestStatus ? workflowLabel(schoolDrawerYearDetail.selectedYearLatestStatus) : "None yet"}
-                        </p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
+                  <article className="rounded-sm border border-slate-200 bg-white">
+                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Year Checklist</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">Simple status for the selected year.</p>
-                      </div>
-                      <div className="text-right text-[11px] text-slate-600">
-                        <p>
-                          Checklist items: <span className="font-semibold text-slate-900">{schoolDrawerYearDetail?.checklistItems.length.toLocaleString() ?? "0"}</span>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Submitted Packages</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {schoolDrawerYearDetail?.selectedYearLabel
+                            ? `Viewing SY ${schoolDrawerYearDetail.selectedYearLabel}.`
+                            : "Select an academic year to review this school."}
                         </p>
-                        {isSchoolDrawerSubmissionsLoading && <p className="text-primary-700">Syncing latest submissions...</p>}
+                        <p className="mt-0.5 text-[11px] text-slate-500">
+                          Required files and form sections for the selected academic year.
+                        </p>
+                        {isSchoolDrawerSubmissionsLoading && (
+                          <p className="mt-1 text-[11px] font-semibold text-primary-700">Syncing latest submissions...</p>
+                        )}
                         {!isSchoolDrawerSubmissionsLoading && schoolDrawerSubmissionsError && (
-                          <p className="text-rose-600">{schoolDrawerSubmissionsError}</p>
+                          <p className="mt-1 text-[11px] font-semibold text-rose-600">{schoolDrawerSubmissionsError}</p>
                         )}
                       </div>
+                      <div className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-right">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Package status</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-900">
+                          {schoolDrawerYearDetail?.selectedYearLatestStatus
+                            ? workflowLabel(schoolDrawerYearDetail.selectedYearLatestStatus)
+                            : "Not submitted"}
+                        </p>
+                      </div>
                     </div>
-                    {schoolDrawerYearDetail?.checklistItems.length ? (
-                      <div className="mt-2 grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
-                        {schoolDrawerYearDetail.checklistItems.map((item) => (
-                          <div key={`monitor-year-checklist-${item.id}`} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
-                            <div className="flex items-start justify-between gap-2">
-                              <div>
-                                <p className="text-[11px] text-slate-600">{item.kind === "file" ? "File" : "Section"}</p>
-                                <p className="text-sm font-semibold text-slate-900">{item.label}</p>
-                              </div>
-                              <span
-                                className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                  item.tone === "warning"
-                                    ? "border border-amber-300 bg-amber-50 text-amber-700"
-                                    : item.tone === "info"
-                                      ? "border border-primary-200 bg-primary-50 text-primary-700"
-                                      : "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                                }`}
-                              >
-                                {item.statusLabel}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-[11px] text-slate-600">{item.detail}</p>
-                          </div>
-                        ))}
+                    {schoolDrawerYearDetail?.packageRows.length ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-[720px] w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                              <th className="px-3 py-2 text-left">Requirement</th>
+                              <th className="px-3 py-2 text-left">Status</th>
+                              <th className="px-3 py-2 text-left">Submitted</th>
+                              <th className="px-3 py-2 text-right">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-200">
+                            {schoolDrawerYearDetail.packageRows.map((row) => (
+                              <tr key={`monitor-package-row-${row.id}`} className="bg-white">
+                                <td className="px-3 py-3 align-top">
+                                  <p className="font-semibold text-slate-900">{row.label}</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">{row.detail}</p>
+                                </td>
+                                <td className="px-3 py-3 align-top">
+                                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${packageRowStatusClass(row.tone)}`}>
+                                    {row.statusLabel}
+                                  </span>
+                                </td>
+                                <td className="px-3 py-3 align-top text-xs text-slate-600">
+                                  {row.submittedAt ? formatDateTime(row.submittedAt) : "-"}
+                                </td>
+                                <td className="px-3 py-3 text-right align-top">
+                                  {row.viewUrl ? (
+                                    <a
+                                      href={row.viewUrl}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                                    >
+                                      {row.actionLabel ?? `View ${row.label}`}
+                                    </a>
+                                  ) : row.downloadUrl ? (
+                                    <a
+                                      href={row.downloadUrl}
+                                      className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                      Download
+                                    </a>
+                                  ) : (
+                                    <span className="text-xs text-slate-400">-</span>
+                                  )}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
                       </div>
                     ) : (
-                      <div className="mt-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
-                        No year-based checklist is available yet for this school.
+                      <div className="px-3 py-6 text-sm text-slate-500">
+                        No required package rows are available for this school.
                       </div>
                     )}
                   </article>
 
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex flex-col gap-1">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Submitted Report View</p>
-                      <p className="text-[11px] text-slate-500">Report values and files stay strict to finalized selected-year submission data only.</p>
-                    </div>
-                    <div className="mt-2 space-y-3">
-                      {schoolDrawerYearDetail?.reportSourceContext.map((line) => (
-                        <p key={`monitor-year-report-context-${line}`} className="text-[11px] text-slate-500">
-                          {line}
-                        </p>
-                      ))}
-
-                      {!schoolDrawerYearDetail?.finalizedReportSubmission && (
-                        <div className="space-y-1">
-                          <p className="text-xs font-medium text-slate-500">{schoolDrawerYearDetail?.reportBlankStateLines[0]}</p>
-                          <p className="text-xs text-slate-500">{schoolDrawerYearDetail?.reportBlankStateLines[1]}</p>
-                        </div>
-                      )}
-
-                      {schoolDrawerYearDetail?.finalizedReportSubmission && (
-                        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-                          {visibleSubmittedReportFiles.map((definition) => {
-                            const reportFile = visibleSubmittedReportFileEntries[definition.type] ?? null;
-                            return (
-                              <article key={`monitor-report-file-${definition.type}`} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                                <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel}</h3>
-                                <dl className="mt-3 space-y-1.5 text-xs text-slate-600">
-                                  <div className="flex gap-2">
-                                    <dt className="w-16 shrink-0">File</dt>
-                                    <dd className="truncate text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
-                                  </div>
-                                  <div className="flex gap-2">
-                                    <dt className="w-16 shrink-0">Date</dt>
-                                    <dd className="text-slate-900">{reportFile?.uploadedAt ? new Date(reportFile.uploadedAt).toLocaleDateString() : "-"}</dd>
-                                  </div>
-                                </dl>
-                              </article>
-                            );
-                          })}
-                        </div>
-                      )}
-
-                      <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
-                        <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                          <h3 className="text-base font-semibold text-slate-900">Submitted Report Package</h3>
-                          <p className="mt-1 text-xs text-slate-500">
-                            {schoolDrawerYearDetail?.finalizedReportSubmission
-                              ? `Finalized values for SY ${schoolDrawerYearDetail.selectedYearLabel ?? "N/A"}.`
-                              : "Reference table structure only. Finalized values appear here after package submission."}
+                  {schoolDrawerCriticalAlerts.length > 0 && (
+                    <article className="rounded-sm border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">
+                            Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
                           </p>
                         </div>
-                        <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-                          <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
-                            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
-                              <h4 className="text-sm font-semibold text-slate-800">
-                                School&apos;s Achievement (SY {schoolDrawerYearDetail?.selectedYearLabel ?? "N/A"})
-                              </h4>
-                            </div>
-                            <table className="w-full text-[13px] text-slate-900">
-                              <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50">
-                                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
-                                  <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-200">
-                                {schoolDrawerYearDetail?.schoolAchievementRows.map((row) => (
-                                  <tr key={`monitor-report-achievement-${row.key}`}>
-                                    <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                                    <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{row.value}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                          <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
-                            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
-                              <h4 className="text-sm font-semibold text-slate-800">
-                                Key Performance Indicators (SY {schoolDrawerYearDetail?.selectedYearLabel ?? "N/A"})
-                              </h4>
-                            </div>
-                            <table className="w-full text-[13px] text-slate-900">
-                              <thead>
-                                <tr className="border-b border-slate-200 bg-slate-50">
-                                  <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
-                                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
-                                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
-                                  <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
-                                </tr>
-                              </thead>
-                              <tbody className="divide-y divide-slate-200">
-                                {schoolDrawerYearDetail?.kpiRows.map((row) => (
-                                  <tr key={`monitor-report-kpi-${row.key}`}>
-                                    <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                                    <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.target}</td>
-                                    <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.actual}</td>
-                                    <td className="px-4 py-2.5 text-center text-slate-900">{row.status}</td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
-                          </div>
-                        </div>
                       </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Data Sync</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">Reported totals compared with current synced students and teachers.</p>
-                      </div>
-                      {syncedCountsLoadingSchoolKey === schoolDetail.schoolKey ? (
-                        <p className="text-[11px] text-slate-500">Refreshing synced totals...</p>
-                      ) : null}
-                    </div>
-                    {syncedCountsError ? (
-                      <div className="mt-2 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-                        {syncedCountsError}
-                      </div>
-                    ) : null}
-                    <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-2 xl:grid-cols-4">
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Reported Students</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedStudents.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Synced Students</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedStudents.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Reported Teachers</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.reportedTeachers.toLocaleString()}</p>
-                      </div>
-                      <div className="rounded-sm border border-slate-200 bg-slate-50 px-2 py-1.5">
-                        <p className="text-[11px] text-slate-600">Synced Teachers</p>
-                        <p className="text-sm font-semibold text-slate-900">{schoolDetail.synchronizedTeachers.toLocaleString()}</p>
-                      </div>
-                    </div>
-                  </article>
-
-                  <article className="rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
-                      <p className="text-[11px] text-slate-500">
-                        Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
-                      </p>
-                    </div>
-                    {schoolDrawerCriticalAlerts.length === 0 ? (
-                      <div className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-2 text-xs font-medium text-primary-700">
-                        No critical alerts for this school.
-                      </div>
-                    ) : (
                       <div className="mt-2 space-y-2">
                         {schoolDrawerCriticalAlerts.map((alert) => (
                           <div
@@ -541,8 +386,8 @@ export function MonitorSchoolDrawer({
                           </div>
                         ))}
                       </div>
-                    )}
-                  </article>
+                    </article>
+                  )}
                 </div>
               )}
 

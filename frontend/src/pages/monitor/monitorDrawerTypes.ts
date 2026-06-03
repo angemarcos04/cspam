@@ -37,6 +37,19 @@ export interface MonitorDrawerChecklistItem {
   kind: "section" | "file";
 }
 
+export interface MonitorDrawerPackageRow {
+  id: string;
+  label: string;
+  kind: "section" | "file";
+  statusLabel: MonitorDrawerChecklistItem["statusLabel"] | "Not Submitted";
+  tone: "success" | "warning" | "info";
+  submittedAt: string | null;
+  detail: string;
+  viewUrl: string | null;
+  downloadUrl: string | null;
+  actionLabel: string | null;
+}
+
 export interface MonitorDrawerSchoolAchievementReportRow {
   key: string;
   label: string;
@@ -57,6 +70,7 @@ export interface MonitorDrawerYearDetail {
   currentIssueLabel: string;
   currentIssueTone: "warning" | "info" | "success";
   checklistItems: MonitorDrawerChecklistItem[];
+  packageRows: MonitorDrawerPackageRow[];
   checklistCompleteCount: number;
   checklistMissingCount: number;
   selectedYearLatestSubmissionId: string | null;
