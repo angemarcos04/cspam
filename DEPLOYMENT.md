@@ -15,6 +15,32 @@ Set:
 
 The startup script clears cached Laravel configuration before booting the app, which is important after changing Render environment variables such as `MAIL_MAILER`, `RESEND_API_KEY`, or `CSPAMS_MONITOR_MFA_DELIVERY_MODE`.
 
+### Production demo data cleanup
+
+Production should not recreate sample School Head accounts on every deploy. Keep demo seeding disabled:
+
+```env
+CSPAMS_SEED_DEMO_DATA=false
+```
+
+To purge the known seeded demo School Head accounts on Render Free Tier without shell access, set this for one deploy only:
+
+```env
+CSPAMS_PURGE_DEMO_DATA_ON_START=true
+```
+
+Redeploy, verify the logs include `Purging known seeded demo data...` and `Demo data purge completed.`, then immediately set it back to:
+
+```env
+CSPAMS_PURGE_DEMO_DATA_ON_START=false
+```
+
+The purge command deletes only `schoolhead1@cspams.local`, `schoolhead2@cspams.local`, and `schoolhead3@cspams.local` by default. It does not delete the monitor account. If shell access is available, the equivalent command is:
+
+```bash
+php artisan cspams:purge-demo-data --force
+```
+
 ### 1) Set correct URLs
 
 - `APP_URL` = backend base URL (e.g., `https://api.example.com`)

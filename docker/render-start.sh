@@ -8,6 +8,14 @@ echo "PWD: $(pwd)"
 echo "PORT: ${PORT:-10000}"
 echo "APP_ENV: ${APP_ENV:-not-set}"
 echo "----------------------------------------"
+
+is_truthy() {
+  case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+    1|true|yes|on) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 echo "[DEBUG] ls -la (current dir)"
 ls -la
 echo "----------------------------------------"
@@ -57,14 +65,30 @@ if ! php artisan migrate --force; then
   exit 1
 fi
 
-echo "[5/7] Seed required demo access data"
+echo "[5/7] Seed required roles and permissions"
 if ! php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force; then
   echo "FATAL: roles and permissions seeding failed"
   exit 1
 fi
-if ! php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force; then
-  echo "FATAL: demo data seeding failed"
-  exit 1
+
+if is_truthy "${CSPAMS_SEED_DEMO_DATA:-false}"; then
+  echo "Seeding demo data..."
+  if ! php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force; then
+    echo "FATAL: demo data seeding failed"
+    exit 1
+  fi
+else
+  echo "Demo data seeding disabled."
+fi
+
+if is_truthy "${CSPAMS_PURGE_DEMO_DATA_ON_START:-false}"; then
+  echo "Purging known seeded demo data..."
+  if ! php artisan cspams:purge-demo-data --force; then
+    echo "FATAL: demo data purge failed"
+    exit 1
+  fi
+else
+  echo "Demo data startup purge disabled."
 fi
 
 echo "[6/7] Rebuild caches (using file cache during startup)"

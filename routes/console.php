@@ -1,5 +1,7 @@
 <?php
 
+use App\Models\School;
+use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
@@ -201,6 +203,90 @@ Artisan::command('indicators:audit-school-head-data-integrity', function (): int
 
     return self::SUCCESS;
 })->purpose('Audit School Head ownership, submission, and package/file integrity anomalies.');
+
+Artisan::command('cspams:purge-demo-data {--force : Required to run the purge} {--with-schools : Also archive known demo school records}', function (): int {
+    if (! $this->option('force')) {
+        $this->error('Refusing to purge demo data without --force.');
+        $this->line('Run: php artisan cspams:purge-demo-data --force');
+        return self::FAILURE;
+    }
+
+    if (! Schema::hasTable('users') || ! Schema::hasTable('schools')) {
+        $this->error('Required tables are missing. Run migrations first.');
+        return self::FAILURE;
+    }
+
+    $demoSchoolHeadEmails = [
+        'schoolhead1@cspams.local',
+        'schoolhead2@cspams.local',
+        'schoolhead3@cspams.local',
+    ];
+    $demoSchoolCodes = [
+        '900001',
+        '900002',
+        '900003',
+    ];
+
+    $withSchools = (bool) $this->option('with-schools');
+
+    $result = DB::transaction(static function () use ($demoSchoolHeadEmails, $demoSchoolCodes, $withSchools): array {
+        $demoHeads = User::query()
+            ->whereIn('email', $demoSchoolHeadEmails)
+            ->get();
+
+        $demoHeadIds = $demoHeads
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->all();
+
+        $clearedSchoolSubmissions = $demoHeadIds === []
+            ? 0
+            : DB::table('schools')
+                ->whereIn('school_code', $demoSchoolCodes)
+                ->whereIn('submitted_by', $demoHeadIds)
+                ->update([
+                    'submitted_by' => null,
+                    'submitted_at' => null,
+                ]);
+
+        $deletedSchoolHeads = 0;
+        foreach ($demoHeads as $demoHead) {
+            $demoHead->syncRoles([]);
+            $demoHead->delete();
+            $deletedSchoolHeads++;
+        }
+
+        $archivedSchools = 0;
+        if ($withSchools) {
+            $schools = School::query()
+                ->whereIn('school_code', $demoSchoolCodes)
+                ->get();
+
+            foreach ($schools as $school) {
+                $school->delete();
+                $archivedSchools++;
+            }
+        }
+
+        return [
+            'deleted_school_head_users' => $deletedSchoolHeads,
+            'cleared_school_submission_references' => $clearedSchoolSubmissions,
+            'archived_demo_schools' => $archivedSchools,
+        ];
+    });
+
+    $this->info('Demo data purge completed.');
+    $this->line('  deleted_school_head_users: ' . $result['deleted_school_head_users']);
+    $this->line('  cleared_school_submission_references: ' . $result['cleared_school_submission_references']);
+    $this->line('  archived_demo_schools: ' . $result['archived_demo_schools']);
+    $this->line('  monitor_account_deleted: no');
+
+    if (! $withSchools) {
+        $this->line('Known demo schools were left in place. Use --with-schools to archive them.');
+    }
+
+    return self::SUCCESS;
+})->purpose('Purge known seeded demo School Head accounts without touching real production accounts.');
 
 Artisan::command('app:check-production-config', function (): int {
     try {

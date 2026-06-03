@@ -6,6 +6,13 @@ echo "Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "PORT: ${PORT:-10000}"
 echo "APP_ENV: ${APP_ENV:-not-set}"
 
+is_truthy() {
+    case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]')" in
+        1|true|yes|on) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 mkdir -p \
     storage/framework/cache \
     storage/framework/sessions \
@@ -25,9 +32,22 @@ CACHE_STORE=file php artisan optimize:clear || true
 echo "Ensuring database migrations are applied..."
 php artisan migrate --force
 
-echo "Seeding required demo access data..."
+echo "Seeding required roles and permissions..."
 php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
-php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force
+
+if is_truthy "${CSPAMS_SEED_DEMO_DATA:-false}"; then
+    echo "Seeding demo data..."
+    php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force
+else
+    echo "Demo data seeding disabled."
+fi
+
+if is_truthy "${CSPAMS_PURGE_DEMO_DATA_ON_START:-false}"; then
+    echo "Purging known seeded demo data..."
+    php artisan cspams:purge-demo-data --force
+else
+    echo "Demo data startup purge disabled."
+fi
 
 php artisan storage:link || true
 

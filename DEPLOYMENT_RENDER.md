@@ -28,6 +28,8 @@ MAIL_MAILER=resend
 MAIL_FROM_ADDRESS=onboarding@resend.dev
 MAIL_FROM_NAME=CSPAMS
 RESEND_API_KEY=<set in Render only>
+CSPAMS_SEED_DEMO_DATA=false
+CSPAMS_PURGE_DEMO_DATA_ON_START=false
 ```
 
 `onboarding@resend.dev` is only for limited Resend testing. For real recipients, use a verified Resend domain.
@@ -36,4 +38,8 @@ Real secrets must be set only in Render Environment Variables. Do not commit `.e
 
 ## Startup Behavior
 
-`scripts/render-start.sh` runs every time the container starts. It clears Laravel cached configuration, runs migrations and required seeders, checks mail delivery configuration, and launches the PHP server.
+`scripts/render-start.sh` runs every time the container starts. It clears Laravel cached configuration, runs migrations, seeds required roles and permissions, checks mail delivery configuration, and launches the PHP server.
+
+Demo data seeding is opt-in. Keep `CSPAMS_SEED_DEMO_DATA=false` in production so deploys do not recreate `schoolhead1@cspams.local`, `schoolhead2@cspams.local`, or `schoolhead3@cspams.local`.
+
+For a one-time Render Free Tier purge, set `CSPAMS_PURGE_DEMO_DATA_ON_START=true`, redeploy, verify logs show `Demo data purge completed.`, then set it back to `false`.
