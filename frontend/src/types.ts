@@ -122,6 +122,7 @@ export interface SchoolHeadPasswordResetLinkResult {
   expiresAt: string;
   delivery: "queued" | "sent" | "failed" | string;
   deliveryMessage: string;
+  deliveryFailureCategory?: string | null;
   enforced: boolean;
   message: string;
 }

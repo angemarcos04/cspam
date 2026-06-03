@@ -208,6 +208,8 @@ RESEND_API_KEY=<secret>
 
 `onboarding@resend.dev` is only for limited Resend testing and can send only to the email address allowed by your Resend account. Production sending should use a verified Resend domain. Keep real secrets only in Render environment variables.
 
+School Head password reset links use the same real mailer configuration. The monitor dashboard sends those reset links to the School Head account's current saved email address, so update the School Head email first if ownership changes, then issue the reset link. If `MAIL_MAILER=resend` uses `onboarding@resend.dev`, Resend can reject arbitrary School Head recipients with a testing-domain restriction; use a verified Resend domain sender for real schools.
+
 Blank or delete:
 
 ```env

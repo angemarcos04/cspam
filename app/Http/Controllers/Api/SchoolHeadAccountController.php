@@ -34,6 +34,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -957,7 +958,7 @@ class SchoolHeadAccountController extends Controller
 
         if (! in_array($status, [AccountStatus::ACTIVE, AccountStatus::LOCKED], true)) {
             return response()->json(
-                ['message' => 'Password reset links can only be issued for active School Head accounts.'],
+                ['message' => 'Password reset links can only be issued for active or locked School Head accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -992,13 +993,38 @@ class SchoolHeadAccountController extends Controller
 
         $token = Password::broker()->createToken($account);
         $resetUrl = $this->buildPasswordResetUrl((string) $account->email, $token);
+        $deliveryFailureCategory = null;
 
         try {
+            Log::info('School Head password reset email send starting.', [
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'target_user_id' => (string) $account->id,
+                'target_email' => MailDelivery::maskEmail((string) $account->email),
+                'target_email_domain' => MailDelivery::emailDomain((string) $account->email),
+                'mailer' => MailDelivery::currentMailer(),
+                'from_address' => MailDelivery::maskEmail((string) config('mail.from.address', '')),
+            ]);
+
             $account->notify(new SchoolHeadPasswordResetNotification($resetUrl, $expiresAt));
         } catch (\Throwable $exception) {
             report($exception);
+            $deliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = 'Password reset email delivery failed. Ask the School Head to retry forgot-password or contact an administrator.';
+            $deliveryMessage = MailDelivery::deliveryFailureMessage($deliveryFailureCategory);
+            $this->deletePasswordResetToken($account);
+
+            Log::warning('School Head password reset email send failed.', [
+                'school_id' => (string) $school->id,
+                'school_code' => (string) $school->school_code,
+                'target_user_id' => (string) $account->id,
+                'target_email' => MailDelivery::maskEmail((string) $account->email),
+                'target_email_domain' => MailDelivery::emailDomain((string) $account->email),
+                'mailer' => MailDelivery::currentMailer(),
+                'from_address' => MailDelivery::maskEmail((string) config('mail.from.address', '')),
+                'delivery_failure_category' => $deliveryFailureCategory,
+                'exception_class' => $exception::class,
+            ]);
         }
 
         $enforced = false;
@@ -1035,6 +1061,7 @@ class SchoolHeadAccountController extends Controller
                 'reason' => $reason,
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
+                'delivery_failure_category' => $deliveryFailureCategory,
                 'expires_at' => $expiresAt->toISOString(),
                 'enforced' => $enforced,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
@@ -1059,6 +1086,7 @@ class SchoolHeadAccountController extends Controller
                 'expiresAt' => $expiresAt->toISOString(),
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
+                'deliveryFailureCategory' => $deliveryFailureCategory,
                 'enforced' => $enforced,
                 'message' => $deliveryStatus === 'failed'
                     ? 'Password reset email delivery failed.'
@@ -1527,6 +1555,20 @@ class SchoolHeadAccountController extends Controller
         if ($this->accountSetupTokensAvailable()) {
             $account->load('latestAccountSetupToken');
         }
+    }
+
+    private function deletePasswordResetToken(User $account): void
+    {
+        $table = (string) config('auth.passwords.users.table', 'password_reset_tokens');
+        $email = strtolower(trim((string) $account->email));
+
+        if ($table === '' || $email === '') {
+            return;
+        }
+
+        DB::table($table)
+            ->where('email', $email)
+            ->delete();
     }
 
     private function buildPasswordResetUrl(string $email, string $token): string

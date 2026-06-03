@@ -14,6 +14,7 @@ use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -375,6 +376,80 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
         $this->assertTrue((bool) $schoolHead->must_reset_password);
+    }
+
+    public function test_password_reset_link_delivery_failure_does_not_enforce_reset_or_leave_token(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+        config()->set('mail.default', 'resend');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+            public function send($notifiables, $notification): void
+            {
+            }
+
+            public function sendNow($notifiables, $notification, ?array $channels = null): void
+            {
+            }
+        });
+
+        $resetCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'password_reset',
+            ],
+        );
+
+        $resetCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $resetChallengeId = (string) $resetCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $resetChallengeId);
+
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+            public function send($notifiables, $notification): void
+            {
+                throw new \RuntimeException('403 testing domain restriction: verify a domain before sending to other recipients');
+            }
+
+            public function sendNow($notifiables, $notification, ?array $channels = null): void
+            {
+                $this->send($notifiables, $notification);
+            }
+        });
+
+        $resetLink = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/password-reset-link",
+            [
+                'reason' => 'Password reset requested by the school head.',
+                'verificationChallengeId' => $resetChallengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $resetLink->assertOk()
+            ->assertJsonPath('data.delivery', 'failed')
+            ->assertJsonPath('data.deliveryFailureCategory', 'resend_domain_restricted')
+            ->assertJsonPath('data.enforced', false)
+            ->assertJsonPath('data.account.mustResetPassword', false);
+
+        $schoolHead->refresh();
+        $this->assertFalse((bool) $schoolHead->must_reset_password);
+        $this->assertDatabaseMissing('password_reset_tokens', [
+            'email' => $schoolHead->email,
+        ]);
     }
 
     public function test_reissuing_setup_link_returns_service_unavailable_when_account_setup_token_storage_is_missing(): void
@@ -1627,4 +1702,3 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead->forceFill(['account_type' => null])->save();
     }
 }
-

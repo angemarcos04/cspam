@@ -32,7 +32,7 @@ CSPAMS_SEED_DEMO_DATA=false
 CSPAMS_PURGE_DEMO_DATA_ON_START=false
 ```
 
-`onboarding@resend.dev` is only for limited Resend testing. For real recipients, use a verified Resend domain.
+`onboarding@resend.dev` is only for limited Resend testing. For real recipients, including School Head password reset links sent from the monitor dashboard, use a verified Resend domain. Password reset links are sent to the School Head account's current saved email address, so update the account email first before issuing a reset link after an ownership change.
 
 Real secrets must be set only in Render Environment Variables. Do not commit `.env` or API keys.
 
