@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildMonitorDrawerYearDetail,
   deriveAvailableMonitorSchoolDetailYears,
+  deriveVisibleMonitorSchoolYearWindow,
+  resolveMonitorSchoolDetailYearSelection,
 } from "@/pages/monitor/monitorSchoolDetailYear";
 import { buildMonitorDrawerHistorySummary } from "@/pages/monitor/monitorSchoolDetailHistory";
 import {
@@ -13,6 +15,10 @@ import {
   buildMonitorSchoolDetailAlerts,
   buildMonitorSchoolDetailSnapshot,
 } from "@/pages/monitor/monitorSchoolDetailAlerts";
+
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 describe("buildMonitorDrawerYearDetail", () => {
   it("builds a simple public selected-year checklist and keeps finalized report truth year-scoped", () => {
@@ -228,11 +234,37 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-002" && item.statusLabel === "Missing")).toBe(true);
   });
 
-  it("keeps a five-year academic-year window even when a school has no submissions", () => {
+  it("keeps the initial five-year academic-year FIFO window in ascending order", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
+
     const years = deriveAvailableMonitorSchoolDetailYears([]);
 
-    expect(years).toHaveLength(5);
-    expect(years.every((year) => /^\d{4}-\d{4}$/.test(year))).toBe(true);
+    expect(years).toEqual([
+      "2025-2026",
+      "2026-2027",
+      "2027-2028",
+      "2028-2029",
+      "2029-2030",
+    ]);
+  });
+
+  it("rolls the five-year academic-year window forward after the sixth year enters", () => {
+    expect(deriveVisibleMonitorSchoolYearWindow(new Date("2030-06-15T00:00:00.000Z"))).toEqual([
+      "2026-2027",
+      "2027-2028",
+      "2028-2029",
+      "2029-2030",
+      "2030-2031",
+    ]);
+  });
+
+  it("keeps selected-year fallback inside the visible monitor academic-year window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
+
+    expect(resolveMonitorSchoolDetailYearSelection([], "2027-2028").effectiveSelectedYear).toBe("2027-2028");
+    expect(resolveMonitorSchoolDetailYearSelection([], "2030-2031").effectiveSelectedYear).toBe("2026-2027");
   });
 });
 

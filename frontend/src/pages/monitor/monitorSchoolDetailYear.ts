@@ -14,7 +14,6 @@ import {
   SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL,
   deriveSchoolYearLabel,
   indicatorCategoryLabel,
-  sortSchoolYears,
   schoolYearStartValue,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
@@ -70,8 +69,11 @@ function currentSchoolYearStart(now: Date = new Date()): number {
 }
 
 function buildFallbackSchoolYears(now: Date = new Date()): string[] {
-  const windowEndYear = Math.max(BASE_SCHOOL_YEAR_START + SCHOOL_YEAR_WINDOW_SIZE - 1, currentSchoolYearStart(now));
-  const windowStartYear = windowEndYear - (SCHOOL_YEAR_WINDOW_SIZE - 1);
+  const currentStart = currentSchoolYearStart(now);
+  const initialWindowEnd = BASE_SCHOOL_YEAR_START + SCHOOL_YEAR_WINDOW_SIZE - 1;
+  const windowStartYear = currentStart > initialWindowEnd
+    ? currentStart - (SCHOOL_YEAR_WINDOW_SIZE - 1)
+    : BASE_SCHOOL_YEAR_START;
 
   return Array.from({ length: SCHOOL_YEAR_WINDOW_SIZE }, (_, offset) => {
     const fromYear = windowStartYear + offset;
@@ -79,28 +81,8 @@ function buildFallbackSchoolYears(now: Date = new Date()): string[] {
   });
 }
 
-function buildVisibleMonitorSchoolYearWindow(years: Iterable<string>, now: Date = new Date()): string[] {
-  const fallbackYears = buildFallbackSchoolYears(now);
-  const mergedYears = sortSchoolYears([...Array.from(years), ...fallbackYears]).filter((year) => {
-    const start = schoolYearStartValue(year);
-    return start !== null && start >= BASE_SCHOOL_YEAR_START;
-  });
-  const latestFive = mergedYears.slice(-SCHOOL_YEAR_WINDOW_SIZE);
-
-  if (latestFive.length === SCHOOL_YEAR_WINDOW_SIZE) {
-    return latestFive;
-  }
-
-  const latestStart =
-    schoolYearStartValue(latestFive[latestFive.length - 1] ?? "")
-    ?? schoolYearStartValue(fallbackYears[fallbackYears.length - 1] ?? "")
-    ?? currentSchoolYearStart(now);
-  const windowStart = latestStart - (SCHOOL_YEAR_WINDOW_SIZE - 1);
-
-  return Array.from({ length: SCHOOL_YEAR_WINDOW_SIZE }, (_, offset) => {
-    const fromYear = windowStart + offset;
-    return `${fromYear}-${fromYear + 1}`;
-  });
+export function deriveVisibleMonitorSchoolYearWindow(now: Date = new Date()): string[] {
+  return buildFallbackSchoolYears(now);
 }
 
 function buildMonitorChecklistSectionItems(
@@ -252,9 +234,8 @@ export function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSub
 }
 
 export function deriveAvailableMonitorSchoolDetailYears(submissions: IndicatorSubmission[]): string[] {
-  return buildVisibleMonitorSchoolYearWindow(
-    submissions.map((submission) => resolveMonitorSubmissionSchoolYearLabel(submission)),
-  ).reverse();
+  void submissions;
+  return deriveVisibleMonitorSchoolYearWindow();
 }
 
 export interface MonitorSchoolDetailYearSelection {
@@ -270,8 +251,11 @@ export function resolveMonitorSchoolDetailYearSelection(
   selectedSchoolDrawerYear: string | null,
 ): MonitorSchoolDetailYearSelection {
   const availableYears = deriveAvailableMonitorSchoolDetailYears(submissions);
+  const currentYearLabel = deriveSchoolYearLabel(new Date().toISOString());
   const effectiveSelectedYear = selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)
     ? selectedSchoolDrawerYear
+    : availableYears.includes(currentYearLabel)
+      ? currentYearLabel
     : availableYears[0] ?? null;
   const selectedYearSubmissions = effectiveSelectedYear
     ? submissions.filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === effectiveSelectedYear)
