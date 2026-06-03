@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, GraduationCap, ClipboardList, ArrowRight } from "lucide-react";
+import { AuthPoweredByFooter } from "@/components/AuthPoweredByFooter";
 import { useAuth } from "@/context/Auth";
 import { getApiBaseUrl, isApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
@@ -560,10 +561,7 @@ export function Login() {
             </form>
             </section>
           </div>
-          <div className="mt-6 flex flex-col items-center justify-center gap-1.5 text-center sm:mt-7 sm:flex-row sm:gap-3">
-            <span className="text-sm text-slate-600">Powered by:</span>
-            <img src="/ama-cc-logo.png" alt="AMA Computer College logo" className="h-auto w-24 sm:w-28 md:w-32" />
-          </div>
+          <AuthPoweredByFooter />
         </div>
       </div>
     </div>
