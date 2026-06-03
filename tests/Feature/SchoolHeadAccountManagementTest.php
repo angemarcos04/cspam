@@ -882,6 +882,88 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
     }
 
+    public function test_active_school_head_email_change_surfaces_setup_link_delivery_failure(): void
+    {
+        $this->seed();
+        config()->set('auth_mfa.monitor.test_code', '123456');
+        config()->set('mail.default', 'resend');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+            public function send($notifiables, $notification): void
+            {
+            }
+
+            public function sendNow($notifiables, $notification, ?array $channels = null): void
+            {
+            }
+        });
+
+        $verificationCodeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => 'email_change',
+            ],
+        );
+
+        $verificationCodeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+        $challengeId = (string) $verificationCodeIssue->json('data.challengeId');
+        $this->assertNotSame('', $challengeId);
+
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+            public function send($notifiables, $notification): void
+            {
+                throw new \RuntimeException('403 testing domain restriction: verify a domain before sending to other recipients');
+            }
+
+            public function sendNow($notifiables, $notification, ?array $channels = null): void
+            {
+                $this->send($notifiables, $notification);
+            }
+        });
+
+        $emailChange = $this->withToken($monitorToken)->putJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/profile",
+            [
+                'name' => $schoolHead->name,
+                'email' => 'delivery.failed.schoolhead@cspams.local',
+                'reason' => 'School Head email ownership changed.',
+                'verificationChallengeId' => $challengeId,
+                'verificationCode' => '123456',
+            ],
+        );
+
+        $emailChange->assertOk()
+            ->assertJsonPath('data.message', 'School Head account email updated, but setup link email delivery failed.')
+            ->assertJsonPath('data.account.email', 'delivery.failed.schoolhead@cspams.local')
+            ->assertJsonPath('data.account.accountStatus', AccountStatus::PENDING_SETUP->value)
+            ->assertJsonPath('data.delivery', 'failed')
+            ->assertJsonPath('data.deliveryFailureCategory', 'resend_domain_restricted');
+
+        $this->assertStringContainsString(
+            'Setup link email was rejected by Resend',
+            (string) $emailChange->json('data.deliveryMessage'),
+        );
+
+        $schoolHead->refresh();
+        $this->assertSame('delivery.failed.schoolhead@cspams.local', $schoolHead->email);
+        $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
+        $this->assertTrue((bool) $schoolHead->must_reset_password);
+        $this->assertSame(1, AccountSetupToken::query()->where('user_id', $schoolHead->id)->count());
+    }
+
     public function test_locked_school_head_email_change_forces_password_reset_and_blocks_old_credentials_after_reactivation(): void
     {
         $this->seed();

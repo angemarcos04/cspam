@@ -147,6 +147,7 @@ export interface SchoolHeadAccountProfileUpsertResult {
   expiresAt?: string | null;
   delivery?: "queued" | "sent" | "failed" | string | null;
   deliveryMessage?: string | null;
+  deliveryFailureCategory?: string | null;
 }
 
 export interface SchoolHeadAccountRemovalResult {

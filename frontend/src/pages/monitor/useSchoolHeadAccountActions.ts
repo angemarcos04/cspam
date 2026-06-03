@@ -99,6 +99,7 @@ export interface SchoolHeadAccountActionsApi {
   pendingAccountAction: PendingAccountAction | null;
   pendingAccountReason: string;
   pendingAccountReasonError: string;
+  pendingReasonTooShort: boolean;
   pendingAccountVerificationChallenge: SchoolHeadAccountActionVerificationCodeResult | null;
   pendingAccountVerificationCode: string;
   pendingAccountVerificationError: string;
@@ -231,7 +232,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
     return `Reason and confirmation code required to generate a new temporary password for ${action.schoolName}.`;
   }
 
-  return `Reason and confirmation code required to change the School Head email for ${action.schoolName}.`;
+  return `Enter a reason and the 6-digit code sent to your monitor email to change the School Head email for ${action.schoolName}.`;
 }
 
 function announceSchoolHeadAccountDelivery(
@@ -623,6 +624,10 @@ export function useSchoolHeadAccountActions({
         verificationCode: code,
       });
       pushToast(result.message || `School Head account saved for ${pendingAccountAction.schoolName}.`, "success");
+      const deliveryMessage = result.deliveryMessage?.trim();
+      if (deliveryMessage) {
+        pushToast(deliveryMessage, String(result.delivery ?? "").toLowerCase() === "failed" ? "warning" : "info");
+      }
       setEditingSchoolHeadAccountSchoolId(null);
       closePendingAccountAction();
     } catch (err) {
@@ -794,10 +799,11 @@ export function useSchoolHeadAccountActions({
   );
 
   const pendingActionRequiresVerification = requiresVerification(pendingAccountAction);
+  const pendingReasonTooShort = requiresReason(pendingAccountAction) && pendingAccountReason.trim().length < 5;
   const isConfirmPendingAccountActionDisabled = Boolean(
     isSaving
     || isPendingAccountVerificationSending
-    || (requiresReason(pendingAccountAction) && pendingAccountReason.trim().length < 5)
+    || pendingReasonTooShort
     || (pendingAccountAction?.kind === "remove" && pendingRemoveCountdownSeconds > 0)
     || (
       pendingActionRequiresVerification
@@ -818,6 +824,7 @@ export function useSchoolHeadAccountActions({
     pendingAccountAction,
     pendingAccountReason,
     pendingAccountReasonError,
+    pendingReasonTooShort,
     pendingAccountVerificationChallenge,
     pendingAccountVerificationCode,
     pendingAccountVerificationError,

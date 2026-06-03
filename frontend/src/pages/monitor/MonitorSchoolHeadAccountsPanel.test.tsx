@@ -1,4 +1,4 @@
-import { act, fireEvent, render, renderHook, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from "@testing-library/react";
 import { useState, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -21,6 +21,7 @@ function buildActions(): SchoolHeadAccountActionsApi {
     pendingAccountAction: null,
     pendingAccountReason: "",
     pendingAccountReasonError: "",
+    pendingReasonTooShort: false,
     pendingAccountVerificationChallenge: null,
     pendingAccountVerificationCode: "",
     pendingAccountVerificationError: "",
@@ -1112,6 +1113,122 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     expect(result.current.pendingActionDescription).toBe("");
     expect(result.current.pendingActionRequiresVerification).toBe(false);
+  });
+
+  it("keeps email-change confirmation disabled while the reason is missing", () => {
+    const { result } = renderHook(() =>
+      useSchoolHeadAccountActions({
+        isPanelOpen: true,
+        isSaving: false,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: vi.fn() as any,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: vi.fn() as any,
+        removeSchoolHeadAccount: vi.fn() as any,
+      }),
+    );
+
+    act(() => {
+      result.current.openPendingAccountAction({
+        kind: "email_change",
+        schoolId: "school-12",
+        schoolName: "AMA Computer College - Santiago",
+        actionLabel: "Confirm Email Change",
+        payload: {
+          name: "School Head",
+          email: "new.schoolhead@example.com",
+        },
+      });
+    });
+
+    expect(result.current.pendingActionDescription).toContain("Enter a reason and the 6-digit code");
+    expect(result.current.pendingReasonTooShort).toBe(true);
+    expect(result.current.isConfirmPendingAccountActionDisabled).toBe(true);
+  });
+
+  it("submits email-change confirmation with reason, challenge, and code", async () => {
+    const issueVerification = vi.fn().mockResolvedValue({
+      challengeId: "2acb2c69-26f4-4590-9b68-177b0a3f72d6",
+      expiresAt: "2026-06-03T08:00:00.000Z",
+      delivery: "sent",
+      deliveryMessage: "Confirmation code sent.",
+    });
+    const upsertProfile = vi.fn().mockResolvedValue({
+      account: {
+        id: "user-1",
+        name: "School Head",
+        email: "new.schoolhead@example.com",
+        emailVerifiedAt: null,
+        lastLoginAt: null,
+        accountStatus: "pending_setup",
+        mustResetPassword: true,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+        setupLinkExpiresAt: null,
+      },
+      message: "School Head account updated. Setup link reissued for email verification.",
+      delivery: "sent",
+      deliveryMessage: "Setup link sent to the School Head email.",
+    });
+
+    const { result } = renderHook(() =>
+      useSchoolHeadAccountActions({
+        isPanelOpen: true,
+        isSaving: false,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: issueVerification,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: upsertProfile,
+        removeSchoolHeadAccount: vi.fn() as any,
+      }),
+    );
+
+    act(() => {
+      result.current.openPendingAccountAction({
+        kind: "email_change",
+        schoolId: "school-12",
+        schoolName: "AMA Computer College - Santiago",
+        actionLabel: "Confirm Email Change",
+        payload: {
+          name: "School Head",
+          email: "new.schoolhead@example.com",
+        },
+      });
+    });
+
+    await act(async () => {
+      await result.current.sendPendingAccountVerificationCode();
+    });
+    act(() => {
+      result.current.updatePendingAccountReason("Email owner changed.");
+      result.current.updatePendingVerificationCode("927523");
+    });
+
+    await waitFor(() => expect(result.current.isConfirmPendingAccountActionDisabled).toBe(false));
+
+    await act(async () => {
+      await result.current.confirmPendingAccountAction();
+    });
+
+    expect(upsertProfile).toHaveBeenCalledWith("school-12", {
+      name: "School Head",
+      email: "new.schoolhead@example.com",
+      reason: "Email owner changed.",
+      verificationChallengeId: "2acb2c69-26f4-4590-9b68-177b0a3f72d6",
+      verificationCode: "927523",
+    });
   });
 
   it("does not render confirmation-code controls for remove-account-and-school while keeping note input hidden", () => {

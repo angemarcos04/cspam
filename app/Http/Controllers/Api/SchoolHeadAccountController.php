@@ -219,6 +219,7 @@ class SchoolHeadAccountController extends Controller
             $setupLinkExpiresAt = null;
             $deliveryStatus = null;
             $deliveryMessage = null;
+            $deliveryFailureCategory = null;
 
             if ($reissueAllowed) {
                 $issuedSetup = $this->schoolHeadAccountSetupService->issue(
@@ -238,6 +239,16 @@ class SchoolHeadAccountController extends Controller
                 }
 
                 try {
+                    Log::info('School Head email-change setup link send starting.', [
+                        'school_id' => (string) $school->id,
+                        'school_code' => (string) $school->school_code,
+                        'target_user_id' => (string) $account->id,
+                        'target_email' => MailDelivery::maskEmail((string) $account->email),
+                        'target_email_domain' => MailDelivery::emailDomain((string) $account->email),
+                        'mailer' => MailDelivery::currentMailer(),
+                        'from_address' => MailDelivery::maskEmail((string) config('mail.from.address', '')),
+                    ]);
+
                     $account->notify(
                         new SchoolHeadAccountSetupNotification(
                             $school,
@@ -247,8 +258,21 @@ class SchoolHeadAccountController extends Controller
                     );
                 } catch (\Throwable $exception) {
                     report($exception);
+                    $deliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
                     $deliveryStatus = 'failed';
-                    $deliveryMessage = 'Setup link email delivery failed. Please try again or contact an administrator.';
+                    $deliveryMessage = MailDelivery::deliveryFailureMessage($deliveryFailureCategory, 'Setup link email');
+
+                    Log::warning('School Head email-change setup link send failed.', [
+                        'school_id' => (string) $school->id,
+                        'school_code' => (string) $school->school_code,
+                        'target_user_id' => (string) $account->id,
+                        'target_email' => MailDelivery::maskEmail((string) $account->email),
+                        'target_email_domain' => MailDelivery::emailDomain((string) $account->email),
+                        'mailer' => MailDelivery::currentMailer(),
+                        'from_address' => MailDelivery::maskEmail((string) config('mail.from.address', '')),
+                        'delivery_failure_category' => $deliveryFailureCategory,
+                        'exception_class' => $exception::class,
+                    ]);
                 }
             }
 
@@ -275,6 +299,7 @@ class SchoolHeadAccountController extends Controller
                     'setup_link_expires_at' => $setupLinkExpiresAt,
                     'delivery_status' => $deliveryStatus,
                     'delivery_message' => $deliveryMessage,
+                    'delivery_failure_category' => $deliveryFailureCategory,
                     'reason' => $emailChanged ? $reason : null,
                     'account_status' => $account->accountStatus()->value,
                     'revoked_tokens' => $revocationSummary['revokedTokens'],
@@ -299,12 +324,15 @@ class SchoolHeadAccountController extends Controller
                 'account' => $this->serializeSchoolHeadAccount($account),
                 'message' => $emailChanged
                     ? ($reissueAllowed
-                        ? 'School Head account updated. Setup link reissued for email verification.'
+                        ? ($deliveryStatus === 'failed'
+                            ? 'School Head account email updated, but setup link email delivery failed.'
+                            : 'School Head account updated. Setup link reissued for email verification.')
                         : 'School Head account updated. Setup link was not reissued for inactive accounts.')
                     : 'School Head account updated.',
                 'expiresAt' => $setupLinkExpiresAt,
                 'delivery' => $deliveryStatus,
                 'deliveryMessage' => $deliveryMessage,
+                'deliveryFailureCategory' => $deliveryFailureCategory,
             ],
         ]);
         }

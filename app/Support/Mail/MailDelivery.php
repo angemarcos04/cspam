@@ -90,13 +90,13 @@ final class MailDelivery
         return 'unknown_mail_failure';
     }
 
-    public static function deliveryFailureMessage(string $category): string
+    public static function deliveryFailureMessage(string $category, string $subject = 'Password reset email'): string
     {
         return match ($category) {
-            'mailer_not_configured' => 'Password reset email was not sent because real mail delivery is not configured. Set MAIL_MAILER=resend and RESEND_API_KEY in Render.',
-            'resend_domain_restricted' => 'Password reset email was rejected by Resend. The onboarding@resend.dev sender is only for limited testing; verify a Resend domain before sending to arbitrary School Head emails.',
-            'transport_failed' => 'Password reset email delivery failed because the mail transport could not connect or complete the send. Check Render mail environment variables and provider status.',
-            default => 'Password reset email delivery failed. Check Render logs for the mail provider error and try again.',
+            'mailer_not_configured' => "{$subject} was not sent because real mail delivery is not configured. Set MAIL_MAILER=resend and RESEND_API_KEY in Render.",
+            'resend_domain_restricted' => "{$subject} was rejected by Resend. The onboarding@resend.dev sender is only for limited testing; verify a Resend domain before sending to arbitrary School Head emails.",
+            'transport_failed' => "{$subject} delivery failed because the mail transport could not connect or complete the send. Check Render mail environment variables and provider status.",
+            default => "{$subject} delivery failed. Check Render logs for the mail provider error and try again.",
         };
     }
 }

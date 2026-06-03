@@ -770,6 +770,11 @@ export function MonitorSchoolHeadAccountsPanel({
                     {actions.pendingAccountReasonError}
                   </p>
                 )}
+                {!actions.pendingAccountReasonError && actions.pendingReasonTooShort && actions.pendingAccountAction.kind !== "activate" && (
+                  <p className="mt-2 rounded-sm border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
+                    Please provide a reason with at least 5 characters.
+                  </p>
+                )}
               </div>
             ) : null}
 
@@ -778,7 +783,7 @@ export function MonitorSchoolHeadAccountsPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Confirmation Code</p>
-                    <p className="mt-1 text-xs text-amber-700">Send a 6-digit code to your monitor email to confirm this action.</p>
+                    <p className="mt-1 text-xs text-amber-700">Enter a reason and the 6-digit code sent to your monitor email.</p>
                   </div>
                   <button
                     type="button"
