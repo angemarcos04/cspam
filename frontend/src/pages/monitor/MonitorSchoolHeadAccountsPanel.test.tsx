@@ -340,16 +340,26 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(within(pendingRow!).getByText("Setup link")).not.toBeNull();
 
     fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
-    expect(screen.queryByRole("button", { name: "Archive" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Send Password Reset Link" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Archive account" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Send password reset link" })).toBeNull();
     fireEvent.click(within(pendingRow!).getByRole("button", { name: "More actions" }));
 
     fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
-    expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
+    expect(screen.getByText("Account Access")).not.toBeNull();
+    expect(screen.getByText("Account Status")).not.toBeNull();
+    expect(screen.getAllByText("School Record").length).toBeGreaterThan(0);
+    expect(screen.getByText("Danger Zone")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send password reset link" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Regenerate temporary password" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Suspend account" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Lock account" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Archive account" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Flag school record" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Flag account" })).not.toBeNull();
     fireEvent.click(within(activeRow!).getByRole("button", { name: "More actions" }));
 
     fireEvent.click(within(lockedRow!).getByRole("button", { name: "More actions" }));
-    expect(screen.getByRole("button", { name: "Send Password Reset Link" })).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send password reset link" })).not.toBeNull();
   });
 
   it("keeps remove-account-and-school reachable for lower active rows by opening their menus upward", () => {

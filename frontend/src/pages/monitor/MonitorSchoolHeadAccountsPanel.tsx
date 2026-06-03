@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import type { ReactElement, ReactNode } from "react";
 import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
@@ -167,6 +168,40 @@ function shouldShowResetLinkAction(status: string | null | undefined): boolean {
 
 function shouldOpenAccountMenuUpward(rowIndex: number, rowCount: number): boolean {
   return rowCount > 3 && rowIndex >= rowCount - 3;
+}
+
+function AccountActionMenuSection({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}): ReactElement | null {
+  const items = Array.isArray(children) ? children.filter(Boolean) : children;
+  if (Array.isArray(items) && items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="border-t border-slate-100 first:border-t-0">
+      <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <div className="pb-1">{items}</div>
+    </div>
+  );
+}
+
+function accountMenuButtonClass(tone: "default" | "warning" | "danger" = "default"): string {
+  const base = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70";
+
+  if (tone === "danger") {
+    return `${base} text-rose-700 hover:bg-rose-50 focus:bg-rose-50`;
+  }
+
+  if (tone === "warning") {
+    return `${base} text-amber-800 hover:bg-amber-50 focus:bg-amber-50`;
+  }
+
+  return `${base} text-slate-700 hover:bg-slate-50 focus:bg-slate-50`;
 }
 
 export function MonitorSchoolHeadAccountsPanel({
@@ -516,189 +551,202 @@ export function MonitorSchoolHeadAccountsPanel({
                                 >
                                   {account ? (
                                     <>
-                                    {shouldShowResetLinkAction(account.accountStatus) && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
-                                        Send Password Reset Link
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus === "pending_verification" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.openPendingAccountAction({
-                                            kind: "activate",
-                                            schoolId: resolvedRecord.id,
-                                            schoolName: resolvedRecord.schoolName,
-                                            actionLabel: "Activate account",
-                                          })
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                                        Activate
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus !== "active" &&
-                                      normalizedAccountStatus !== "pending_setup" &&
-                                      normalizedAccountStatus !== "pending_verification" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "active" },
-                                            "Reactivate account",
-                                          )
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                                        Reactivate
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus === "active" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.openPendingAccountAction({
-                                            kind: "temporary_password",
-                                            schoolId: resolvedRecord.id,
-                                            schoolName: resolvedRecord.schoolName,
-                                            actionLabel: "Regenerate Temporary Password",
-                                          })
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
-                                        Regenerate Temp Password
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus === "active" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "suspended" },
-                                            "Suspend account",
-                                          )
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                                        Suspend
-                                      </button>
-                                    )}
-                                    {normalizedAccountStatus === "active" && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "locked" },
-                                            "Lock account",
-                                          )
-                                        }
-                                        disabled={isRowSaving || isSaving}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <ShieldCheck className="h-3.5 w-3.5 text-rose-600" />
-                                        Lock
-                                      </button>
-                                    )}
-                                    {shouldShowArchiveAction(account.accountStatus) && (
-                                      <button
-                                        type="button"
-                                        onClick={() =>
-                                          actions.handleUpdateSchoolHeadAccount(
-                                            resolvedRecord,
-                                            { accountStatus: "archived" },
-                                            "Archive account",
-                                          )
-                                        }
-                                        disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
-                                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                      >
-                                        <Trash2 className="h-3.5 w-3.5 text-slate-600" />
-                                        Archive
-                                      </button>
-                                    )}
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        actions.openPendingAccountAction({
-                                          kind: "remove",
-                                          schoolId: resolvedRecord.id,
-                                          schoolName: resolvedRecord.schoolName,
-                                          actionLabel: "Remove account and school",
-                                        })
-                                      }
-                                      disabled={isRowSaving || isSaving}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                      Remove account and school
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
-                                      disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                      Archive school record
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        actions.handleUpdateSchoolHeadAccount(
-                                          resolvedRecord,
-                                          { deleteRecordFlagged: !account.deleteRecordFlagged },
-                                          account.deleteRecordFlagged ? "Remove delete record flag" : "Flag school record",
-                                        )
-                                      }
-                                      disabled={isRowSaving || isSaving}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <Database className="h-3.5 w-3.5 text-rose-700" />
-                                      {account.deleteRecordFlagged ? "Undo Delete Flag" : "Flag School Record"}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() =>
-                                        actions.handleUpdateSchoolHeadAccount(
-                                          resolvedRecord,
-                                          { flagged: !account.flagged },
-                                          account.flagged ? "Unflag account" : "Flag account",
-                                        )
-                                      }
-                                      disabled={isRowSaving || isSaving}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                                      {account.flagged ? "Unflag" : "Flag"}
-                                    </button>
+                                      <AccountActionMenuSection label="Account Access">
+                                        {shouldShowResetLinkAction(account.accountStatus) && (
+                                          <button
+                                            type="button"
+                                            onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
+                                            disabled={isRowSaving || isSaving}
+                                            className={accountMenuButtonClass()}
+                                          >
+                                            <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
+                                            Send password reset link
+                                          </button>
+                                        )}
+                                        {normalizedAccountStatus === "active" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              actions.openPendingAccountAction({
+                                                kind: "temporary_password",
+                                                schoolId: resolvedRecord.id,
+                                                schoolName: resolvedRecord.schoolName,
+                                                actionLabel: "Regenerate Temporary Password",
+                                              })
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className={accountMenuButtonClass()}
+                                          >
+                                            <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
+                                            Regenerate temporary password
+                                          </button>
+                                        )}
+                                      </AccountActionMenuSection>
+
+                                      <AccountActionMenuSection label="Account Status">
+                                        {normalizedAccountStatus === "pending_verification" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              actions.openPendingAccountAction({
+                                                kind: "activate",
+                                                schoolId: resolvedRecord.id,
+                                                schoolName: resolvedRecord.schoolName,
+                                                actionLabel: "Activate account",
+                                              })
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className={accountMenuButtonClass()}
+                                          >
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
+                                            Activate
+                                          </button>
+                                        )}
+                                        {normalizedAccountStatus !== "active" &&
+                                          normalizedAccountStatus !== "pending_setup" &&
+                                          normalizedAccountStatus !== "pending_verification" && (
+                                            <button
+                                              type="button"
+                                              onClick={() =>
+                                                actions.handleUpdateSchoolHeadAccount(
+                                                  resolvedRecord,
+                                                  { accountStatus: "active" },
+                                                  "Reactivate account",
+                                                )
+                                              }
+                                              disabled={isRowSaving || isSaving}
+                                              className={accountMenuButtonClass()}
+                                            >
+                                              <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
+                                              Reactivate
+                                            </button>
+                                          )}
+                                        {normalizedAccountStatus === "active" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              actions.handleUpdateSchoolHeadAccount(
+                                                resolvedRecord,
+                                                { accountStatus: "suspended" },
+                                                "Suspend account",
+                                              )
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className={accountMenuButtonClass("warning")}
+                                          >
+                                            <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                                            Suspend account
+                                          </button>
+                                        )}
+                                        {normalizedAccountStatus === "active" && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              actions.handleUpdateSchoolHeadAccount(
+                                                resolvedRecord,
+                                                { accountStatus: "locked" },
+                                                "Lock account",
+                                              )
+                                            }
+                                            disabled={isRowSaving || isSaving}
+                                            className={accountMenuButtonClass("warning")}
+                                          >
+                                            <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
+                                            Lock account
+                                          </button>
+                                        )}
+                                        {shouldShowArchiveAction(account.accountStatus) && (
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              actions.handleUpdateSchoolHeadAccount(
+                                                resolvedRecord,
+                                                { accountStatus: "archived" },
+                                                "Archive account",
+                                              )
+                                            }
+                                            disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
+                                            className={accountMenuButtonClass("danger")}
+                                          >
+                                            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                            Archive account
+                                          </button>
+                                        )}
+                                      </AccountActionMenuSection>
+
+                                      <AccountActionMenuSection label="School Record">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            actions.handleUpdateSchoolHeadAccount(
+                                              resolvedRecord,
+                                              { deleteRecordFlagged: !account.deleteRecordFlagged },
+                                              account.deleteRecordFlagged ? "Remove delete record flag" : "Flag school record",
+                                            )
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className={accountMenuButtonClass("warning")}
+                                        >
+                                          <Database className="h-3.5 w-3.5 text-amber-600" />
+                                          {account.deleteRecordFlagged ? "Unflag school record" : "Flag school record"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            actions.handleUpdateSchoolHeadAccount(
+                                              resolvedRecord,
+                                              { flagged: !account.flagged },
+                                              account.flagged ? "Unflag account" : "Flag account",
+                                            )
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className={accountMenuButtonClass("warning")}
+                                        >
+                                          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+                                          {account.flagged ? "Unflag account" : "Flag account"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
+                                          disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
+                                          className={accountMenuButtonClass("danger")}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                          Archive school record
+                                        </button>
+                                      </AccountActionMenuSection>
+
+                                      <AccountActionMenuSection label="Danger Zone">
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            actions.openPendingAccountAction({
+                                              kind: "remove",
+                                              schoolId: resolvedRecord.id,
+                                              schoolName: resolvedRecord.schoolName,
+                                              actionLabel: "Remove account and school",
+                                            })
+                                          }
+                                          disabled={isRowSaving || isSaving}
+                                          className={accountMenuButtonClass("danger")}
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                          Remove account and school
+                                        </button>
+                                      </AccountActionMenuSection>
                                     </>
                                   ) : (
-                                    <button
-                                      type="button"
-                                      onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
-                                      disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
-                                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-70"
-                                    >
-                                      <Trash2 className="h-3.5 w-3.5 text-rose-600" />
-                                      Archive school record
-                                    </button>
+                                    <AccountActionMenuSection label="School Record">
+                                      <button
+                                        type="button"
+                                        onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
+                                        disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
+                                        className={accountMenuButtonClass("danger")}
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                        Archive school record
+                                      </button>
+                                    </AccountActionMenuSection>
                                   )}
                                 </div>
                                 )}
