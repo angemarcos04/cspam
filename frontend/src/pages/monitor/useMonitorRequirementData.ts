@@ -1,6 +1,13 @@
 import { useMemo } from "react";
 import type { MonitorSchoolRecordsListRow, MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
-import type { MonitorTopNavigatorId, QueueLane, RequirementFilter, SchoolQuickPreset } from "@/pages/monitor/monitorFilters";
+import type {
+  MonitorTopNavigatorId,
+  QueueLane,
+  RequirementFilter,
+  SchoolLevelFilter,
+  SchoolQuickPreset,
+  SchoolSectorFilter,
+} from "@/pages/monitor/monitorFilters";
 import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 import type { SchoolRecord, SchoolStatus } from "@/types";
 import {
@@ -18,6 +25,106 @@ import {
 } from "@/pages/monitor/monitorRequirementRules";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
+
+export interface SchoolCategoryCounts {
+  total: number;
+  public: number;
+  private: number;
+  publicElementary: number;
+  publicHighSchool: number;
+  privateElementary: number;
+  privateHighSchool: number;
+}
+
+const EMPTY_SCHOOL_CATEGORY_COUNTS: SchoolCategoryCounts = {
+  total: 0,
+  public: 0,
+  private: 0,
+  publicElementary: 0,
+  publicHighSchool: 0,
+  privateElementary: 0,
+  privateHighSchool: 0,
+};
+
+export function normalizeSchoolSector(value: string | null | undefined): Exclude<SchoolSectorFilter, "all"> | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (normalized === "public") {
+    return "public";
+  }
+
+  if (normalized === "private") {
+    return "private";
+  }
+
+  return null;
+}
+
+export function normalizeSchoolLevel(value: string | null | undefined): Exclude<SchoolLevelFilter, "all"> | null {
+  const normalized = String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (normalized === "elementary") {
+    return "elementary";
+  }
+
+  if (normalized === "high school" || normalized === "secondary") {
+    return "high_school";
+  }
+
+  return null;
+}
+
+export function matchesSchoolCategoryFilter(
+  record: Pick<SchoolRecord, "type" | "level"> | null | undefined,
+  schoolSectorFilter: SchoolSectorFilter,
+  schoolLevelFilter: SchoolLevelFilter,
+): boolean {
+  if (schoolSectorFilter === "all" && schoolLevelFilter === "all") {
+    return true;
+  }
+
+  const sector = normalizeSchoolSector(record?.type);
+  const level = normalizeSchoolLevel(record?.level);
+
+  if (schoolSectorFilter !== "all" && sector !== schoolSectorFilter) {
+    return false;
+  }
+
+  if (schoolLevelFilter !== "all" && level !== schoolLevelFilter) {
+    return false;
+  }
+
+  return true;
+}
+
+export function buildSchoolCategoryCounts(records: Iterable<Pick<SchoolRecord, "type" | "level">>): SchoolCategoryCounts {
+  const counts: SchoolCategoryCounts = { ...EMPTY_SCHOOL_CATEGORY_COUNTS };
+
+  for (const record of records) {
+    counts.total += 1;
+
+    const sector = normalizeSchoolSector(record.type);
+    const level = normalizeSchoolLevel(record.level);
+
+    if (sector === "public") {
+      counts.public += 1;
+      if (level === "elementary") counts.publicElementary += 1;
+      if (level === "high_school") counts.publicHighSchool += 1;
+    }
+
+    if (sector === "private") {
+      counts.private += 1;
+      if (level === "elementary") counts.privateElementary += 1;
+      if (level === "high_school") counts.privateHighSchool += 1;
+    }
+  }
+
+  return counts;
+}
 
 export interface MonitorRequirementSummaryState {
   packageSchoolType: "public" | "private";
@@ -93,6 +200,8 @@ interface UseMonitorRequirementDataArgs {
   requirementFilter: RequirementFilter;
   statusFilter: SchoolStatus | "all";
   schoolQuickPreset: SchoolQuickPreset;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
   queueLane: QueueLane;
   effectiveSearch: string;
   activeTopNavigator: MonitorTopNavigatorId;
@@ -130,6 +239,7 @@ export interface UseMonitorRequirementDataResult {
   queueLaneCounts: Record<QueueLane, number>;
   laneFilteredQueueRows: SchoolRequirementSummary[];
   schoolPresetCounts: Record<SchoolQuickPreset, number>;
+  schoolCategoryCounts: SchoolCategoryCounts;
   filteredSchoolsByPreset: SchoolRequirementSummary[];
   stickySummaryStats: {
     totalSchools: number;
@@ -177,6 +287,8 @@ export function useMonitorRequirementData({
   requirementFilter,
   statusFilter,
   schoolQuickPreset,
+  schoolSectorFilter,
+  schoolLevelFilter,
   queueLane,
   effectiveSearch,
   activeTopNavigator,
@@ -317,6 +429,11 @@ export function useMonitorRequirementData({
   const recordBySchoolKey = useMemo(() => buildRecordBySchoolKey(records), [records]);
   const scopedRecordBySchoolKey = useMemo(() => buildRecordBySchoolKey(scopedRecords), [scopedRecords]);
 
+  const schoolCategoryCounts = useMemo(
+    () => buildSchoolCategoryCounts(scopedRecordBySchoolKey.values()),
+    [scopedRecordBySchoolKey],
+  );
+
   const workflowStatusCounts = useMemo<Record<RequirementFilter, number>>(() => {
     const counts: Record<RequirementFilter, number> = {
       all: scopedRequirementRows.length,
@@ -421,6 +538,11 @@ export function useMonitorRequirementData({
         continue;
       }
 
+      const record = scopedRecordBySchoolKey.get(row.schoolKey) ?? recordBySchoolKey.get(row.schoolKey) ?? null;
+      if (!matchesSchoolCategoryFilter(record, schoolSectorFilter, schoolLevelFilter)) {
+        continue;
+      }
+
       if (fromTime !== null && (row.lastActivityTime <= 0 || row.lastActivityTime < fromTime)) {
         continue;
       }
@@ -445,6 +567,10 @@ export function useMonitorRequirementData({
     filterDateTo,
     requirementFilter,
     requirementSearchTextByKey,
+    recordBySchoolKey,
+    schoolLevelFilter,
+    schoolSectorFilter,
+    scopedRecordBySchoolKey,
     scopedRequirementRows,
     searchTerms,
     statusFilter,
@@ -455,6 +581,8 @@ export function useMonitorRequirementData({
     statusFilter !== "all" ||
     requirementFilter !== "all" ||
     schoolQuickPreset !== "all" ||
+    schoolSectorFilter !== "all" ||
+    schoolLevelFilter !== "all" ||
     hasSelectedSchoolScope ||
     filterDateFrom.length > 0 ||
     filterDateTo.length > 0;
@@ -654,6 +782,7 @@ export function useMonitorRequirementData({
     queueLaneCounts,
     laneFilteredQueueRows,
     schoolPresetCounts,
+    schoolCategoryCounts,
     filteredSchoolsByPreset,
     stickySummaryStats,
     queueWorkspaceSchoolFilterKeys,

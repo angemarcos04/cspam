@@ -3,6 +3,8 @@ import type { SchoolStatus } from "@/types";
 export type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "submitted" | "validated";
 export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission";
+export type SchoolSectorFilter = "all" | "public" | "private";
+export type SchoolLevelFilter = "all" | "elementary" | "high_school";
 export type MonitorTopNavigatorId = "schools" | "reviews";
 
 export interface PersistedMonitorFilters {
@@ -11,6 +13,8 @@ export interface PersistedMonitorFilters {
   requirementFilter?: RequirementFilter;
   queueLane?: QueueLane;
   schoolQuickPreset?: SchoolQuickPreset;
+  schoolSectorFilter?: SchoolSectorFilter;
+  schoolLevelFilter?: SchoolLevelFilter;
   schoolScopeKey?: string;
   filterDateFrom?: string;
   filterDateTo?: string;
@@ -23,6 +27,8 @@ export interface MonitorFilters {
   requirementFilter: RequirementFilter;
   queueLane: QueueLane;
   schoolQuickPreset: SchoolQuickPreset;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
   selectedSchoolScopeKey: string;
   filterDateFrom: string;
   filterDateTo: string;
@@ -39,6 +45,8 @@ export const DEFAULT_MONITOR_FILTERS: MonitorFilters = {
   requirementFilter: "all",
   queueLane: "all",
   schoolQuickPreset: "all",
+  schoolSectorFilter: "all",
+  schoolLevelFilter: "all",
   selectedSchoolScopeKey: ALL_SCHOOL_SCOPE,
   filterDateFrom: "",
   filterDateTo: "",
@@ -55,6 +63,14 @@ export function isValidQueueLane(value: string | null | undefined): value is Que
 
 export function isValidSchoolQuickPreset(value: string | null | undefined): value is SchoolQuickPreset {
   return value === "all" || value === "pending" || value === "missing" || value === "returned" || value === "no_submission";
+}
+
+export function isValidSchoolSectorFilter(value: string | null | undefined): value is SchoolSectorFilter {
+  return value === "all" || value === "public" || value === "private";
+}
+
+export function isValidSchoolLevelFilter(value: string | null | undefined): value is SchoolLevelFilter {
+  return value === "all" || value === "elementary" || value === "high_school";
 }
 
 export function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {

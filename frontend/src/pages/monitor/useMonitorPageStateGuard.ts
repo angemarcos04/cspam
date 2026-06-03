@@ -1,7 +1,9 @@
 import { useEffect, type Dispatch, type SetStateAction } from "react";
 import type {
   RequirementFilter,
+  SchoolLevelFilter,
   SchoolQuickPreset,
+  SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
 import type { SchoolStatus } from "@/types";
 
@@ -10,6 +12,8 @@ interface UseMonitorPageStateGuardArgs {
   filterDateTo: string;
   requirementFilter: RequirementFilter;
   schoolQuickPreset: SchoolQuickPreset;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
   effectiveSearch: string;
   selectedSchoolScopeKey: string;
   statusFilter: SchoolStatus | "all";
@@ -28,6 +32,8 @@ export function useMonitorPageStateGuard({
   filterDateTo,
   requirementFilter,
   schoolQuickPreset,
+  schoolSectorFilter,
+  schoolLevelFilter,
   effectiveSearch,
   selectedSchoolScopeKey,
   statusFilter,
@@ -48,7 +54,9 @@ export function useMonitorPageStateGuard({
     filterDateFrom,
     filterDateTo,
     requirementFilter,
+    schoolLevelFilter,
     schoolQuickPreset,
+    schoolSectorFilter,
     selectedSchoolScopeKey,
     setRecordsPage,
     setRequirementsPage,

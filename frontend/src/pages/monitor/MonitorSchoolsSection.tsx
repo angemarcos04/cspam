@@ -3,7 +3,6 @@ import {
   Building2,
   ChevronDown,
   Database,
-  GraduationCap,
   Plus,
   ShieldCheck,
   Trash2,
@@ -18,7 +17,9 @@ import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/
 import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
+import type { SchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirementData";
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
+import type { SchoolLevelFilter, SchoolSectorFilter } from "@/pages/monitor/monitorFilters";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;
@@ -26,6 +27,11 @@ interface MonitorSchoolsSectionProps {
   quickJumpBindings: MonitorQuickJumpBindings;
   totalSchoolsInScope: number;
   monitorRadarTotals: MonitorRadarTotals;
+  schoolCategoryCounts: SchoolCategoryCounts;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
+  onClearSchoolCategoryFilter: () => void;
+  onSelectSchoolCategoryFilter: (sector: Exclude<SchoolSectorFilter, "all">, level?: SchoolLevelFilter) => void;
   paginatedCompactSchoolRowsCount: number;
   compactSchoolRowsCount: number;
   activeSchoolPresetLabel: string | null;
@@ -55,6 +61,11 @@ export function MonitorSchoolsSection({
   quickJumpBindings,
   totalSchoolsInScope,
   monitorRadarTotals,
+  schoolCategoryCounts,
+  schoolSectorFilter,
+  schoolLevelFilter,
+  onClearSchoolCategoryFilter,
+  onSelectSchoolCategoryFilter,
   paginatedCompactSchoolRowsCount,
   compactSchoolRowsCount,
   activeSchoolPresetLabel,
@@ -77,56 +88,104 @@ export function MonitorSchoolsSection({
   schoolRecordsListProps,
   archivedSchoolsProps,
 }: MonitorSchoolsSectionProps) {
+  const currentPublicLevel = schoolSectorFilter === "public" ? schoolLevelFilter : "all";
+  const currentPrivateLevel = schoolSectorFilter === "private" ? schoolLevelFilter : "all";
+  const hasCategoryFilter = schoolSectorFilter !== "all" || schoolLevelFilter !== "all";
+  const totalSchoolsCount = schoolCategoryCounts.total || totalSchoolsInScope;
+
+  const categoryCardClass = (isActive: boolean) =>
+    `w-full rounded-sm border px-3 py-3 text-left transition ${
+      isActive
+        ? "border-primary-300 bg-primary-50 text-primary-900"
+        : "border-slate-200 bg-slate-50 text-slate-900 hover:border-primary-200 hover:bg-white"
+    }`;
+  const categoryButtonClass = "w-full text-left focus:outline-none focus:ring-2 focus:ring-primary-200";
+
+  const selectClass =
+    "mt-3 w-full rounded-sm border border-slate-300 bg-white px-2 py-1.5 text-xs font-semibold text-slate-700 focus:border-primary-400 focus:outline-none focus:ring-2 focus:ring-primary-100";
+
   return (
     <>
       <div id="monitor-school-radar" className={`bg-white p-3 ${sectionFocusClass("monitor-school-radar")}`}>
         <div className="grid gap-3 lg:grid-cols-3">
-          <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Schools in Scope</p>
-                <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{totalSchoolsInScope.toLocaleString()}</p>
+          <article className={categoryCardClass(!hasCategoryFilter)}>
+            <button
+              type="button"
+              onClick={onClearSchoolCategoryFilter}
+              aria-pressed={!hasCategoryFilter}
+              className={categoryButtonClass}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Schools</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{totalSchoolsCount.toLocaleString()}</p>
+                  <p className="mt-2 text-[11px] font-medium text-slate-500">
+                    {hasCategoryFilter ? "Click to show all schools" : "Showing all schools"}
+                  </p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <Building2 className="h-5 w-5" />
+                </span>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                <Building2 className="h-5 w-5" />
-              </span>
-            </div>
+            </button>
           </article>
 
-          <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Students</p>
-                <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                  {monitorRadarTotals.isLoading
-                    ? "..."
-                    : monitorRadarTotals.students === null
-                      ? "--"
-                      : monitorRadarTotals.students.toLocaleString()}
-                </p>
+          <article className={categoryCardClass(schoolSectorFilter === "public")}>
+            <button
+              type="button"
+              onClick={() => onSelectSchoolCategoryFilter("public", "all")}
+              aria-pressed={schoolSectorFilter === "public" && schoolLevelFilter === "all"}
+              className={categoryButtonClass}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Public Schools</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{schoolCategoryCounts.public.toLocaleString()}</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <Building2 className="h-5 w-5" />
+                </span>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                <GraduationCap className="h-5 w-5" />
-              </span>
-            </div>
+            </button>
+            <select
+              aria-label="Filter public schools by level"
+              value={currentPublicLevel}
+              onChange={(event) => onSelectSchoolCategoryFilter("public", event.target.value as SchoolLevelFilter)}
+              className={selectClass}
+            >
+              <option value="all">All public levels</option>
+              <option value="elementary">Elementary ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
+              <option value="high_school">High School ({schoolCategoryCounts.publicHighSchool.toLocaleString()})</option>
+            </select>
           </article>
 
-          <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Teachers</p>
-                <p className="mt-1 text-3xl font-bold leading-none text-slate-900">
-                  {monitorRadarTotals.isLoading
-                    ? "..."
-                    : monitorRadarTotals.teachers === null
-                      ? "--"
-                      : monitorRadarTotals.teachers.toLocaleString()}
-                </p>
+          <article className={categoryCardClass(schoolSectorFilter === "private")}>
+            <button
+              type="button"
+              onClick={() => onSelectSchoolCategoryFilter("private", "all")}
+              aria-pressed={schoolSectorFilter === "private" && schoolLevelFilter === "all"}
+              className={categoryButtonClass}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-600">Total Private Schools</p>
+                  <p className="mt-1 text-3xl font-bold leading-none text-slate-900">{schoolCategoryCounts.private.toLocaleString()}</p>
+                </div>
+                <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
+                  <Users className="h-5 w-5" />
+                </span>
               </div>
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm border border-slate-200 bg-white text-primary-700">
-                <Users className="h-5 w-5" />
-              </span>
-            </div>
+            </button>
+            <select
+              aria-label="Filter private schools by level"
+              value={currentPrivateLevel}
+              onChange={(event) => onSelectSchoolCategoryFilter("private", event.target.value as SchoolLevelFilter)}
+              className={selectClass}
+            >
+              <option value="all">All private levels</option>
+              <option value="elementary">Elementary ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
+              <option value="high_school">High School ({schoolCategoryCounts.privateHighSchool.toLocaleString()})</option>
+            </select>
           </article>
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">

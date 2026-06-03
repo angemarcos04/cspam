@@ -43,7 +43,9 @@ import {
   type MonitorTopNavigatorId,
   type QueueLane,
   type RequirementFilter,
+  type SchoolLevelFilter,
   type SchoolQuickPreset,
+  type SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
 import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
@@ -139,6 +141,8 @@ export function MonitorDashboard() {
     activeTopNavigator,
     queueLane,
     schoolQuickPreset,
+    schoolSectorFilter,
+    schoolLevelFilter,
     setSearch,
     setStatusFilter,
     setFilterDateFrom,
@@ -148,6 +152,8 @@ export function MonitorDashboard() {
     setActiveTopNavigator,
     setQueueLane,
     setSchoolQuickPreset,
+    setSchoolSectorFilter,
+    setSchoolLevelFilter,
     resetFilters: resetMonitorFilters,
   } = useMonitorFilters(authSessionKey);
   const { radarTotalsTick, latestRealtimeBatch } = useMonitorUiRefresh();
@@ -270,6 +276,7 @@ export function MonitorDashboard() {
     queueLaneCounts,
     laneFilteredQueueRows,
     schoolPresetCounts,
+    schoolCategoryCounts,
     stickySummaryStats,
     queueWorkspaceSchoolFilterKeys,
     compactSchoolRows,
@@ -290,6 +297,8 @@ export function MonitorDashboard() {
     requirementFilter,
     statusFilter,
     schoolQuickPreset,
+    schoolSectorFilter,
+    schoolLevelFilter,
     queueLane,
     effectiveSearch,
     activeTopNavigator,
@@ -476,6 +485,8 @@ export function MonitorDashboard() {
     filterDateTo,
     requirementFilter,
     schoolQuickPreset,
+    schoolSectorFilter,
+    schoolLevelFilter,
     effectiveSearch,
     statusFilter,
     selectedSchoolScope,
@@ -491,6 +502,8 @@ export function MonitorDashboard() {
     setRequirementFilter,
     setQueueLane,
     setSchoolQuickPreset,
+    setSchoolSectorFilter,
+    setSchoolLevelFilter,
     setFilterDateFrom,
     setFilterDateTo,
     setSelectedSchoolScopeKey,
@@ -500,6 +513,8 @@ export function MonitorDashboard() {
     filterDateTo,
     requirementFilter,
     schoolQuickPreset,
+    schoolSectorFilter,
+    schoolLevelFilter,
     effectiveSearch,
     selectedSchoolScopeKey,
     statusFilter,
@@ -512,6 +527,35 @@ export function MonitorDashboard() {
     setRecordsPage,
     setRequirementFilter,
   });
+  const handleClearSchoolCategoryFilter = useCallback(() => {
+    setSchoolSectorFilter("all");
+    setSchoolLevelFilter("all");
+    setActiveTopNavigator("schools");
+    setRecordsPage(1);
+    focusAndScrollTo("monitor-school-records");
+  }, [
+    focusAndScrollTo,
+    setActiveTopNavigator,
+    setRecordsPage,
+    setSchoolLevelFilter,
+    setSchoolSectorFilter,
+  ]);
+  const handleSelectSchoolCategoryFilter = useCallback(
+    (sector: Exclude<SchoolSectorFilter, "all">, level: SchoolLevelFilter = "all") => {
+      setSchoolSectorFilter(sector);
+      setSchoolLevelFilter(level);
+      setActiveTopNavigator("schools");
+      setRecordsPage(1);
+      focusAndScrollTo("monitor-school-records");
+    },
+    [
+      focusAndScrollTo,
+      setActiveTopNavigator,
+      setRecordsPage,
+      setSchoolLevelFilter,
+      setSchoolSectorFilter,
+    ],
+  );
   const {
     remindingSchoolKey,
     sendReminderForSchool,
@@ -847,6 +891,11 @@ export function MonitorDashboard() {
               quickJumpBindings={quickJumpBindings}
               totalSchoolsInScope={totalSchoolsInScope}
               monitorRadarTotals={monitorRadarTotals}
+              schoolCategoryCounts={schoolCategoryCounts}
+              schoolSectorFilter={schoolSectorFilter}
+              schoolLevelFilter={schoolLevelFilter}
+              onClearSchoolCategoryFilter={handleClearSchoolCategoryFilter}
+              onSelectSchoolCategoryFilter={handleSelectSchoolCategoryFilter}
               paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
               compactSchoolRowsCount={compactSchoolRows.length}
               activeSchoolPresetLabel={schoolsSectionApi.activeSchoolPresetLabel}

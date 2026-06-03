@@ -5,7 +5,9 @@ import {
   type MonitorTopNavigatorId,
   type QueueLane,
   type RequirementFilter,
+  type SchoolLevelFilter,
   type SchoolQuickPreset,
+  type SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
 import {
   SCHOOL_QUICK_PRESET_OPTIONS,
@@ -21,6 +23,7 @@ type FilterChipId =
   | "requirement"
   | "lane"
   | "preset"
+  | "category"
   | "school"
   | "date";
 
@@ -42,6 +45,8 @@ interface UseMonitorFilterUiArgs {
   filterDateTo: string;
   requirementFilter: RequirementFilter;
   schoolQuickPreset: SchoolQuickPreset;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
   effectiveSearch: string;
   statusFilter: SchoolStatus | "all";
   selectedSchoolScope: SelectedSchoolScopeSummary | null;
@@ -57,6 +62,8 @@ interface UseMonitorFilterUiArgs {
   setRequirementFilter: (value: RequirementFilter) => void;
   setQueueLane: (value: QueueLane) => void;
   setSchoolQuickPreset: (value: SchoolQuickPreset) => void;
+  setSchoolSectorFilter: (value: SchoolSectorFilter) => void;
+  setSchoolLevelFilter: (value: SchoolLevelFilter) => void;
   setFilterDateFrom: (value: string) => void;
   setFilterDateTo: (value: string) => void;
   setSelectedSchoolScopeKey: (value: string) => void;
@@ -79,6 +86,8 @@ export function useMonitorFilterUi({
   filterDateTo,
   requirementFilter,
   schoolQuickPreset,
+  schoolSectorFilter,
+  schoolLevelFilter,
   effectiveSearch,
   statusFilter,
   selectedSchoolScope,
@@ -94,6 +103,8 @@ export function useMonitorFilterUi({
   setRequirementFilter,
   setQueueLane,
   setSchoolQuickPreset,
+  setSchoolSectorFilter,
+  setSchoolLevelFilter,
   setFilterDateFrom,
   setFilterDateTo,
   setSelectedSchoolScopeKey,
@@ -153,6 +164,17 @@ export function useMonitorFilterUi({
         SCHOOL_QUICK_PRESET_OPTIONS.find((option) => option.id === schoolQuickPreset)?.label ?? schoolQuickPreset;
       chips.push({ id: "preset", label: `Preset: ${presetLabel}` });
     }
+    if (schoolSectorFilter !== "all" || schoolLevelFilter !== "all") {
+      const sectorLabel =
+        schoolSectorFilter === "public" ? "Public" : schoolSectorFilter === "private" ? "Private" : "All sectors";
+      const levelLabel =
+        schoolLevelFilter === "elementary"
+          ? "Elementary"
+          : schoolLevelFilter === "high_school"
+            ? "High School"
+            : "All levels";
+      chips.push({ id: "category", label: `Schools: ${sectorLabel} / ${levelLabel}` });
+    }
     if (filterDateFrom || filterDateTo) {
       chips.push({
         id: "date",
@@ -168,7 +190,9 @@ export function useMonitorFilterUi({
     filterDateTo,
     queueLane,
     requirementFilter,
+    schoolLevelFilter,
     schoolQuickPreset,
+    schoolSectorFilter,
     selectedSchoolScope,
     statusFilter,
   ]);
@@ -213,6 +237,10 @@ export function useMonitorFilterUi({
         case "preset":
           setSchoolQuickPreset("all");
           break;
+        case "category":
+          setSchoolSectorFilter("all");
+          setSchoolLevelFilter("all");
+          break;
         case "date":
           setFilterDateFrom("");
           setFilterDateTo("");
@@ -230,7 +258,9 @@ export function useMonitorFilterUi({
       setFilterDateTo,
       setQueueLane,
       setRequirementFilter,
+      setSchoolLevelFilter,
       setSchoolQuickPreset,
+      setSchoolSectorFilter,
       setSchoolScopeQuery,
       setSearch,
       setSelectedSchoolScopeKey,

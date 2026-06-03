@@ -10,10 +10,14 @@ import {
   type PersistedMonitorFilters,
   type QueueLane,
   type RequirementFilter,
+  type SchoolLevelFilter,
   type SchoolQuickPreset,
+  type SchoolSectorFilter,
   isValidQueueLane,
   isValidRequirementFilter,
+  isValidSchoolLevelFilter,
   isValidSchoolQuickPreset,
+  isValidSchoolSectorFilter,
   isValidSchoolStatusFilter,
   normalizeDateInput,
   resolveMonitorTopNavigator,
@@ -43,9 +47,19 @@ function hydrateFilters(storageKey: string): MonitorFilters {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const hasQueryFilters = ["q", "status", "workflow", "lane", "preset", "school", "from", "to", "tab"].some((key) =>
-    params.has(key),
-  );
+  const hasQueryFilters = [
+    "q",
+    "status",
+    "workflow",
+    "lane",
+    "preset",
+    "sector",
+    "level",
+    "school",
+    "from",
+    "to",
+    "tab",
+  ].some((key) => params.has(key));
   const requestedTab = params.get("tab");
 
   let persisted: PersistedMonitorFilters | null = null;
@@ -57,6 +71,8 @@ function hydrateFilters(storageKey: string): MonitorFilters {
       requirementFilter: (params.get("workflow") as RequirementFilter | null) ?? undefined,
       queueLane: (params.get("lane") as QueueLane | null) ?? undefined,
       schoolQuickPreset: (params.get("preset") as SchoolQuickPreset | null) ?? undefined,
+      schoolSectorFilter: (params.get("sector") as SchoolSectorFilter | null) ?? undefined,
+      schoolLevelFilter: (params.get("level") as SchoolLevelFilter | null) ?? undefined,
       schoolScopeKey: params.get("school") ?? ALL_SCHOOL_SCOPE,
       filterDateFrom: params.get("from") ?? "",
       filterDateTo: params.get("to") ?? "",
@@ -99,6 +115,14 @@ function hydrateFilters(storageKey: string): MonitorFilters {
     nextFilters.schoolQuickPreset = persisted.schoolQuickPreset;
   }
 
+  if (isValidSchoolSectorFilter(persisted?.schoolSectorFilter)) {
+    nextFilters.schoolSectorFilter = persisted.schoolSectorFilter;
+  }
+
+  if (isValidSchoolLevelFilter(persisted?.schoolLevelFilter)) {
+    nextFilters.schoolLevelFilter = persisted.schoolLevelFilter;
+  }
+
   if (nextFilters.filterDateFrom && nextFilters.filterDateTo && nextFilters.filterDateFrom > nextFilters.filterDateTo) {
     return {
       ...nextFilters,
@@ -122,6 +146,8 @@ export interface UseMonitorFiltersResult {
   activeTopNavigator: MonitorTopNavigatorId;
   queueLane: QueueLane;
   schoolQuickPreset: SchoolQuickPreset;
+  schoolSectorFilter: SchoolSectorFilter;
+  schoolLevelFilter: SchoolLevelFilter;
   patchFilters: (patch: Partial<MonitorFilters>) => void;
   setSearch: (value: SetStateAction<string>) => void;
   setStatusFilter: (value: SetStateAction<SchoolStatus | "all">) => void;
@@ -132,6 +158,8 @@ export interface UseMonitorFiltersResult {
   setActiveTopNavigator: (value: SetStateAction<MonitorTopNavigatorId>) => void;
   setQueueLane: (value: SetStateAction<QueueLane>) => void;
   setSchoolQuickPreset: (value: SetStateAction<SchoolQuickPreset>) => void;
+  setSchoolSectorFilter: (value: SetStateAction<SchoolSectorFilter>) => void;
+  setSchoolLevelFilter: (value: SetStateAction<SchoolLevelFilter>) => void;
   resetFilters: () => void;
 }
 
@@ -174,6 +202,8 @@ export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
       requirementFilter: filters.requirementFilter,
       queueLane: filters.queueLane,
       schoolQuickPreset: filters.schoolQuickPreset,
+      schoolSectorFilter: filters.schoolSectorFilter,
+      schoolLevelFilter: filters.schoolLevelFilter,
       filterDateFrom: filters.filterDateFrom,
       filterDateTo: filters.filterDateTo,
       activeTopNavigator: filters.activeTopNavigator,
@@ -200,6 +230,8 @@ export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
     setOrDelete("workflow", filters.requirementFilter !== "all" ? filters.requirementFilter : null);
     setOrDelete("lane", filters.queueLane !== "all" ? filters.queueLane : null);
     setOrDelete("preset", filters.schoolQuickPreset !== "all" ? filters.schoolQuickPreset : null);
+    setOrDelete("sector", filters.schoolSectorFilter !== "all" ? filters.schoolSectorFilter : null);
+    setOrDelete("level", filters.schoolLevelFilter !== "all" ? filters.schoolLevelFilter : null);
     setOrDelete("school", filters.selectedSchoolScopeKey !== ALL_SCHOOL_SCOPE ? filters.selectedSchoolScopeKey : null);
     params.delete("student");
     params.delete("teacher");
@@ -220,7 +252,9 @@ export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
     filters.filterDateTo,
     filters.queueLane,
     filters.requirementFilter,
+    filters.schoolLevelFilter,
     filters.schoolQuickPreset,
+    filters.schoolSectorFilter,
     filters.selectedSchoolScopeKey,
     filters.statusFilter,
     filtersHydrated,
@@ -260,6 +294,8 @@ export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
     activeTopNavigator: filters.activeTopNavigator,
     queueLane: filters.queueLane,
     schoolQuickPreset: filters.schoolQuickPreset,
+    schoolSectorFilter: filters.schoolSectorFilter,
+    schoolLevelFilter: filters.schoolLevelFilter,
     patchFilters,
     setSearch: (value) => updateField("search", value),
     setStatusFilter: (value) => updateField("statusFilter", value),
@@ -270,6 +306,8 @@ export function useMonitorFilters(sessionKey = ""): UseMonitorFiltersResult {
     setActiveTopNavigator: (value) => updateField("activeTopNavigator", value),
     setQueueLane: (value) => updateField("queueLane", value),
     setSchoolQuickPreset: (value) => updateField("schoolQuickPreset", value),
+    setSchoolSectorFilter: (value) => updateField("schoolSectorFilter", value),
+    setSchoolLevelFilter: (value) => updateField("schoolLevelFilter", value),
     resetFilters,
   };
 }
