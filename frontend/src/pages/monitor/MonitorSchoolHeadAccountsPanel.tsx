@@ -184,21 +184,25 @@ function AccountActionMenuSection({
 
   return (
     <div className="border-t border-slate-100 first:border-t-0">
-      <p className="px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+      <p className="px-3.5 pb-1 pt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400/85">{label}</p>
       <div className="pb-1">{items}</div>
     </div>
   );
 }
 
-function accountMenuButtonClass(tone: "default" | "warning" | "danger" = "default"): string {
-  const base = "flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70";
+function accountMenuButtonClass(tone: "default" | "warning" | "archive" | "danger" = "default"): string {
+  const base = "flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-70";
 
   if (tone === "danger") {
     return `${base} text-rose-700 hover:bg-rose-50 focus:bg-rose-50`;
   }
 
+  if (tone === "archive") {
+    return `${base} text-slate-700 hover:bg-slate-50 focus:bg-slate-50`;
+  }
+
   if (tone === "warning") {
-    return `${base} text-amber-800 hover:bg-amber-50 focus:bg-amber-50`;
+    return `${base} text-slate-700 hover:bg-amber-50/70 focus:bg-amber-50/70`;
   }
 
   return `${base} text-slate-700 hover:bg-slate-50 focus:bg-slate-50`;
@@ -545,7 +549,7 @@ export function MonitorSchoolHeadAccountsPanel({
                               {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
                                 <div
                                   data-open-direction={openMenuUpward ? "up" : "down"}
-                                  className={`absolute right-0 z-30 w-48 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl ${
+                                  className={`absolute right-0 z-30 w-64 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl ${
                                     openMenuUpward ? "bottom-full mb-1" : "top-full mt-1"
                                   }`}
                                 >
@@ -666,9 +670,9 @@ export function MonitorSchoolHeadAccountsPanel({
                                               )
                                             }
                                             disabled={isRowSaving || isSaving || normalizedAccountStatus === "archived"}
-                                            className={accountMenuButtonClass("danger")}
+                                            className={accountMenuButtonClass("archive")}
                                           >
-                                            <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                            <Trash2 className="h-3.5 w-3.5 text-rose-500" />
                                             Archive account
                                           </button>
                                         )}
@@ -709,9 +713,9 @@ export function MonitorSchoolHeadAccountsPanel({
                                           type="button"
                                           onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
                                           disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
-                                          className={accountMenuButtonClass("danger")}
+                                          className={accountMenuButtonClass("archive")}
                                         >
-                                          <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                          <Trash2 className="h-3.5 w-3.5 text-rose-500" />
                                           Archive school record
                                         </button>
                                       </AccountActionMenuSection>
@@ -741,9 +745,9 @@ export function MonitorSchoolHeadAccountsPanel({
                                         type="button"
                                         onClick={() => void onPreviewDeleteSchoolRecord(resolvedRecord)}
                                         disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
-                                        className={accountMenuButtonClass("danger")}
+                                        className={accountMenuButtonClass("archive")}
                                       >
-                                        <Trash2 className="h-3.5 w-3.5 text-rose-600" />
+                                        <Trash2 className="h-3.5 w-3.5 text-rose-500" />
                                         Archive school record
                                       </button>
                                     </AccountActionMenuSection>
