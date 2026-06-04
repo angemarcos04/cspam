@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
@@ -73,11 +73,14 @@ vi.mock("@/components/students/StudentRecordsPanel", () => ({
 }));
 
 const issueSchoolHeadSetupLinkMock = vi.fn();
+const sendReminderMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
+    window.localStorage.clear();
     issueSchoolHeadSetupLinkMock.mockReset();
+    sendReminderMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
@@ -100,6 +103,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expiresAt: "2026-03-28T12:00:00.000Z",
       delivery: "sent",
       deliveryMessage: "Message queued.",
+    });
+    sendReminderMock.mockResolvedValue({
+      schoolId: "900001",
+      schoolName: "Santiago Elementary",
+      recipientCount: 1,
+      recipientEmails: ["maria@example.com"],
+      remindedAt: "2026-03-27T09:00:00.000Z",
+      deliveryMode: "sync",
+      deliveryStatus: "sent",
+      deliveryWarning: null,
     });
 
     vi.mocked(useAuth).mockReturnValue({
@@ -213,7 +226,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       listArchivedRecords: vi.fn(),
       restoreRecord: vi.fn(),
       permanentlyDeleteArchivedRecord: vi.fn(),
-      sendReminder: vi.fn(),
+      sendReminder: sendReminderMock,
       updateSchoolHeadAccountStatus: vi.fn(),
       activateSchoolHeadAccount: vi.fn(),
       issueSchoolHeadAccountActionVerificationCode: vi.fn(),
@@ -327,6 +340,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   });
 
   afterEach(() => {
+    cleanup();
     vi.clearAllMocks();
   });
 
@@ -357,14 +371,63 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
     });
 
-    const openSchoolsButtons = screen.getAllByRole("button", { name: "Open Schools" });
-    expect(openSchoolsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
+    const openReviewsButtons = screen.getAllByRole("button", { name: "Open Reviews" });
+    expect(openReviewsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
   });
 
   it("labels the Schools card status pill as school status to avoid account-state ambiguity", async () => {
     render(<MonitorDashboard />);
 
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+
     const schoolStatusPills = await screen.findAllByRole("button", { name: "School Active" });
     expect(schoolStatusPills.length).toBeGreaterThan(0);
+  });
+
+  it("simplifies the queue list columns and removes the duplicate open school action", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "School Data" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Compliance" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Indicators" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "For Review" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Priority" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open School" })).toBeNull();
+  });
+
+  it("sends queue reminders with an optional note", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "Please submit your package this week." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send Reminder" }));
+
+    await waitFor(() => {
+      expect(sendReminderMock).toHaveBeenCalledWith("1", "Please submit your package this week.");
+    });
+  });
+
+  it("blocks queue reminder notes longer than 500 characters", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
+    fireEvent.change(screen.getByLabelText("Message"), {
+      target: { value: "a".repeat(501) },
+    });
+
+    expect(screen.getByText("Reminder note must be 500 characters or less.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Send Reminder" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(sendReminderMock).not.toHaveBeenCalled();
   });
 });

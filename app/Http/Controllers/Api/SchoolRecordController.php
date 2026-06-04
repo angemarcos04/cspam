@@ -511,14 +511,34 @@ class SchoolRecordController extends Controller
             );
         }
 
-        Notification::send(
-            $schoolHeads,
-            new SchoolSubmissionReminderNotification(
-                $school,
-                $monitor,
-                $notes !== '' ? $notes : null,
-            ),
+        $normalizedNotes = $notes !== '' ? $notes : null;
+        $deliveryMode = $this->schoolReminderDeliveryMode();
+        $deliveryStatus = $deliveryMode === 'sync' ? 'sent' : 'queued';
+        $deliveryWarning = null;
+        $notification = new SchoolSubmissionReminderNotification(
+            $school,
+            $monitor,
+            $normalizedNotes,
         );
+
+        if ($deliveryMode === 'sync') {
+            $this->logSchoolReminderDelivery('School reminder dashboard notification delivery starting.', $school, $schoolHeads, $deliveryMode);
+            Notification::sendNow($schoolHeads, $notification, ['database']);
+            $this->logSchoolReminderDelivery('School reminder dashboard notification delivery succeeded.', $school, $schoolHeads, $deliveryMode);
+
+            try {
+                $this->logSchoolReminderDelivery('School reminder email delivery starting.', $school, $schoolHeads, $deliveryMode);
+                Notification::sendNow($schoolHeads, $notification, ['mail']);
+                $this->logSchoolReminderDelivery('School reminder email delivery succeeded.', $school, $schoolHeads, $deliveryMode);
+            } catch (\Throwable $exception) {
+                $deliveryStatus = 'partial';
+                $deliveryWarning = 'Dashboard notification was sent, but email delivery failed. Check mail provider/domain settings.';
+                $this->logSchoolReminderDelivery('School reminder email delivery failed.', $school, $schoolHeads, $deliveryMode, $exception);
+            }
+        } else {
+            $this->logSchoolReminderDelivery('School reminder notification queued.', $school, $schoolHeads, $deliveryMode);
+            Notification::send($schoolHeads, $notification);
+        }
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -531,7 +551,10 @@ class SchoolRecordController extends Controller
                 'school_name' => (string) $school->name,
                 'recipient_count' => $schoolHeads->count(),
                 'recipient_emails' => $schoolHeads->pluck('email')->values()->all(),
-                'notes' => $notes !== '' ? $notes : null,
+                'has_notes' => $normalizedNotes !== null,
+                'notes_length' => $normalizedNotes !== null ? strlen($normalizedNotes) : 0,
+                'delivery_mode' => $deliveryMode,
+                'delivery_status' => $deliveryStatus,
             ],
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),
@@ -557,8 +580,73 @@ class SchoolRecordController extends Controller
                 'recipientCount' => $schoolHeads->count(),
                 'recipientEmails' => $schoolHeads->pluck('email')->values(),
                 'remindedAt' => $remindedAt,
+                'deliveryMode' => $deliveryMode,
+                'deliveryStatus' => $deliveryStatus,
+                'deliveryWarning' => $deliveryWarning,
             ],
         ]);
+    }
+
+    private function schoolReminderDeliveryMode(): string
+    {
+        $mode = strtolower(trim((string) config('cspams.school_reminders.delivery_mode', 'queued')));
+
+        return $mode === 'sync' ? 'sync' : 'queued';
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection<int, User> $schoolHeads
+     */
+    private function logSchoolReminderDelivery(
+        string $message,
+        School $school,
+        \Illuminate\Support\Collection $schoolHeads,
+        string $deliveryMode,
+        ?\Throwable $exception = null,
+    ): void {
+        $context = [
+            'delivery_mode' => $deliveryMode,
+            'school_id' => (string) $school->id,
+            'school_code' => (string) $school->school_code,
+            'recipient_count' => $schoolHeads->count(),
+            'recipient_domains' => $schoolHeads
+                ->pluck('email')
+                ->map(fn (mixed $email): ?string => $this->maskedEmailDomain((string) $email))
+                ->filter()
+                ->unique()
+                ->values()
+                ->all(),
+            'mailer' => (string) config('mail.default', ''),
+            'from' => (string) config('mail.from.address', ''),
+        ];
+
+        if ($exception !== null) {
+            $context['exception_class'] = $exception::class;
+            $context['exception_message'] = $exception->getMessage();
+        }
+
+        logger()->info($message, $context);
+        error_log($message . ' ' . json_encode($context));
+    }
+
+    private function maskedEmailDomain(string $email): ?string
+    {
+        $parts = explode('@', strtolower(trim($email)));
+        $domain = $parts[1] ?? '';
+
+        if ($domain === '') {
+            return null;
+        }
+
+        $domainParts = explode('.', $domain);
+        $root = $domainParts[0] ?? '';
+        $suffix = count($domainParts) > 1 ? '.' . implode('.', array_slice($domainParts, 1)) : '';
+
+        if (strlen($root) <= 1) {
+            return '*' . $suffix;
+        }
+
+        return substr($root, 0, 1) . str_repeat('*', min(3, max(1, strlen($root) - 1))) . $suffix;
     }
 
     public function bulkImport(BulkImportSchoolRecordsRequest $request): JsonResponse

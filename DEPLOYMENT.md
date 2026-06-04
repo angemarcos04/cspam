@@ -183,6 +183,7 @@ QUEUE_CONNECTION=database
 CSPAMS_MONITOR_MFA_ENABLED=true
 CSPAMS_MONITOR_MFA_DELIVERY_MODE=queued
 CSPAMS_MONITOR_MFA_QUEUE=mail
+CSPAMS_SCHOOL_REMINDER_DELIVERY_MODE=queued
 LOG_CHANNEL=stderr
 LOG_LEVEL=info
 
@@ -209,6 +210,20 @@ RESEND_API_KEY=<secret>
 `onboarding@resend.dev` is only for limited Resend testing and can send only to the email address allowed by your Resend account. Production sending should use a verified Resend domain. Keep real secrets only in Render environment variables.
 
 School Head password reset links use the same real mailer configuration. The monitor dashboard sends those reset links to the School Head account's current saved email address, so update the School Head email first if ownership changes, then issue the reset link. If `MAIL_MAILER=resend` uses `onboarding@resend.dev`, Resend can reject arbitrary School Head recipients with a testing-domain restriction; use a verified Resend domain sender for real schools.
+
+Queue List reminders use the same School Head notification center and mailer. The default is:
+
+```env
+CSPAMS_SCHOOL_REMINDER_DELIVERY_MODE=queued
+```
+
+Queued reminder delivery requires the Render Background Worker because both the email and database notification are queued. If the worker is unavailable, use:
+
+```env
+CSPAMS_SCHOOL_REMINDER_DELIVERY_MODE=sync
+```
+
+Sync reminder delivery writes the School Head dashboard notification during the monitor request, then attempts email delivery. If the mail provider rejects the email, the monitor still receives a warning and the School Head dashboard notification remains available.
 
 Blank or delete:
 

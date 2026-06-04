@@ -862,7 +862,6 @@ export function MonitorDashboard() {
               resetQueueFilters={resetQueueFilters}
               clearAllFilters={clearAllFilters}
               handleReviewSchool={handleReviewSchool}
-              handleOpenSchool={handleOpenSchool}
               handleSendReminder={handleSendReminder}
               workflowTone={workflowTone}
               workflowLabel={workflowLabel}

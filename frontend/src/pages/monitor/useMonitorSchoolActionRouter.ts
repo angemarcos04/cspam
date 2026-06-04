@@ -28,7 +28,7 @@ export interface UseMonitorSchoolActionRouterResult {
   sendReminderForSchool: (schoolKey: string, schoolName: string, notes?: string | null) => Promise<void>;
   handleReviewSchool: (summary: SchoolActionSummary) => void;
   handleOpenSchool: (summary: SchoolActionSummary) => void;
-  handleSendReminder: (summary: SchoolActionSummary) => void;
+  handleSendReminder: (summary: SchoolActionSummary, notes?: string | null) => Promise<void>;
   handleReviewRecord: (record: SchoolRecord) => void;
   handleOpenSchoolRecord: (record: SchoolRecord) => void;
   handleQueueSchoolFocus: (schoolKey: string) => void;
@@ -82,7 +82,16 @@ export function useMonitorSchoolActionRouter({
       try {
         const receipt = await sendReminder(record.id, notes);
         const recipientLabel = receipt.recipientCount === 1 ? "recipient" : "recipients";
-        pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
+        if (receipt.deliveryStatus === "partial") {
+          pushToast(
+            `Reminder notification sent to ${receipt.schoolName}, but email delivery failed. ${receipt.deliveryWarning ?? ""}`.trim(),
+            "warning",
+          );
+        } else if (receipt.deliveryStatus === "queued") {
+          pushToast(`Reminder queued for ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
+        } else {
+          pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
+        }
       } catch (err) {
         const message = err instanceof Error ? err.message : `Unable to send reminder for ${schoolName}.`;
         pushToast(message, "warning");
@@ -116,8 +125,8 @@ export function useMonitorSchoolActionRouter({
   );
 
   const handleSendReminder = useCallback(
-    (summary: SchoolActionSummary) => {
-      void sendReminderForSchool(summary.schoolKey, summary.schoolName);
+    async (summary: SchoolActionSummary, notes?: string | null) => {
+      await sendReminderForSchool(summary.schoolKey, summary.schoolName, notes);
     },
     [sendReminderForSchool],
   );

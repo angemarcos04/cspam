@@ -242,6 +242,9 @@ export interface SchoolReminderReceipt {
   recipientCount: number;
   recipientEmails: string[];
   remindedAt: string;
+  deliveryMode?: "queued" | "sync";
+  deliveryStatus?: "queued" | "sent" | "partial";
+  deliveryWarning?: string | null;
 }
 
 export interface SchoolBulkImportRowPayload {

@@ -401,10 +401,13 @@ class ApiSyncTest extends TestCase
             ->assertJsonPath('data.schoolId', '900001')
             ->assertJsonPath('data.schoolName', 'Santiago City National High School')
             ->assertJsonPath('data.recipientCount', 1)
+            ->assertJsonPath('data.deliveryMode', 'queued')
+            ->assertJsonPath('data.deliveryStatus', 'queued')
             ->assertJsonStructure([
                 'data' => [
                     'recipientEmails',
                     'remindedAt',
+                    'deliveryWarning',
                 ],
             ]);
 
