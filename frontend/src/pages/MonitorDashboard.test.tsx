@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
@@ -389,6 +389,20 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
+    const reviewsHeadings = await screen.findAllByRole("heading", { name: "Reviews" });
+    const topReviewsToolbar = reviewsHeadings[0]?.closest("section");
+
+    expect(topReviewsToolbar).toBeTruthy();
+    expect(within(topReviewsToolbar as HTMLElement).queryByRole("button", { name: "Review" })).toBeNull();
+    expect(within(topReviewsToolbar as HTMLElement).queryByRole("button", { name: "Filters" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Queue List" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Review Workspace" })).toBeTruthy();
+
+    const globalSearch = screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
+    fireEvent.change(globalSearch, { target: { value: "Batal" } });
+    expect(globalSearch.value).toBe("Batal");
+
     expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "School Data" })).toBeTruthy();
@@ -398,6 +412,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByRole("columnheader", { name: "For Review" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Priority" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Open School" })).toBeNull();
+    expect((await screen.findAllByRole("button", { name: "Review" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("button", { name: "Reminder" })).length).toBeGreaterThan(0);
   });
 
   it("sends queue reminders with an optional note", async () => {
