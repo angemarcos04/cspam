@@ -55,7 +55,7 @@ function buildActions(): SchoolHeadAccountActionsApi {
 }
 
 describe("MonitorSchoolHeadAccountsPanel", () => {
-  it("renders a search-only toolbar without the extra filter controls", () => {
+  it("renders account status filters with the search toolbar", () => {
     render(
       <MonitorSchoolHeadAccountsPanel
         isOpen
@@ -87,9 +87,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     );
 
     expect(screen.getByPlaceholderText("Search school, code, name, or email...")).not.toBeNull();
-    expect(screen.queryByRole("combobox")).toBeNull();
-    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
-    expect(screen.queryByText("Clear")).toBeNull();
+    expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Needs account/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Temporary password active/i })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Open batch delete flagged schools" })).toBeNull();
   });
 
@@ -171,6 +171,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     }
 
     render(<Wrapper />);
+
+    expect(screen.getByText("No School Head account")).not.toBeNull();
+    expect(screen.getAllByText("Needs account").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "Create account" })).not.toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "More actions" }));
     fireEvent.click(screen.getByRole("button", { name: "Archive school record" }));
@@ -934,6 +938,116 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("pending_setup");
     });
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
+  });
+
+  it("uses all school records for account management instead of the filtered compact rows", () => {
+    const hiddenNoAccountRecord: SchoolRecord = {
+      id: "school-15",
+      schoolId: "901015",
+      schoolCode: "901015",
+      schoolName: "Filtered Out No Account School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-09T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: null,
+      indicatorLatest: null,
+    };
+    const visibleAccountRecord: SchoolRecord = {
+      ...hiddenNoAccountRecord,
+      id: "school-16",
+      schoolId: "901016",
+      schoolCode: "901016",
+      schoolName: "Visible Account School",
+      schoolHeadAccount: {
+        id: "account-16",
+        name: "Visible Head",
+        email: "visible@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: false,
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-02T08:00:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+    };
+    const compactSchoolRows: MonitorSchoolRecordsListRow[] = [
+      {
+        summary: {
+          schoolKey: visibleAccountRecord.id,
+          schoolCode: visibleAccountRecord.schoolCode ?? "",
+          schoolName: visibleAccountRecord.schoolName,
+          region: visibleAccountRecord.region,
+          schoolStatus: visibleAccountRecord.status,
+          packageSchoolType: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasActivePackageSubmission: false,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 0,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: visibleAccountRecord,
+      },
+    ];
+
+    const { result } = renderHook(() =>
+      useMonitorSchoolHeadAccountsPanelState({
+        isMobileViewport: false,
+        isSaving: false,
+        records: [hiddenNoAccountRecord, visibleAccountRecord],
+        compactSchoolRows,
+        pushToast: vi.fn(),
+        updateSchoolHeadAccountStatus: vi.fn() as any,
+        activateSchoolHeadAccount: vi.fn() as any,
+        issueSchoolHeadAccountActionVerificationCode: vi.fn() as any,
+        issueSchoolHeadSetupLink: vi.fn() as any,
+        issueSchoolHeadPasswordResetLink: vi.fn() as any,
+        issueSchoolHeadTemporaryPassword: vi.fn() as any,
+        upsertSchoolHeadAccountProfile: vi.fn() as any,
+        removeSchoolHeadAccount: vi.fn() as any,
+        deleteRecord: vi.fn(async () => {}),
+        previewDeleteRecord: vi.fn() as any,
+        onOpenSchoolRecord: vi.fn(),
+        formatDateTime: (value) => value,
+      }),
+    );
+
+    act(() => {
+      result.current.openSchoolHeadAccountsPanelWithStatus("no_account");
+    });
+
+    expect(result.current.schoolHeadAccountsPanelProps?.totalCount).toBe(2);
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Filtered Out No Account School",
+    ]);
   });
 
   it("prioritizes blocked active lifecycle states ahead of active-ready accounts and filters them directly", () => {

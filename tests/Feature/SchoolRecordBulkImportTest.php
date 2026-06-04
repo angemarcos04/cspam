@@ -96,7 +96,9 @@ class SchoolRecordBulkImportTest extends TestCase
             ->assertJsonPath('data.updated', 0)
             ->assertJsonPath('data.restored', 0)
             ->assertJsonPath('data.skipped', 0)
-            ->assertJsonPath('data.failed', 0);
+            ->assertJsonPath('data.failed', 0)
+            ->assertJsonPath('data.accounts.created', 0)
+            ->assertJsonPath('data.accounts.none', 1);
 
         $school = School::query()->where('school_code', '955552')->firstOrFail();
         $this->assertSame('School Only Import', $school->name);
@@ -332,6 +334,7 @@ class SchoolRecordBulkImportTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.accounts.created', 1)
             ->assertJsonPath('data.results.0.accountAction', 'created')
             ->assertJsonPath('data.results.0.schoolHeadEmail', 'csv.head@example.com');
 
@@ -382,6 +385,7 @@ class SchoolRecordBulkImportTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.updated', 1)
+            ->assertJsonPath('data.accounts.created', 1)
             ->assertJsonPath('data.results.0.accountAction', 'created');
 
         $account = User::query()->where('email', 'existing.csv.head@example.com')->firstOrFail();
@@ -418,6 +422,7 @@ class SchoolRecordBulkImportTest extends TestCase
         ]);
 
         $response->assertOk()
+            ->assertJsonPath('data.accounts.skippedExistingAccount', 1)
             ->assertJsonPath('data.results.0.accountAction', 'skipped_existing_account')
             ->assertJsonPath('data.results.0.schoolHeadEmail', 'original.head@example.com');
 
@@ -459,6 +464,7 @@ class SchoolRecordBulkImportTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.accounts.failed', 1)
             ->assertJsonPath('data.results.0.accountAction', 'failed')
             ->assertJsonPath('data.results.0.schoolHeadEmail', 'used.email@example.com');
 

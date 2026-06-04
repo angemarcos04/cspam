@@ -52,6 +52,7 @@ interface UseMonitorSchoolsSectionOptions {
   isMobileViewport: boolean;
   isLoading: boolean;
   isSaving: boolean;
+  records: SchoolRecord[];
   recordsLength: number;
   totalSchoolsInScope: number;
   hasDashboardFilters: boolean;
@@ -153,6 +154,7 @@ export function useMonitorSchoolsSection({
   isMobileViewport,
   isLoading,
   isSaving,
+  records,
   recordsLength,
   totalSchoolsInScope,
   hasDashboardFilters,
@@ -226,6 +228,14 @@ export function useMonitorSchoolsSection({
     };
   }, [isSchoolActionsMenuOpen]);
 
+  const toggleActionsMenu = useCallback(() => {
+    setIsSchoolActionsMenuOpen((current) => !current);
+  }, []);
+
+  const closeActionsMenu = useCallback(() => {
+    setIsSchoolActionsMenuOpen(false);
+  }, []);
+
   const archivedApi = useMonitorArchivedSchools({
     isSaving,
     listArchivedRecords,
@@ -235,26 +245,10 @@ export function useMonitorSchoolsSection({
     formatDateTime,
   });
 
-  const bulkImportApi = useMonitorSchoolBulkImport({
-    bulkImportRecords,
-    showArchivedRecords: archivedApi.showArchivedRecords,
-    loadArchivedRecords: archivedApi.loadArchivedRecords,
-    pushToast,
-  });
-
-  const recordFormApi = useMonitorSchoolRecordForm({
-    isSaving,
-    setActiveTopNavigator,
-    addRecord,
-    updateRecord,
-    clearDeleteError: archivedApi.clearDeleteError,
-    clearBulkImportError: bulkImportApi.clearBulkImportError,
-    clearBulkImportFeedback: bulkImportApi.clearBulkImportFeedback,
-  });
-
   const schoolHeadAccountsApi = useMonitorSchoolHeadAccountsPanelState({
     isMobileViewport,
     isSaving,
+    records,
     compactSchoolRows,
     recordBySchoolKey,
     pushToast,
@@ -273,13 +267,28 @@ export function useMonitorSchoolsSection({
     formatDateTime,
   });
 
-  const toggleActionsMenu = useCallback(() => {
-    setIsSchoolActionsMenuOpen((current) => !current);
-  }, []);
+  const reviewMissingSchoolHeadAccounts = useCallback(() => {
+    closeActionsMenu();
+    schoolHeadAccountsApi.openSchoolHeadAccountsPanelWithStatus("no_account");
+  }, [closeActionsMenu, schoolHeadAccountsApi]);
 
-  const closeActionsMenu = useCallback(() => {
-    setIsSchoolActionsMenuOpen(false);
-  }, []);
+  const bulkImportApi = useMonitorSchoolBulkImport({
+    bulkImportRecords,
+    showArchivedRecords: archivedApi.showArchivedRecords,
+    loadArchivedRecords: archivedApi.loadArchivedRecords,
+    onReviewMissingAccounts: reviewMissingSchoolHeadAccounts,
+    pushToast,
+  });
+
+  const recordFormApi = useMonitorSchoolRecordForm({
+    isSaving,
+    setActiveTopNavigator,
+    addRecord,
+    updateRecord,
+    clearDeleteError: archivedApi.clearDeleteError,
+    clearBulkImportError: bulkImportApi.clearBulkImportError,
+    clearBulkImportFeedback: bulkImportApi.clearBulkImportFeedback,
+  });
 
   const openCreateRecordForm = useCallback(() => {
     closeActionsMenu();

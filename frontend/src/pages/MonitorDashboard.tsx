@@ -737,6 +737,7 @@ export function MonitorDashboard() {
     isMobileViewport,
     isLoading,
     isSaving,
+    records,
     recordsLength: records.length,
     totalSchoolsInScope,
     hasDashboardFilters,

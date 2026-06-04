@@ -965,6 +965,13 @@ class SchoolRecordController extends Controller
                 'restored' => $restored,
                 'skipped' => $skipped,
                 'failed' => $failed,
+                'accounts' => [
+                    'created' => $accountStats['created'],
+                    'unchanged' => $accountStats['unchanged'],
+                    'skippedExistingAccount' => $accountStats['skipped_existing_account'],
+                    'failed' => $accountStats['failed'],
+                    'none' => $accountStats['none'],
+                ],
                 'results' => $results,
             ],
             'meta' => [

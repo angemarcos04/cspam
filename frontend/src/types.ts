@@ -266,6 +266,13 @@ export interface SchoolBulkImportResult {
   restored: number;
   skipped: number;
   failed: number;
+  accounts?: {
+    created: number;
+    unchanged: number;
+    skippedExistingAccount: number;
+    failed: number;
+    none: number;
+  };
   results: Array<{
     row: number;
     schoolId: string;

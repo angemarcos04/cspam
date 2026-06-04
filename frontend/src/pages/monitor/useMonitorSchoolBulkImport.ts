@@ -12,6 +12,7 @@ interface UseMonitorSchoolBulkImportOptions {
   ) => Promise<SchoolBulkImportResult>;
   showArchivedRecords: boolean;
   loadArchivedRecords: () => Promise<void>;
+  onReviewMissingAccounts?: () => void;
   pushToast: (message: string, tone: ToastTone) => void;
 }
 
@@ -29,6 +30,7 @@ export function useMonitorSchoolBulkImport({
   bulkImportRecords,
   showArchivedRecords,
   loadArchivedRecords,
+  onReviewMissingAccounts,
   pushToast,
 }: UseMonitorSchoolBulkImportOptions): UseMonitorSchoolBulkImportResult {
   const [bulkImportSummary, setBulkImportSummary] = useState<SchoolBulkImportResult | null>(null);
@@ -99,8 +101,9 @@ export function useMonitorSchoolBulkImport({
       deleteError: "",
       bulkImportError,
       bulkImportSummary,
+      onReviewMissingAccounts,
     }),
-    [bulkImportError, bulkImportSummary],
+    [bulkImportError, bulkImportSummary, onReviewMissingAccounts],
   );
 
   return {

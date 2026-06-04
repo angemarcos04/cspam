@@ -74,6 +74,7 @@ vi.mock("@/components/students/StudentRecordsPanel", () => ({
 
 const issueSchoolHeadSetupLinkMock = vi.fn();
 const sendReminderMock = vi.fn();
+const bulkImportRecordsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 
 describe("MonitorDashboard School Head delivery flows", () => {
@@ -81,6 +82,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     window.localStorage.clear();
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
+    bulkImportRecordsMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
@@ -113,6 +115,29 @@ describe("MonitorDashboard School Head delivery flows", () => {
       deliveryMode: "sync",
       deliveryStatus: "sent",
       deliveryWarning: null,
+    });
+    bulkImportRecordsMock.mockResolvedValue({
+      created: 1,
+      updated: 0,
+      restored: 0,
+      skipped: 0,
+      failed: 0,
+      accounts: {
+        created: 0,
+        unchanged: 0,
+        skippedExistingAccount: 0,
+        failed: 0,
+        none: 1,
+      },
+      results: [
+        {
+          row: 1,
+          schoolId: "955570",
+          schoolName: "Imported No Account School",
+          action: "created",
+          accountAction: "none",
+        },
+      ],
     });
 
     vi.mocked(useAuth).mockReturnValue({
@@ -236,7 +261,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       upsertSchoolHeadAccountProfile: vi.fn(),
       removeSchoolHeadAccount: vi.fn(),
       removeSchoolHeadAccountsBatch: vi.fn(),
-      bulkImportRecords: vi.fn(),
+      bulkImportRecords: bulkImportRecordsMock,
     });
 
     const indicatorDataMock = {
@@ -433,6 +458,36 @@ describe("MonitorDashboard School Head delivery flows", () => {
       });
       clickMock.mockRestore();
     }
+  });
+
+  it("explains CSV imports that did not create School Head accounts", async () => {
+    const { container } = render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+
+    const csv = "school_id,school_name,level,type,address\n955570,Imported No Account School,Elementary,public,Main";
+    const file = new File([csv], "schools.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(csv),
+    });
+
+    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
+    expect(input).not.toBeNull();
+
+    fireEvent.change(input!, { target: { files: [file] } });
+
+    await waitFor(() => {
+      expect(bulkImportRecordsMock).toHaveBeenCalledTimes(1);
+    });
+
+    expect(screen.getByText(/No School Head accounts were created/i)).not.toBeNull();
+    expect(screen.getByText(/school_head_name and school_head_email/i)).not.toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Review schools needing accounts" }));
+
+    expect(screen.getByText("School Head Accounts")).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Needs account/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {

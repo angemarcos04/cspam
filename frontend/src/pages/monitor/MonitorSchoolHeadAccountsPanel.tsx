@@ -18,7 +18,17 @@ import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
-  "all" | "no_account" | "pending_setup" | "pending_verification" | "password_reset_required" | "temporary_password_expired" | "active" | "suspended" | "locked" | "archived";
+  | "all"
+  | "no_account"
+  | "temporary_password_active"
+  | "password_reset_required"
+  | "pending_setup"
+  | "pending_verification"
+  | "temporary_password_expired"
+  | "active"
+  | "suspended"
+  | "locked"
+  | "archived";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -33,6 +43,7 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   isMobileViewport: boolean;
   rows: MonitorSchoolHeadAccountRow[];
   totalCount: number;
+  accountStatusCounts?: Partial<Record<SchoolHeadAccountsStatusFilter, number>>;
   query: string;
   statusFilter: SchoolHeadAccountsStatusFilter;
   onlyFlagged: boolean;
@@ -208,12 +219,25 @@ function accountMenuButtonClass(tone: "default" | "warning" | "archive" | "dange
   return `${base} text-slate-700 hover:bg-slate-50 focus:bg-slate-50`;
 }
 
+const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label: string }> = [
+  { id: "all", label: "All" },
+  { id: "no_account", label: "Needs account" },
+  { id: "temporary_password_active", label: "Temporary password active" },
+  { id: "password_reset_required", label: "Password reset required" },
+  { id: "pending_setup", label: "Pending setup" },
+  { id: "active", label: "Active" },
+  { id: "suspended", label: "Suspended" },
+  { id: "locked", label: "Locked" },
+  { id: "archived", label: "Archived" },
+];
+
 export function MonitorSchoolHeadAccountsPanel({
   isOpen,
   isSaving,
   isMobileViewport,
   rows,
   totalCount,
+  accountStatusCounts,
   query,
   statusFilter,
   onlyFlagged,
@@ -245,6 +269,15 @@ export function MonitorSchoolHeadAccountsPanel({
   if (!isOpen) {
     return null;
   }
+
+  const fallbackStatusCounts = ACCOUNT_FILTER_OPTIONS.reduce<Partial<Record<SchoolHeadAccountsStatusFilter, number>>>(
+    (counts, option) => {
+      counts[option.id] = option.id === "all" ? totalCount : 0;
+      return counts;
+    },
+    {},
+  );
+  const filterCounts = accountStatusCounts ?? fallbackStatusCounts;
 
   return (
     <>
@@ -312,8 +345,37 @@ export function MonitorSchoolHeadAccountsPanel({
             </div>
             <div className="text-xs font-semibold text-slate-500">
               Showing <span className="text-slate-700">{rows.length}</span> of{" "}
-              <span className="text-slate-700">{totalCount}</span>
+              <span className="text-slate-700">{totalCount}</span> schools
             </div>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="School Head account filters">
+            {ACCOUNT_FILTER_OPTIONS.map((option) => {
+              const isSelected = statusFilter === option.id;
+              const count = filterCounts[option.id] ?? 0;
+
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  aria-pressed={isSelected}
+                  onClick={() => onStatusFilterChange(option.id)}
+                  className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                    isSelected
+                      ? "border-primary-300 bg-primary-50 text-primary-800"
+                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  <span>{option.label}</span>
+                  <span
+                    className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
+                      isSelected ? "bg-primary-100 text-primary-800" : "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -429,7 +491,7 @@ export function MonitorSchoolHeadAccountsPanel({
                             </a>
                           </div>
                         ) : (
-                          <span className="text-slate-400">No account</span>
+                          <span className="font-medium text-slate-500">No School Head account</span>
                         )}
                       </td>
                       <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
@@ -452,7 +514,9 @@ export function MonitorSchoolHeadAccountsPanel({
                             ) : null}
                           </div>
                         ) : (
-                          <span className="text-slate-400">No account</span>
+                          <span className="inline-flex items-center self-start rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
+                            Needs account
+                          </span>
                         )}
                       </td>
                       <td className="border-r border-slate-100 px-3 py-1.5 align-top text-xs text-slate-700">
@@ -510,11 +574,19 @@ export function MonitorSchoolHeadAccountsPanel({
                               type="button"
                               onClick={() => actions.beginEditing(resolvedRecord)}
                               disabled={isRowSaving || isSaving}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              className={`inline-flex h-8 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 ${
+                                account ? "w-8" : "gap-1.5 px-2.5"
+                              }`}
                               title={account ? "Edit account" : "Create account"}
                             >
                               {account ? <Edit2 className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
-                              <span className="sr-only">{account ? "Edit" : "Create"}</span>
+                              {account ? (
+                                <span className="sr-only">Edit account</span>
+                              ) : (
+                                <span className={isMobileViewport ? "sr-only" : "text-xs font-semibold"}>
+                                  Create account
+                                </span>
+                              )}
                             </button>
                             {account && shouldShowQuickSetupLink(account.accountStatus) && (
                               <button

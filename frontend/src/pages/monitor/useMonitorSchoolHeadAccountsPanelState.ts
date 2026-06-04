@@ -27,8 +27,9 @@ type ToastTone = "success" | "info" | "warning";
 interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   isMobileViewport: boolean;
   isSaving: boolean;
-  compactSchoolRows: MonitorSchoolRecordsListRow[];
-  recordBySchoolKey: Map<string, SchoolRecord>;
+  records?: SchoolRecord[];
+  compactSchoolRows?: MonitorSchoolRecordsListRow[];
+  recordBySchoolKey?: Map<string, SchoolRecord>;
   pushToast: (message: string, tone: ToastTone) => void;
   updateSchoolHeadAccountStatus: (
     schoolId: string,
@@ -72,12 +73,14 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
 export interface UseMonitorSchoolHeadAccountsPanelStateResult {
   showSchoolHeadAccountsPanel: boolean;
   toggleSchoolHeadAccountsPanel: () => void;
+  openSchoolHeadAccountsPanelWithStatus: (status?: SchoolHeadAccountsStatusFilter) => void;
   schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
 }
 
 export function useMonitorSchoolHeadAccountsPanelState({
   isMobileViewport,
   isSaving,
+  records,
   compactSchoolRows,
   recordBySchoolKey,
   pushToast,
@@ -154,6 +157,14 @@ export function useMonitorSchoolHeadAccountsPanelState({
     });
   }, [schoolHeadAccountActions]);
 
+  const openSchoolHeadAccountsPanelWithStatus = useCallback((status: SchoolHeadAccountsStatusFilter = "all") => {
+    setSchoolHeadAccountsQuery("");
+    setSchoolHeadAccountsStatusFilter(status);
+    setSchoolHeadAccountsOnlyFlagged(false);
+    setSchoolHeadAccountsOnlyDeleteFlagged(false);
+    setShowSchoolHeadAccountsPanel(true);
+  }, []);
+
   const closePendingDeleteSchoolRecord = useCallback(() => {
     setPendingDeleteSchoolRecord(null);
     setPendingDeleteSchoolRecordPreview(null);
@@ -210,13 +221,22 @@ export function useMonitorSchoolHeadAccountsPanelState({
     }
   }, [closePendingDeleteSchoolRecord, deleteRecord, pendingDeleteSchoolRecord, pushToast]);
 
+  const accountManagementRecords = useMemo<SchoolRecord[]>(() => {
+    if (records) {
+      return records;
+    }
+
+    return (compactSchoolRows ?? [])
+      .map(({ summary, record }) => record ?? recordBySchoolKey?.get(summary.schoolKey) ?? null)
+      .filter((record): record is SchoolRecord => Boolean(record));
+  }, [compactSchoolRows, recordBySchoolKey, records]);
+
   const deleteFlaggedSchoolIds = useMemo(
     () =>
-      compactSchoolRows
-        .map(({ summary, record }) => record ?? recordBySchoolKey.get(summary.schoolKey) ?? null)
-        .filter((record): record is SchoolRecord => Boolean(record?.schoolHeadAccount?.deleteRecordFlagged))
+      accountManagementRecords
+        .filter((record): record is SchoolRecord => Boolean(record.schoolHeadAccount?.deleteRecordFlagged))
         .map((record) => record.id),
-    [compactSchoolRows, recordBySchoolKey],
+    [accountManagementRecords],
   );
 
   const openPendingBatchDeleteSchoolRecords = useCallback(() => {
@@ -282,28 +302,65 @@ export function useMonitorSchoolHeadAccountsPanelState({
     removeSchoolHeadAccountsBatch,
   ]);
 
-  const filteredSchoolHeadAccountRows = useMemo(() => {
-    const query = schoolHeadAccountsQuery.trim().toLowerCase();
-    const statusFilter = schoolHeadAccountsStatusFilter;
-
-    const rows = compactSchoolRows.filter(({ summary, record }) => {
-      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-      const account = resolvedRecord?.schoolHeadAccount ?? null;
+  const accountMatchesStatusFilter = useCallback(
+    (record: SchoolRecord, statusFilter: SchoolHeadAccountsStatusFilter): boolean => {
+      const account = record.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
       const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
       const hasNoAccount = !account;
       const isPendingSetup = normalizedAccountStatus === "pending_setup";
 
-      if (statusFilter !== "all") {
-        if (statusFilter === "no_account") {
-          if (!hasNoAccount) return false;
-        } else if (statusFilter === "pending_setup") {
-          if (!isPendingSetup) return false;
-        } else if (statusFilter === "password_reset_required" || statusFilter === "temporary_password_expired") {
-          if (lifecycleState !== statusFilter) return false;
-        } else if (normalizedAccountStatus !== statusFilter) {
-          return false;
+      if (statusFilter === "all") return true;
+      if (statusFilter === "no_account") return hasNoAccount;
+      if (statusFilter === "pending_setup") return isPendingSetup;
+      if (
+        statusFilter === "password_reset_required" ||
+        statusFilter === "temporary_password_expired" ||
+        statusFilter === "temporary_password_active"
+      ) {
+        return lifecycleState === statusFilter;
+      }
+
+      return normalizedAccountStatus === statusFilter;
+    },
+    [],
+  );
+
+  const accountStatusCounts = useMemo<Record<SchoolHeadAccountsStatusFilter, number>>(() => {
+    const counts: Record<SchoolHeadAccountsStatusFilter, number> = {
+      all: accountManagementRecords.length,
+      no_account: 0,
+      temporary_password_active: 0,
+      password_reset_required: 0,
+      pending_setup: 0,
+      pending_verification: 0,
+      temporary_password_expired: 0,
+      active: 0,
+      suspended: 0,
+      locked: 0,
+      archived: 0,
+    };
+
+    accountManagementRecords.forEach((record) => {
+      (Object.keys(counts) as SchoolHeadAccountsStatusFilter[]).forEach((statusFilter) => {
+        if (statusFilter !== "all" && accountMatchesStatusFilter(record, statusFilter)) {
+          counts[statusFilter] += 1;
         }
+      });
+    });
+
+    return counts;
+  }, [accountManagementRecords, accountMatchesStatusFilter]);
+
+  const filteredSchoolHeadAccountRecords = useMemo(() => {
+    const query = schoolHeadAccountsQuery.trim().toLowerCase();
+    const statusFilter = schoolHeadAccountsStatusFilter;
+
+    const rows = accountManagementRecords.filter((record) => {
+      const account = record.schoolHeadAccount ?? null;
+
+      if (!accountMatchesStatusFilter(record, statusFilter)) {
+        return false;
       }
 
       if (schoolHeadAccountsOnlyFlagged && !(account?.flagged ?? false)) {
@@ -318,16 +375,20 @@ export function useMonitorSchoolHeadAccountsPanelState({
         return true;
       }
 
-      const haystack = [summary.schoolCode, summary.schoolName, account?.name ?? "", account?.email ?? ""]
+      const haystack = [
+        record.schoolCode ?? record.schoolId ?? "",
+        record.schoolName,
+        account?.name ?? "",
+        account?.email ?? "",
+      ]
         .join(" ")
         .toLowerCase();
 
       return haystack.includes(query);
     });
 
-    const priorityFor = ({ summary, record }: MonitorSchoolRecordsListRow) => {
-      const resolvedRecord = record ?? recordBySchoolKey.get(summary.schoolKey) ?? null;
-      const account = resolvedRecord?.schoolHeadAccount ?? null;
+    const priorityFor = (record: SchoolRecord) => {
+      const account = record.schoolHeadAccount ?? null;
       const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
       const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
 
@@ -349,13 +410,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
     rows.sort((a, b) => {
       const priorityDiff = priorityFor(a) - priorityFor(b);
       if (priorityDiff !== 0) return priorityDiff;
-      return a.summary.schoolName.localeCompare(b.summary.schoolName);
+      return a.schoolName.localeCompare(b.schoolName);
     });
 
     return rows;
   }, [
-    compactSchoolRows,
-    recordBySchoolKey,
+    accountManagementRecords,
+    accountMatchesStatusFilter,
     schoolHeadAccountsOnlyDeleteFlagged,
     schoolHeadAccountsOnlyFlagged,
     schoolHeadAccountsQuery,
@@ -364,25 +425,27 @@ export function useMonitorSchoolHeadAccountsPanelState({
 
   const schoolHeadAccountRows = useMemo<MonitorSchoolHeadAccountRow[]>(
     () =>
-      filteredSchoolHeadAccountRows.map(({ summary, record }) => ({
-        schoolKey: summary.schoolKey,
-        schoolCode: summary.schoolCode,
-        schoolName: summary.schoolName,
-        record: record ?? recordBySchoolKey.get(summary.schoolKey) ?? null,
+      filteredSchoolHeadAccountRecords.map((record) => ({
+        schoolKey: record.id,
+        schoolCode: record.schoolCode ?? record.schoolId ?? "",
+        schoolName: record.schoolName,
+        record,
       })),
-    [filteredSchoolHeadAccountRows, recordBySchoolKey],
+    [filteredSchoolHeadAccountRecords],
   );
 
   return {
     showSchoolHeadAccountsPanel,
     toggleSchoolHeadAccountsPanel,
+    openSchoolHeadAccountsPanelWithStatus,
     schoolHeadAccountsPanelProps: showSchoolHeadAccountsPanel
       ? {
           isOpen: showSchoolHeadAccountsPanel,
           isSaving,
           isMobileViewport,
           rows: schoolHeadAccountRows,
-          totalCount: compactSchoolRows.length,
+          totalCount: accountManagementRecords.length,
+          accountStatusCounts,
           query: schoolHeadAccountsQuery,
           statusFilter: schoolHeadAccountsStatusFilter,
           onlyFlagged: schoolHeadAccountsOnlyFlagged,
