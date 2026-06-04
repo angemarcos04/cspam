@@ -39,7 +39,7 @@ export function buildMonitorDrawerHistorySummary(
       packagesWithoutRenderableRowsCount: 0,
       historyAvailabilityLabel: "No package history yet",
       historyExplanation: "No package history exists yet for this school.",
-      historyFallbackReason: "No package history exists yet for this school.",
+      historyFallbackReason: null,
     };
   }
 
@@ -60,9 +60,9 @@ export function buildMonitorDrawerHistorySummary(
   let historyFallbackReason: string | null = null;
 
   if (!latestRenderableSubmission) {
-    historyAvailabilityLabel = "Packages exist without indicator detail";
-    historyExplanation = "Packages exist for this school, but none contain renderable indicator rows for history view.";
-    historyFallbackReason = "Packages exist, but none contain indicator rows for history rendering.";
+    historyAvailabilityLabel = "No indicator data available yet";
+    historyExplanation = "A package exists for this school, but it has no indicator data to display.";
+    historyFallbackReason = "This package has no indicator data to display.";
   } else if (latestHistorySubmission && latestRenderableSubmission.id !== latestHistorySubmission.id) {
     historyAvailabilityLabel = "Latest package differs from history source";
     historyExplanation = `Latest package #${latestHistorySubmission.id} has no renderable indicator rows. Showing package #${latestRenderableSubmission.id} as the most recent history source with indicator detail.`;

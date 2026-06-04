@@ -133,7 +133,7 @@ describe("MonitorSchoolDrawer", () => {
 
     expect(screen.getByLabelText("Monitor school detail academic year")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Submissions" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "History (Reference)" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Indicator History" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
     expect(screen.getByText("Submitted Packages")).toBeTruthy();
     expect(screen.getByRole("link", { name: "View FM-QAD-001" })).toBeTruthy();
@@ -145,6 +145,148 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByText("Monitor Package")).toBeNull();
     expect(screen.queryByText("Active package requirements: FM-QAD uploads only.")).toBeNull();
     expect(screen.queryByText(/Compliance is submitted\. Active private package/i)).toBeNull();
+  });
+
+  it("keeps the no-indicator-data history state plain and collapses package details", () => {
+    render(
+      <MonitorSchoolDrawer
+        viewState={{
+          isOpen: true,
+          showNavigatorManual: true,
+          isMobileViewport: false,
+          activeTopNavigator: "schools",
+          activeSchoolDrawerTab: "history",
+          selectedSchoolDrawerYear: "2025-2026",
+          highlightedDrawerIndicatorKey: null,
+          expandedDrawerIndicatorRows: {},
+        }}
+        loadingState={{
+          syncedCountsLoadingSchoolKey: null,
+          syncedCountsError: "",
+          isSchoolDrawerSubmissionsLoading: false,
+          schoolDrawerSubmissionsError: "",
+        }}
+        data={{
+          schoolDetail: {
+            schoolKey: "school-1",
+            schoolCode: "401777",
+            schoolName: "AMA CC - Santiago City",
+            region: "II",
+            level: "High School",
+            type: "Private",
+            schoolTypeRaw: "private",
+            requirementModeLabel: "Active package requirements: FM-QAD uploads only.",
+            activePackageLabel: "FM-QAD uploads only",
+            address: "N/A",
+            hasComplianceRecord: true,
+            indicatorStatus: "submitted",
+            hasActivePackageSubmission: true,
+            missingCount: 0,
+            awaitingReviewCount: 1,
+            lastActivityAt: null,
+            reportedStudents: 0,
+            reportedTeachers: 0,
+            synchronizedStudents: 0,
+            synchronizedTeachers: 0,
+          },
+          availableSchoolDrawerYears: ["2025-2026"],
+          schoolDrawerYearDetail: null,
+          schoolDrawerHistorySummary: {
+            historyPackageCount: 1,
+            historySchoolYearCount: 1,
+            latestHistoryPackageId: "5",
+            latestHistorySchoolYear: "2026-2027",
+            latestRenderableSubmissionId: null,
+            latestRenderableSchoolYear: null,
+            packagesWithRenderableRowsCount: 0,
+            packagesWithoutRenderableRowsCount: 1,
+            historyAvailabilityLabel: "No indicator data available yet",
+            historyExplanation: "A package exists for this school, but it has no indicator data to display.",
+            historyFallbackReason: "This package has no indicator data to display.",
+          },
+          schoolDrawerCriticalAlerts: [],
+          schoolIndicatorPackageRows: [
+            {
+              id: "5",
+              schoolYear: "2026-2027",
+              reportingPeriod: "ANNUAL",
+              status: "submitted",
+              submittedAt: "2026-06-04T11:11:00.000Z",
+              reviewedAt: null,
+              updatedAt: "2026-06-04T11:11:00.000Z",
+              complianceRatePercent: null,
+              reviewedBy: "N/A",
+            },
+          ],
+          latestSchoolPackage: {
+            id: "5",
+            schoolYear: "2026-2027",
+            reportingPeriod: "ANNUAL",
+            status: "submitted",
+            submittedAt: "2026-06-04T11:11:00.000Z",
+            reviewedAt: null,
+            updatedAt: "2026-06-04T11:11:00.000Z",
+            complianceRatePercent: null,
+            reviewedBy: "N/A",
+          },
+          schoolIndicatorMatrix: { years: [], rows: [], latestSubmission: null },
+          latestSchoolIndicatorYear: "2026-2027",
+          schoolDrawerIndicatorSubmissions: [
+            {
+              id: "5",
+              formType: "indicator",
+              status: "submitted",
+              statusLabel: "Submitted",
+              reportingPeriod: "ANNUAL",
+              version: 1,
+              notes: null,
+              reviewNotes: null,
+              submittedAt: "2026-06-04T11:11:00.000Z",
+              reviewedAt: null,
+              createdAt: "2026-06-04T11:00:00.000Z",
+              updatedAt: "2026-06-04T11:11:00.000Z",
+              summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+              indicators: [],
+              academicYear: { id: "year-2", name: "2026-2027" },
+            } as never,
+          ],
+          schoolIndicatorRowsByCategory: [],
+          missingDrawerIndicatorKeys: [],
+          returnedDrawerIndicatorKeys: [],
+          missingDrawerIndicatorKeySet: new Set(),
+          returnedDrawerIndicatorKeySet: new Set(),
+        }}
+        actions={{
+          setActiveSchoolDrawerTab: vi.fn(),
+          setSelectedSchoolDrawerYear: vi.fn(),
+          closeSchoolDrawer: vi.fn(),
+          handleJumpToMissingIndicators: vi.fn(),
+          handleJumpToReturnedIndicators: vi.fn(),
+          toggleDrawerIndicatorLabel: vi.fn(),
+        }}
+        formatting={{
+          workflowTone: () => "",
+          workflowLabel: (status) => status ?? "N/A",
+          formatDateTime: () => "6/4/2026 11:11 AM",
+        }}
+      />,
+    );
+
+    expect(screen.getAllByText("This package has no indicator data to display.")).toHaveLength(1);
+    expect(screen.getByText("No indicator data available yet")).toBeTruthy();
+    expect(screen.queryByText("Packages exist, but none contain indicator rows for history rendering.")).toBeNull();
+    expect(screen.queryByText("History Source")).toBeNull();
+    expect(screen.queryByText(/Matrix source year:/)).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Package" })).toBeNull();
+
+    const toggle = screen.getByRole("button", { name: "Show package details" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+
+    expect(screen.getByRole("button", { name: "Hide package details" }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByText(/Matrix source year:/)).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "Reviewed" })).toBeNull();
   });
 
   it("keeps the rendered checklist and report tied to the selected year context", () => {

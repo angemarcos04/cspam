@@ -131,6 +131,7 @@ export function MonitorSchoolDrawer({
   const [scopeReviewError, setScopeReviewError] = useState<string>("");
   const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [returnReviewNotes, setReturnReviewNotes] = useState("");
+  const [isHistoryDetailsOpen, setIsHistoryDetailsOpen] = useState(false);
   const {
     isOpen,
     showNavigatorManual,
@@ -279,7 +280,7 @@ export function MonitorSchoolDrawer({
                     <div className="inline-flex rounded-sm border border-slate-200 bg-slate-50 p-1">
                       {([
                         { id: "submissions", label: "Submissions" },
-                        { id: "history", label: "History (Reference)" },
+                        { id: "history", label: "Indicator History" },
                       ] as Array<{ id: SchoolDrawerTab; label: string }>).map((tab) => (
                         <button
                           key={`school-drawer-tab-${tab.id}`}
@@ -510,25 +511,23 @@ export function MonitorSchoolDrawer({
 
               {activeSchoolDrawerTab === "history" && (
                 <article className="rounded-sm border border-slate-200 bg-white p-3">
-                  <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Indicator History</p>
                       <p className="mt-0.5 text-[11px] text-slate-500">
-                        Historical package lineage and indicator reference. Hover or expand rows for full descriptions.
-                      </p>
-                    </div>
-                    <div className="text-right text-[11px] text-slate-600">
-                      <p>
-                        Latest package: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}</span>
-                      </p>
-                      <p>
-                        Matrix source year: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestRenderableSchoolYear ?? (latestSchoolIndicatorYear || "N/A")}</span>
+                        Historical package lineage and indicator reference.
                       </p>
                     </div>
                   </div>
 
+                  {schoolDrawerHistorySummary?.historyFallbackReason ? (
+                    <div className="mt-3 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
+                      {schoolDrawerHistorySummary.historyFallbackReason}
+                    </div>
+                  ) : null}
+
                   <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="space-y-3">
                       <div className="space-y-1">
                         <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">History Summary</p>
                         <p className="text-sm font-semibold text-slate-900">
@@ -538,7 +537,7 @@ export function MonitorSchoolDrawer({
                           {schoolDrawerHistorySummary?.historyExplanation ?? "No history explanation available yet."}
                         </p>
                       </div>
-                      <div className="grid grid-cols-2 gap-2 md:grid-cols-3">
+                      <div className="grid overflow-hidden rounded-sm border border-slate-200 bg-white md:grid-cols-5">
                         <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
                           <p className="text-[11px] text-slate-600">Packages</p>
                           <p className="text-sm font-semibold text-slate-900">
@@ -569,19 +568,8 @@ export function MonitorSchoolDrawer({
                             {schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}
                           </p>
                         </div>
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">History Source</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.latestRenderableSubmissionId ? `#${schoolDrawerHistorySummary.latestRenderableSubmissionId}` : "N/A"}
-                          </p>
-                        </div>
                       </div>
                     </div>
-                    {schoolDrawerHistorySummary?.historyFallbackReason ? (
-                      <div className="mt-3 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-                        {schoolDrawerHistorySummary.historyFallbackReason}
-                      </div>
-                    ) : null}
                   </div>
 
                   <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
@@ -589,77 +577,91 @@ export function MonitorSchoolDrawer({
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Package History Context</p>
                         <p className="mt-0.5 text-[11px] text-slate-500">
-                          This shows which package is the latest activity and which package is currently supplying renderable history detail.
+                          Shows the latest package activity and its history status.
                         </p>
                       </div>
+                      <button
+                        type="button"
+                        aria-expanded={isHistoryDetailsOpen}
+                        aria-controls="monitor-package-history-details"
+                        onClick={() => setIsHistoryDetailsOpen((current) => !current)}
+                        className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                      >
+                        {isHistoryDetailsOpen ? "Hide package details" : "Show package details"}
+                      </button>
                     </div>
-                    {schoolIndicatorPackageRows.length === 0 ? (
-                      <div className="mt-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
-                        No package history exists yet for this school.
-                      </div>
-                    ) : (
-                      <div className="mt-2 overflow-x-auto rounded-sm border border-slate-200">
-                        <table className="min-w-[820px] w-full border-collapse">
-                          <thead>
-                            <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                              <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
-                              <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
-                              <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
-                              <th className="border border-slate-300 px-2 py-2 text-center">Indicator Rows</th>
-                              <th className="border border-slate-300 px-2 py-2 text-center">History Role</th>
-                              <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
-                              <th className="border border-slate-300 px-2 py-2 text-left">Reviewed</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {schoolIndicatorPackageRows.map((row) => {
-                              const matchingSubmission = schoolDrawerIndicatorSubmissions.find((submission) => submission.id === row.id);
-                              const hasIndicatorRows = Array.isArray(matchingSubmission?.indicators) && matchingSubmission.indicators.length > 0;
-                              const historyRole =
-                                schoolDrawerHistorySummary?.latestRenderableSubmissionId === row.id
-                                  ? "Matrix source"
-                                  : latestSchoolPackage?.id === row.id
-                                    ? "Latest activity"
-                                    : "Historical only";
-
-                              return (
-                                <tr key={`monitor-history-package-${row.id}`} className="bg-white">
-                                  <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
-                                  <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
-                                  <td className="border border-slate-300 px-2 py-2 text-center">
-                                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
-                                      {workflowLabel(row.status)}
-                                    </span>
-                                  </td>
-                                  <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">
-                                    {hasIndicatorRows ? "Available" : "None"}
-                                  </td>
-                                  <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">{historyRole}</td>
-                                  <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">
-                                    {row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}
-                                  </td>
-                                  <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">
-                                    {row.reviewedAt ? formatDateTime(row.reviewedAt) : "N/A"}
-                                  </td>
+                    {isHistoryDetailsOpen && (
+                      <div id="monitor-package-history-details" className="mt-3 space-y-2">
+                        <div className="grid gap-2 text-[11px] text-slate-600 sm:grid-cols-2">
+                          <p>
+                            Latest package: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}</span>
+                          </p>
+                          <p>
+                            Matrix source year: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestRenderableSchoolYear ?? (latestSchoolIndicatorYear || "N/A")}</span>
+                          </p>
+                        </div>
+                        {schoolIndicatorPackageRows.length === 0 ? (
+                          <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
+                            No package history exists yet for this school.
+                          </div>
+                        ) : (
+                          <div className="overflow-x-auto rounded-sm border border-slate-200">
+                            <table className="min-w-[720px] w-full border-collapse">
+                              <thead>
+                                <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
+                                  <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
+                                  <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
+                                  <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
+                                  <th className="border border-slate-300 px-2 py-2 text-center">Indicator Rows</th>
+                                  <th className="border border-slate-300 px-2 py-2 text-center">History Role</th>
+                                  <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
                                 </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
+                              </thead>
+                              <tbody>
+                                {schoolIndicatorPackageRows.map((row) => {
+                                  const matchingSubmission = schoolDrawerIndicatorSubmissions.find((submission) => submission.id === row.id);
+                                  const hasIndicatorRows = Array.isArray(matchingSubmission?.indicators) && matchingSubmission.indicators.length > 0;
+                                  const historyRole =
+                                    schoolDrawerHistorySummary?.latestRenderableSubmissionId === row.id
+                                      ? "Matrix source"
+                                      : latestSchoolPackage?.id === row.id
+                                        ? "Latest activity"
+                                        : "Historical only";
+
+                                  return (
+                                    <tr key={`monitor-history-package-${row.id}`} className="bg-white">
+                                      <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
+                                      <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
+                                      <td className="border border-slate-300 px-2 py-2 text-center">
+                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
+                                          {workflowLabel(row.status)}
+                                        </span>
+                                      </td>
+                                      <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">
+                                        {hasIndicatorRows ? "Available" : "None"}
+                                      </td>
+                                      <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">{historyRole}</td>
+                                      <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">
+                                        {row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
 
-                  {schoolIndicatorMatrix.rows.length === 0 ? (
+                  {schoolIndicatorMatrix.rows.length === 0 && (isSchoolDrawerSubmissionsLoading || schoolDrawerIndicatorSubmissions.length === 0) ? (
                     <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
                       {isSchoolDrawerSubmissionsLoading
                         ? "Loading submitted indicators for this school..."
-                        : schoolDrawerIndicatorSubmissions.length === 0
-                          ? "No package history exists yet for this school."
-                          : schoolDrawerHistorySummary?.historyFallbackReason
-                            ?? "Packages exist, but none contain indicator rows for history rendering."}
+                        : "No package history exists yet for this school."}
                     </div>
-                  ) : (
+                  ) : schoolIndicatorMatrix.rows.length > 0 ? (
                     <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
@@ -776,7 +778,7 @@ export function MonitorSchoolDrawer({
                         </table>
                       </div>
                     </div>
-                  )}
+                  ) : null}
                 </article>
               )}
             </div>
