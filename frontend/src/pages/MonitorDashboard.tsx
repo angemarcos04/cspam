@@ -451,15 +451,10 @@ export function MonitorDashboard() {
     accurateSyncedCountsBySchoolKey,
   });
   const {
-    autoAdvanceQueue,
-    setAutoAdvanceQueue,
     handleQueueReviewCompleted,
   } = useMonitorReviewFlow({
-    laneFilteredQueueRows,
     activeSchoolDrawerKey: schoolDrawerKey,
-    onOpenSchoolDrawer: openSchoolDrawer,
     onRefreshActiveDrawer: refreshSchoolDrawer,
-    onToast: pushToast,
   });
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
@@ -885,8 +880,6 @@ export function MonitorDashboard() {
               needsActionCount={needsActionCount}
               returnedCount={returnedCount}
               submittedCount={submittedCount}
-              autoAdvanceQueue={autoAdvanceQueue}
-              setAutoAdvanceQueue={setAutoAdvanceQueue}
               paginatedRequirementRows={paginatedRequirementRows}
               laneFilteredQueueRows={laneFilteredQueueRows}
               schoolDrawerKey={schoolDrawerKey}

@@ -504,6 +504,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Queue List" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Review Workspace" })).toBeTruthy();
+    expect(screen.queryByLabelText("Auto-open next school after review")).toBeNull();
 
     const globalSearch = screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
     fireEvent.change(globalSearch, { target: { value: "Santiago" } });
@@ -520,6 +521,14 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByRole("button", { name: "Open School" })).toBeNull();
     expect((await screen.findAllByRole("button", { name: "Review" })).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("button", { name: "Reminder" })).length).toBeGreaterThan(0);
+
+    scrollIntoViewMock.mockClear();
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Queue List" }));
+    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 
   it("sends queue reminders with an optional note", async () => {

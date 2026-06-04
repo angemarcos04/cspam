@@ -35,8 +35,6 @@ interface MonitorReviewsSectionProps {
   needsActionCount: number;
   returnedCount: number;
   submittedCount: number;
-  autoAdvanceQueue: boolean;
-  setAutoAdvanceQueue: Dispatch<SetStateAction<boolean>>;
   paginatedRequirementRows: ReviewQueueRow[];
   laneFilteredQueueRows: ReviewQueueRow[];
   schoolDrawerKey: string | null;
@@ -73,8 +71,6 @@ export function MonitorReviewsSection({
   needsActionCount,
   returnedCount,
   submittedCount,
-  autoAdvanceQueue,
-  setAutoAdvanceQueue,
   paginatedRequirementRows,
   laneFilteredQueueRows,
   schoolDrawerKey,
@@ -154,15 +150,6 @@ export function MonitorReviewsSection({
             <div>
               <h2 className="text-base font-bold text-slate-900">Queue List</h2>
             </div>
-            <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-              <input
-                type="checkbox"
-                checked={autoAdvanceQueue}
-                onChange={(event) => setAutoAdvanceQueue(event.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-              />
-              Auto-open next school after review
-            </label>
           </div>
         </div>
 
