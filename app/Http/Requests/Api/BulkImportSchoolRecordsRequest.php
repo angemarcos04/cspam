@@ -30,17 +30,26 @@ class BulkImportSchoolRecordsRequest extends FormRequest
                     return $row;
                 }
 
+                $normalizedLevel = $normalize($row['level'] ?? null);
+                $normalizedLevelToken = $normalizedLevel !== null
+                    ? strtolower(str_replace(['_', '-'], ' ', $normalizedLevel))
+                    : null;
+
+                if ($normalizedLevelToken === 'elementary') {
+                    $normalizedLevel = 'Elementary';
+                } elseif (in_array($normalizedLevelToken, ['high school', 'secondary'], true)) {
+                    $normalizedLevel = 'High School';
+                }
+
                 return [
                     'schoolId' => strtoupper((string) $normalize($row['schoolId'] ?? null)),
                     'schoolName' => $normalize($row['schoolName'] ?? null),
-                    'level' => $normalize($row['level'] ?? null),
+                    'level' => $normalizedLevel,
                     'type' => strtolower((string) $normalize($row['type'] ?? null)),
                     'address' => $normalize($row['address'] ?? null),
                     'district' => $normalize($row['district'] ?? null),
                     'region' => $normalize($row['region'] ?? null),
                     'status' => strtolower((string) $normalize($row['status'] ?? null)),
-                    'studentCount' => $row['studentCount'] ?? null,
-                    'teacherCount' => $row['teacherCount'] ?? null,
                 ];
             }, $rows),
             'options' => [
@@ -64,14 +73,12 @@ class BulkImportSchoolRecordsRequest extends FormRequest
             'rows' => ['required', 'array', 'min:1', 'max:500'],
             'rows.*.schoolId' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/', 'distinct:strict'],
             'rows.*.schoolName' => ['required', 'string', 'max:255'],
-            'rows.*.level' => ['required', 'string', 'max:100'],
+            'rows.*.level' => ['required', 'string', Rule::in(['Elementary', 'High School'])],
             'rows.*.type' => ['required', 'string', Rule::in(['public', 'private'])],
             'rows.*.address' => ['required', 'string', 'max:255'],
             'rows.*.district' => ['sometimes', 'nullable', 'string', 'max:255'],
             'rows.*.region' => ['sometimes', 'nullable', 'string', 'max:255'],
             'rows.*.status' => ['sometimes', 'nullable', 'string', Rule::in(['active', 'inactive', 'pending'])],
-            'rows.*.studentCount' => ['required', 'integer', 'min:0'],
-            'rows.*.teacherCount' => ['required', 'integer', 'min:0'],
             'options' => ['sometimes', 'array'],
             'options.updateExisting' => ['sometimes', 'boolean'],
             'options.restoreArchived' => ['sometimes', 'boolean'],

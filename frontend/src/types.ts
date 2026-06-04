@@ -256,8 +256,6 @@ export interface SchoolBulkImportRowPayload {
   district?: string | null;
   region?: string | null;
   status?: SchoolStatus;
-  studentCount: number;
-  teacherCount: number;
 }
 
 export interface SchoolBulkImportResult {

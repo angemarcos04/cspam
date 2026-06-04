@@ -745,36 +745,92 @@ class SchoolRecordController extends Controller
         }
 
         if ($upsertRows !== []) {
-            School::query()->upsert(
-                array_values($upsertRows),
-                ['school_code_normalized'],
-                [
-                    'school_code',
-                    'name',
-                    'level',
-                    'type',
-                    'address',
-                    'district',
-                    'region',
-                    'status',
-                    'reported_student_count',
-                    'reported_teacher_count',
-                    'submitted_by',
-                    'submitted_at',
-                    'deleted_at',
-                    'updated_at',
+            DB::transaction(function () use (
+                $upsertRows,
+                $user,
+                $request,
+                $created,
+                $updated,
+                $restored,
+                $skipped,
+                $failed,
+                $results,
+                $updateExisting,
+                $restoreArchived,
+            ): void {
+                School::query()->upsert(
+                    array_values($upsertRows),
+                    ['school_code_normalized'],
+                    [
+                        'school_code',
+                        'name',
+                        'level',
+                        'type',
+                        'address',
+                        'district',
+                        'region',
+                        'status',
+                        'submitted_by',
+                        'submitted_at',
+                        'deleted_at',
+                        'updated_at',
+                    ],
+                );
+
+                AuditLog::query()->create([
+                    'user_id' => $user->id,
+                    'action' => 'school.bulk_imported',
+                    'auditable_type' => School::class,
+                    'auditable_id' => null,
+                    'metadata' => [
+                        'category' => 'school_records',
+                        'outcome' => $failed > 0 ? 'partial' : 'success',
+                        'created' => $created,
+                        'updated' => $updated,
+                        'restored' => $restored,
+                        'skipped' => $skipped,
+                        'failed' => $failed,
+                        'options' => [
+                            'updateExisting' => $updateExisting,
+                            'restoreArchived' => $restoreArchived,
+                        ],
+                        'schools' => array_map(static fn (array $result): array => [
+                            'school_id' => $result['schoolId'] ?? null,
+                            'action' => $result['action'] ?? null,
+                        ], $results),
+                    ],
+                    'ip_address' => $request->ip(),
+                    'user_agent' => $request->userAgent(),
+                    'created_at' => now(),
+                ]);
+            });
+        } else {
+            AuditLog::query()->create([
+                'user_id' => $user->id,
+                'action' => 'school.bulk_imported',
+                'auditable_type' => School::class,
+                'auditable_id' => null,
+                'metadata' => [
+                    'category' => 'school_records',
+                    'outcome' => $failed > 0 ? 'partial' : 'success',
+                    'created' => $created,
+                    'updated' => $updated,
+                    'restored' => $restored,
+                    'skipped' => $skipped,
+                    'failed' => $failed,
+                    'options' => [
+                        'updateExisting' => $updateExisting,
+                        'restoreArchived' => $restoreArchived,
+                    ],
+                    'schools' => array_map(static fn (array $result): array => [
+                        'school_id' => $result['schoolId'] ?? null,
+                        'action' => $result['action'] ?? null,
+                    ], $results),
                 ],
-            );
-
-            $affectedSchoolIds = School::query()
-                ->whereIn(
-                    'school_code_normalized',
-                    array_map(static fn (string $code): string => strtolower($code), array_keys($upsertRows)),
-                )
-                ->pluck('id')
-                ->all();
-
-            $this->syncSchoolStudentCounts($affectedSchoolIds);
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(),
+                'created_at' => now(),
+            ]);
         }
 
         $syncMeta = $this->buildSyncMetadataForUser($user);
@@ -971,7 +1027,6 @@ class SchoolRecordController extends Controller
         $school->district = $district !== '' ? $district : $this->deriveDistrictFromAddress($address);
         $school->region = $region !== '' ? $region : $this->deriveRegionFromAddress($address);
         $school->status = $status;
-        $school->reported_teacher_count = (int) ($payload['teacherCount'] ?? 0);
         $school->submitted_by = $user->id;
         $school->submitted_at = now();
     }
@@ -998,8 +1053,6 @@ class SchoolRecordController extends Controller
             'district' => (string) $school->district,
             'region' => (string) $school->region,
             'status' => (string) $school->status,
-            'reported_student_count' => 0,
-            'reported_teacher_count' => (int) $school->reported_teacher_count,
             'submitted_by' => $user->id,
             'submitted_at' => $school->submitted_at,
             'deleted_at' => null,

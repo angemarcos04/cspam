@@ -48,17 +48,6 @@ function resolveCsvColumnIndex(headers: Map<string, number>, aliases: string[]):
   return null;
 }
 
-function toCsvInteger(value: string): number | null {
-  if (value.trim() === "") return 0;
-
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0 || !Number.isInteger(parsed)) {
-    return null;
-  }
-
-  return parsed;
-}
-
 export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImportRowPayload[]; errors: string[] } {
   const lines = content
     .replace(/\r\n/g, "\n")
@@ -85,8 +74,6 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     district: resolveCsvColumnIndex(headerIndexes, ["district"]),
     region: resolveCsvColumnIndex(headerIndexes, ["region"]),
     status: resolveCsvColumnIndex(headerIndexes, ["status"]),
-    studentCount: resolveCsvColumnIndex(headerIndexes, ["student_count", "students", "studentcount"]),
-    teacherCount: resolveCsvColumnIndex(headerIndexes, ["teacher_count", "teachers", "teachercount"]),
   };
 
   const missingRequiredColumns = [
@@ -95,8 +82,6 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     { key: "level", label: "level" },
     { key: "type", label: "type" },
     { key: "address", label: "address" },
-    { key: "studentCount", label: "student_count" },
-    { key: "teacherCount", label: "teacher_count" },
   ].filter((entry) => columnIndex[entry.key as keyof typeof columnIndex] === null);
 
   if (missingRequiredColumns.length > 0) {
@@ -125,8 +110,6 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     const district = getValue(values, columnIndex.district);
     const region = getValue(values, columnIndex.region);
     const statusRaw = getValue(values, columnIndex.status).toLowerCase();
-    const studentCount = toCsvInteger(getValue(values, columnIndex.studentCount));
-    const teacherCount = toCsvInteger(getValue(values, columnIndex.teacherCount));
 
     if (!schoolId && !schoolName && !level && !address) {
       continue;
@@ -157,16 +140,6 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
       continue;
     }
 
-    if (studentCount === null) {
-      errors.push(`Row ${rowIndex + 1}: Student count must be a whole number >= 0.`);
-      continue;
-    }
-
-    if (teacherCount === null) {
-      errors.push(`Row ${rowIndex + 1}: Teacher count must be a whole number >= 0.`);
-      continue;
-    }
-
     const normalizedStatus = statusRaw ? statusRaw : "active";
     if (!["active", "inactive", "pending"].includes(normalizedStatus)) {
       errors.push(`Row ${rowIndex + 1}: Status must be active, inactive, or pending.`);
@@ -182,8 +155,6 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
       district: district || null,
       region: region || null,
       status: normalizedStatus as SchoolStatus,
-      studentCount,
-      teacherCount,
     });
   }
 
