@@ -95,6 +95,25 @@ class IndicatorSubmissionResource extends JsonResource
                 'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
             ],
             'scopeProgress' => $scopeProgress,
+            'scopeReviews' => $this->when(
+                $this->relationLoaded('scopeReviews'),
+                fn () => $this->scopeReviews->map(static fn ($review): array => [
+                    'id' => (string) $review->id,
+                    'scopeId' => $review->scope_id,
+                    'scopeType' => $review->scope_type,
+                    'decision' => $review->decision,
+                    'notes' => $review->notes,
+                    'reviewedBy' => $review->relationLoaded('reviewedBy') && $review->reviewedBy
+                        ? [
+                            'id' => (string) $review->reviewedBy->id,
+                            'name' => $review->reviewedBy->name,
+                            'email' => $review->reviewedBy->email,
+                        ]
+                        : null,
+                    'reviewedAt' => optional($review->reviewed_at)->toISOString(),
+                    'updatedAt' => optional($review->updated_at)->toISOString(),
+                ])->values()->all(),
+            ),
             'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
             'createdBy' => $this->when(
                 $this->relationLoaded('createdBy') && $this->createdBy,

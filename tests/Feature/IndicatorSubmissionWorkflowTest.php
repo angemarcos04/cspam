@@ -12,6 +12,7 @@ use App\Events\CspamsUpdateBroadcast;
 use App\Support\Domain\MetricCategory;
 use App\Support\Domain\MetricDataType;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use Database\Seeders\DemoDataSeeder;
@@ -284,6 +285,89 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertContains('validated', $actions);
         $this->assertContains('submitted', $actions);
         $this->assertContains('generated', $actions);
+    }
+
+    public function test_monitor_can_verify_and_return_individual_submission_scopes(): void
+    {
+        $this->seedIndicatorFixtures();
+        Event::fake([CspamsUpdateBroadcast::class]);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $schoolHead->createToken('scope-review-test-school-head')->plainTextToken;
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $year = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 1,
+                    'actual_value' => 1,
+                    'remarks' => 'Ready for review.',
+                ],
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadRequiredSubmissionFiles($schoolHeadToken, $submissionId);
+
+        $submitted = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $submitted->assertOk()->assertJsonPath('data.status', 'submitted');
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('scope-review-test-monitor', ['role:monitor'])->plainTextToken;
+        $verified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+
+        $verified->assertOk()
+            ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
+            ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
+
+        $missingNote = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'smea',
+            'decision' => 'returned',
+        ]);
+        $missingNote->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+
+        $returned = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'smea',
+            'decision' => 'returned',
+            'notes' => 'Please upload the signed version.',
+        ]);
+
+        $returned->assertOk()
+            ->assertJsonPath('data.scopeReviews.1.scopeId', 'smea')
+            ->assertJsonPath('data.scopeReviews.1.decision', 'returned')
+            ->assertJsonPath('data.scopeReviews.1.notes', 'Please upload the signed version.');
+
+        $this->assertDatabaseHas('indicator_submission_scope_reviews', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'smea',
+            'decision' => 'returned',
+        ]);
+        $this->assertDatabaseHas('notifications', [
+            'type' => IndicatorScopeReviewOutcomeNotification::class,
+            'notifiable_type' => User::class,
+            'notifiable_id' => $schoolHead->id,
+        ]);
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event): bool {
+            return ($event->payload['eventType'] ?? null) === 'indicators.scope_returned'
+                && ($event->payload['scopeId'] ?? null) === 'smea';
+        });
     }
 
     public function test_school_head_can_bootstrap_minimal_indicator_draft_and_update_it_later(): void
@@ -1782,4 +1866,3 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
     }
 }
-

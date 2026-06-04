@@ -92,8 +92,8 @@ function buildMonitorChecklistSectionItems(
   selectedYearLabel: string | null,
 ): MonitorDrawerChecklistItem[] {
   const sectionDefinitions = [
-    { id: "school_achievements", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
-    { id: "key_performance", label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
+    { id: "school_achievements_learning_outcomes", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
+    { id: "key_performance_indicators", label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
   ] as const;
 
   return sectionDefinitions.map<MonitorDrawerChecklistItem>((section) => {
@@ -276,45 +276,72 @@ function buildMonitorPackageRows(
   latestYearSubmission: IndicatorSubmission | null,
 ): MonitorDrawerPackageRow[] {
   const hasSubmission = Boolean(latestYearSubmission);
+  const reviewByScope = new Map(
+    (latestYearSubmission?.scopeReviews ?? []).map((review) => [review.scopeId, review]),
+  );
+  const reviewableStatus = normalizeWorkflowStatus(latestYearSubmission?.status);
+  const canReviewSubmission = reviewableStatus === "submitted" || reviewableStatus === "returned";
 
   return checklistItems.map<MonitorDrawerPackageRow>((item) => {
     const submittedAt = latestYearSubmission?.submittedAt ?? latestYearSubmission?.updatedAt ?? latestYearSubmission?.createdAt ?? null;
+    const review = reviewByScope.get(item.id) ?? null;
+    const reviewDecision = review?.decision === "verified" || review?.decision === "returned" ? review.decision : null;
+    const overlayStatusLabel = reviewDecision === "verified"
+      ? "Verified"
+      : reviewDecision === "returned"
+        ? "Returned"
+        : null;
+    const overlayTone = reviewDecision === "verified"
+      ? "success"
+      : reviewDecision === "returned"
+        ? "warning"
+        : null;
 
     if (item.kind === "file") {
       const fileEntry = latestYearSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
       const hasUploadedFile = Boolean(fileEntry?.uploaded);
-      const statusLabel = hasSubmission ? item.statusLabel : "Not Submitted";
+      const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
       const fileViewUrl = hasUploadedFile ? (fileEntry?.viewUrl ?? null) : null;
       const fileDownloadUrl = hasUploadedFile ? (fileEntry?.downloadUrl ?? null) : null;
 
       return {
         id: item.id,
+        submissionId: latestYearSubmission?.id ?? null,
         label: item.label,
         kind: item.kind,
         statusLabel,
-        tone: statusLabel === "Not Submitted" ? "warning" : item.tone,
+        tone: overlayTone ?? (statusLabel === "Not Submitted" ? "warning" : item.tone),
         submittedAt: hasUploadedFile ? (fileEntry?.uploadedAt ?? submittedAt) : null,
         detail: hasUploadedFile ? (fileEntry?.originalFilename ?? item.detail) : item.detail,
         viewUrl: fileViewUrl,
         downloadUrl: fileDownloadUrl,
         actionLabel: fileViewUrl ? `View ${item.label}` : null,
+        canReview: canReviewSubmission && hasUploadedFile,
+        reviewDecision,
+        reviewNotes: review?.notes ?? null,
+        reviewedAt: review?.reviewedAt ?? null,
       };
     }
 
     const isComplete = item.statusLabel === "Complete" || item.statusLabel === "For Review" || item.statusLabel === "Returned";
-    const statusLabel = hasSubmission ? item.statusLabel : "Not Submitted";
+    const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
 
     return {
       id: item.id,
+      submissionId: latestYearSubmission?.id ?? null,
       label: item.label,
       kind: item.kind,
       statusLabel,
-      tone: statusLabel === "Not Submitted" ? "warning" : item.tone,
+      tone: overlayTone ?? (statusLabel === "Not Submitted" ? "warning" : item.tone),
       submittedAt: isComplete ? submittedAt : null,
       detail: hasSubmission ? item.detail : "No submitted package exists for the selected year.",
       viewUrl: null,
       downloadUrl: null,
       actionLabel: null,
+      canReview: canReviewSubmission && isComplete,
+      reviewDecision,
+      reviewNotes: review?.notes ?? null,
+      reviewedAt: review?.reviewedAt ?? null,
     };
   });
 }

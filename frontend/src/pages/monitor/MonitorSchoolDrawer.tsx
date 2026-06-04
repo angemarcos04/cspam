@@ -1,5 +1,6 @@
-import { Fragment } from "react";
-import { X } from "lucide-react";
+import { Fragment, useState } from "react";
+import { CheckCircle2, RotateCcw, X } from "lucide-react";
+import { useIndicatorData } from "@/context/IndicatorData";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
@@ -98,6 +99,14 @@ function packageRowStatusClass(tone: MonitorDrawerPackageRow["tone"]): string {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
+function errorMessageFromUnknown(error: unknown): string {
+  if (error instanceof Error && error.message.trim()) {
+    return error.message;
+  }
+
+  return "Unable to save this review decision. Please try again.";
+}
+
 export function MonitorSchoolDrawer({
   viewState,
   loadingState,
@@ -105,6 +114,11 @@ export function MonitorSchoolDrawer({
   actions,
   formatting,
 }: MonitorSchoolDrawerProps) {
+  const { reviewSubmissionScope } = useIndicatorData();
+  const [scopeReviewSavingKey, setScopeReviewSavingKey] = useState<string | null>(null);
+  const [scopeReviewError, setScopeReviewError] = useState<string>("");
+  const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
+  const [returnReviewNotes, setReturnReviewNotes] = useState("");
   const {
     isOpen,
     showNavigatorManual,
@@ -145,6 +159,50 @@ export function MonitorSchoolDrawer({
     toggleDrawerIndicatorLabel,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
+
+  const saveScopeReview = async (
+    row: MonitorDrawerPackageRow,
+    decision: "verified" | "returned",
+    notes?: string | null,
+  ) => {
+    if (!row.submissionId || !row.canReview) {
+      return;
+    }
+
+    const reviewKey = `${row.submissionId}:${row.id}:${decision}`;
+    setScopeReviewSavingKey(reviewKey);
+    setScopeReviewError("");
+
+    try {
+      await reviewSubmissionScope(row.submissionId, {
+        scopeId: row.id,
+        decision,
+        notes: notes?.trim() || null,
+      });
+      if (decision === "returned") {
+        setReturnReviewRow(null);
+        setReturnReviewNotes("");
+      }
+    } catch (error) {
+      setScopeReviewError(errorMessageFromUnknown(error));
+    } finally {
+      setScopeReviewSavingKey(null);
+    }
+  };
+
+  const submitReturnReview = () => {
+    if (!returnReviewRow) {
+      return;
+    }
+
+    const notes = returnReviewNotes.trim();
+    if (notes.length < 3) {
+      setScopeReviewError("Add a short return note before sending this back.");
+      return;
+    }
+
+    void saveScopeReview(returnReviewRow, "returned", notes);
+  };
 
   return (
     <>
@@ -304,6 +362,11 @@ export function MonitorSchoolDrawer({
                     </div>
                     {schoolDrawerYearDetail?.packageRows.length ? (
                       <div className="overflow-x-auto">
+                        {scopeReviewError && (
+                          <div className="mx-3 mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                            {scopeReviewError}
+                          </div>
+                        )}
                         <table className="min-w-[720px] w-full border-collapse text-sm">
                           <thead>
                             <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-500">
@@ -319,6 +382,11 @@ export function MonitorSchoolDrawer({
                                 <td className="px-3 py-3 align-top">
                                   <p className="font-semibold text-slate-900">{row.label}</p>
                                   <p className="mt-0.5 text-xs text-slate-500">{row.detail}</p>
+                                  {row.reviewDecision === "returned" && row.reviewNotes && (
+                                    <p className="mt-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
+                                      Return note: {row.reviewNotes}
+                                    </p>
+                                  )}
                                 </td>
                                 <td className="px-3 py-3 align-top">
                                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${packageRowStatusClass(row.tone)}`}>
@@ -329,25 +397,53 @@ export function MonitorSchoolDrawer({
                                   {row.submittedAt ? formatDateTime(row.submittedAt) : "-"}
                                 </td>
                                 <td className="px-3 py-3 text-right align-top">
-                                  {row.viewUrl ? (
-                                    <a
-                                      href={row.viewUrl}
-                                      target="_blank"
-                                      rel="noreferrer"
-                                      className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
-                                    >
-                                      {row.actionLabel ?? `View ${row.label}`}
-                                    </a>
-                                  ) : row.downloadUrl ? (
-                                    <a
-                                      href={row.downloadUrl}
-                                      className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                    >
-                                      Download
-                                    </a>
-                                  ) : (
-                                    <span className="text-xs text-slate-400">-</span>
-                                  )}
+                                  <div className="flex flex-wrap justify-end gap-1.5">
+                                    {row.viewUrl ? (
+                                      <a
+                                        href={row.viewUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                                      >
+                                        {row.actionLabel ?? `View ${row.label}`}
+                                      </a>
+                                    ) : row.downloadUrl ? (
+                                      <a
+                                        href={row.downloadUrl}
+                                        className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Download
+                                      </a>
+                                    ) : null}
+                                    {row.canReview ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => void saveScopeReview(row, "verified")}
+                                          disabled={scopeReviewSavingKey !== null}
+                                          className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                                        >
+                                          <CheckCircle2 className="h-3.5 w-3.5" />
+                                          Verify
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setScopeReviewError("");
+                                            setReturnReviewNotes(row.reviewNotes ?? "");
+                                            setReturnReviewRow(row);
+                                          }}
+                                          disabled={scopeReviewSavingKey !== null}
+                                          className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
+                                        >
+                                          <RotateCcw className="h-3.5 w-3.5" />
+                                          Return
+                                        </button>
+                                      </>
+                                    ) : !row.viewUrl && !row.downloadUrl ? (
+                                      <span className="text-xs text-slate-400">-</span>
+                                    ) : null}
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -670,6 +766,70 @@ export function MonitorSchoolDrawer({
           )}
         </div>
       </aside>
+
+      {returnReviewRow && (
+        <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4">
+          <div className="w-full max-w-md rounded-sm border border-slate-200 bg-white shadow-xl">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Return Requirement</p>
+                <p className="mt-1 text-xs text-slate-600">
+                  Add a note for {returnReviewRow.label}. The School Head will see this on their dashboard.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnReviewRow(null);
+                  setReturnReviewNotes("");
+                }}
+                className="rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
+                aria-label="Close return requirement dialog"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-3 px-4 py-4">
+              {scopeReviewError && (
+                <div className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                  {scopeReviewError}
+                </div>
+              )}
+              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="scope-return-note">
+                Return note
+              </label>
+              <textarea
+                id="scope-return-note"
+                value={returnReviewNotes}
+                onChange={(event) => setReturnReviewNotes(event.target.value)}
+                rows={4}
+                className="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                placeholder="Explain what needs to be corrected or clarified."
+              />
+            </div>
+            <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setReturnReviewRow(null);
+                  setReturnReviewNotes("");
+                }}
+                className="rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={submitReturnReview}
+                disabled={scopeReviewSavingKey !== null || returnReviewNotes.trim().length < 3}
+                className="rounded-sm border border-amber-600 bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                Return requirement
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

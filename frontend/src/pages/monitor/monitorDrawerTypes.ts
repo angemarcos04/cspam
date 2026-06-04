@@ -39,15 +39,20 @@ export interface MonitorDrawerChecklistItem {
 
 export interface MonitorDrawerPackageRow {
   id: string;
+  submissionId?: string | null;
   label: string;
   kind: "section" | "file";
-  statusLabel: MonitorDrawerChecklistItem["statusLabel"] | "Not Submitted";
+  statusLabel: MonitorDrawerChecklistItem["statusLabel"] | "Not Submitted" | "Verified";
   tone: "success" | "warning" | "info";
   submittedAt: string | null;
   detail: string;
   viewUrl: string | null;
   downloadUrl: string | null;
   actionLabel: string | null;
+  canReview?: boolean;
+  reviewDecision?: "verified" | "returned" | null;
+  reviewNotes?: string | null;
+  reviewedAt?: string | null;
 }
 
 export interface MonitorDrawerSchoolAchievementReportRow {

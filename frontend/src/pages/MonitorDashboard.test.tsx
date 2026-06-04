@@ -255,6 +255,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       submitSubmission: vi.fn(),
       submitSubmissionScopes: vi.fn(),
       reviewSubmission: vi.fn(),
+      reviewSubmissionScope: vi.fn(),
       loadHistory: vi.fn(),
     } satisfies IndicatorDataContextType;
     vi.mocked(useIndicatorData).mockReturnValue(indicatorDataMock);

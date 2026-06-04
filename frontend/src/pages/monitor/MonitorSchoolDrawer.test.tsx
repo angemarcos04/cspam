@@ -2,6 +2,12 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
+vi.mock("@/context/IndicatorData", () => ({
+  useIndicatorData: () => ({
+    reviewSubmissionScope: vi.fn(),
+  }),
+}));
+
 describe("MonitorSchoolDrawer", () => {
   it("keeps submissions as the main page and history as secondary reference", () => {
     render(

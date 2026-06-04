@@ -2986,6 +2986,28 @@ function SchoolIndicatorPanelComponent({
   const activeScopeSubmitted = useMemo(() => (
     activeScopeId ? workspaceProgressSummary.submittedScopeIds.includes(activeScopeId) : false
   ), [activeScopeId, workspaceProgressSummary.submittedScopeIds]);
+  const activeScopeReview = useMemo(() => {
+    if (!activeScopeId) {
+      return null;
+    }
+
+    return activeFormSubmission?.scopeReviews?.find((review) => review.scopeId === activeScopeId) ?? null;
+  }, [activeFormSubmission, activeScopeId]);
+  const activeScopeReviewLabel = useMemo(() => {
+    if (!activeScopeReview) {
+      return "";
+    }
+
+    const scopeLabel = activeTab?.kind === "category" && activeCategory
+      ? categoryTabLabel(activeCategory)
+      : activeScopeId
+        ? workspaceSaveSectionLabel(activeScopeId as WorkspaceSaveSection)
+        : "This requirement";
+
+    return activeScopeReview.decision === "verified"
+      ? `${scopeLabel} has been verified by the Division Monitor.`
+      : `${scopeLabel} was returned by the Division Monitor.`;
+  }, [activeCategory, activeScopeId, activeScopeReview, activeTab]);
   const batchSelectableScopeIds = useMemo(
     () => workspaceProgressSummary.readyUnsubmittedScopeIds,
     [workspaceProgressSummary.readyUnsubmittedScopeIds],
@@ -5637,6 +5659,20 @@ function SchoolIndicatorPanelComponent({
               </button>
             </div>
           </div>
+          {activeScopeReview && (
+            <div
+              className={`rounded-sm border px-3 py-2 text-xs ${
+                activeScopeReview.decision === "verified"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-amber-300 bg-amber-50 text-amber-800"
+              }`}
+            >
+              <p className="font-semibold">{activeScopeReviewLabel}</p>
+              {activeScopeReview.decision === "returned" && activeScopeReview.notes && (
+                <p className="mt-1">Return note: {activeScopeReview.notes}</p>
+              )}
+            </div>
+          )}
           {canShowSaveAndSubmitActions && batchSelectableScopeIds.length > 0 && (
             <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
               <div className="flex flex-wrap items-center justify-between gap-2">

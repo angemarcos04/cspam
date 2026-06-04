@@ -508,6 +508,21 @@ export interface IndicatorSubmissionSummary {
   complianceRatePercent: number;
 }
 
+export interface IndicatorSubmissionScopeReview {
+  id: string;
+  scopeId: string;
+  scopeType: "section" | "file" | string;
+  decision: "verified" | "returned" | string;
+  notes: string | null;
+  reviewedBy?: {
+    id: string;
+    name: string;
+    email: string;
+  } | null;
+  reviewedAt: string | null;
+  updatedAt?: string | null;
+}
+
 export interface IndicatorSubmission {
   id: string;
   formType: "indicator" | string;
@@ -553,6 +568,7 @@ export interface IndicatorSubmission {
     submittedRequiredScopeCount?: number;
     totalRequiredScopeCount?: number;
   };
+  scopeReviews?: IndicatorSubmissionScopeReview[];
   indicators: IndicatorSubmissionItem[];
   items?: IndicatorSubmissionItem[];
   createdBy?: {

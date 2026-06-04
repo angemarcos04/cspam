@@ -112,6 +112,12 @@ class IndicatorSubmission extends Model
             ->orderBy('type');
     }
 
+    public function scopeReviews(): HasMany
+    {
+        return $this->hasMany(IndicatorSubmissionScopeReview::class)
+            ->orderBy('scope_id');
+    }
+
     public function hasImetaFormData(): bool
     {
         return $this->hasCompleteImetaFormData();

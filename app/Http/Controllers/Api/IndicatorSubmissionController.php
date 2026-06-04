@@ -5,15 +5,18 @@ namespace App\Http\Controllers\Api;
 use App\Events\CspamsUpdateBroadcast;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\ReviewIndicatorSubmissionRequest;
+use App\Http\Requests\Api\ReviewIndicatorSubmissionScopeRequest;
 use App\Http\Requests\Api\UpsertIndicatorSubmissionRequest;
 use App\Http\Resources\FormSubmissionHistoryResource;
 use App\Http\Resources\IndicatorSubmissionResource;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionScopeReview;
 use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
+use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
@@ -832,6 +835,107 @@ class IndicatorSubmissionController extends Controller
         return $this->fullSubmissionResponse($submission);
     }
 
+    public function reviewScope(ReviewIndicatorSubmissionScopeRequest $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanReview($user);
+        $this->assertCanView($user, $submission->school_id);
+
+        $fromStatus = $this->statusValue($submission->status);
+        if (! in_array($fromStatus, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only submitted or returned indicator scopes can be reviewed.',
+            ]);
+        }
+
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+        $scopeId = strtolower(trim($request->string('scopeId')->toString()));
+        $normalizedScopeIds = $scopeProgressResolver->normalizeScopeIds($submission, [$scopeId]);
+
+        if ($normalizedScopeIds === []) {
+            throw ValidationException::withMessages([
+                'scopeId' => 'Select a valid requirement from this submission package.',
+            ]);
+        }
+
+        $scopeId = $normalizedScopeIds[0];
+        if (! $scopeProgressResolver->isScopeComplete($submission, $scopeId)) {
+            throw ValidationException::withMessages([
+                'scopeId' => 'Only submitted file or data requirements can be reviewed.',
+            ]);
+        }
+
+        $decision = $request->string('decision')->toString();
+        $notes = $request->filled('notes')
+            ? trim($request->string('notes')->toString())
+            : null;
+        $scopeLabel = $scopeProgressResolver->scopeLabel($scopeId);
+
+        $review = IndicatorSubmissionScopeReview::query()->updateOrCreate(
+            [
+                'indicator_submission_id' => $submission->id,
+                'scope_id' => $scopeId,
+            ],
+            [
+                'scope_type' => $this->scopeTypeFor($scopeId),
+                'decision' => $decision,
+                'notes' => $decision === 'returned' ? $notes : null,
+                'reviewed_by' => $user->id,
+                'reviewed_at' => now(),
+            ],
+        );
+
+        app(FormSubmissionHistoryLogger::class)->log(
+            formType: IndicatorSubmission::FORM_TYPE,
+            submissionId: $submission->id,
+            schoolId: $submission->school_id,
+            academicYearId: $submission->academic_year_id,
+            action: $decision === 'verified' ? 'scope_verified' : 'scope_returned',
+            fromStatus: $fromStatus,
+            toStatus: $fromStatus,
+            actorId: $user->id,
+            notes: $notes,
+            metadata: [
+                'scopeId' => $scopeId,
+                'scopeLabel' => $scopeLabel,
+                'decision' => $decision,
+                'touchedScopes' => [$scopeId],
+                'scopeReviewId' => (string) $review->id,
+            ],
+        );
+
+        $schoolHeads = $this->schoolHeadsForSubmission($submission);
+        Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
+            $submission,
+            $user,
+            $scopeId,
+            $scopeLabel,
+            $decision,
+            $notes,
+        ));
+
+        event(new CspamsUpdateBroadcast(
+            $this->indicatorBroadcastPayload(
+                $submission,
+                $decision === 'verified' ? 'indicators.scope_verified' : 'indicators.scope_returned',
+                [
+                    'scopeId' => $scopeId,
+                    'scopeLabel' => $scopeLabel,
+                    'decision' => $decision,
+                    'notes' => $notes,
+                    'status' => $this->statusValue($submission->status),
+                    'touchedScopes' => [$scopeId],
+                ],
+            ),
+        ));
+
+        return $this->fullSubmissionResponse($submission);
+    }
+
     public function resetWorkspace(Request $request, IndicatorSubmission $submission): JsonResponse
     {
         $user = $this->requireUser($request);
@@ -916,6 +1020,7 @@ class IndicatorSubmissionController extends Controller
         $submission->refresh()->loadMissing([
             'school:id,school_code,name,type',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'scopeReviews.reviewedBy:id,name,email',
         ]);
         /** @var SubmissionFileRequirementResolver $requirementResolver */
         $requirementResolver = app(SubmissionFileRequirementResolver::class);
@@ -964,6 +1069,7 @@ class IndicatorSubmissionController extends Controller
                     'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
                 ],
                 'scopeProgress' => $scopeProgress,
+                'scopeReviews' => $this->buildScopeReviewsPayload($submission),
                 'files' => $this->buildSubmissionFilesPayload($submission, false),
             ],
         ], $status);
@@ -976,6 +1082,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'scopeReviews.reviewedBy:id,name,email',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -984,6 +1091,65 @@ class IndicatorSubmissionController extends Controller
         return response()->json([
             'data' => (new IndicatorSubmissionResource($submission))->resolve(),
         ], $status);
+    }
+
+    private function scopeTypeFor(string $scopeId): string
+    {
+        if (SubmissionFileDefinition::isValidType($scopeId)) {
+            return 'file';
+        }
+
+        if (GroupBWorkspaceDefinition::isMetricWorkspace($scopeId)) {
+            return 'section';
+        }
+
+        return 'unknown';
+    }
+
+    /**
+     * @return \Illuminate\Database\Eloquent\Collection<int, User>
+     */
+    private function schoolHeadsForSubmission(IndicatorSubmission $submission): \Illuminate\Database\Eloquent\Collection
+    {
+        $schoolHeadsQuery = User::query()
+            ->with('roles')
+            ->where('school_id', $submission->school_id);
+
+        if ($this->usersHaveAccountTypeColumn()) {
+            $schoolHeadsQuery->where('account_type', UserRoleResolver::SCHOOL_HEAD);
+        } else {
+            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::SCHOOL_HEAD);
+            $schoolHeadsQuery->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            });
+        }
+
+        return $schoolHeadsQuery->get();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function buildScopeReviewsPayload(IndicatorSubmission $submission): array
+    {
+        $submission->loadMissing('scopeReviews.reviewedBy:id,name,email');
+
+        return $submission->scopeReviews->map(static fn (IndicatorSubmissionScopeReview $review): array => [
+            'id' => (string) $review->id,
+            'scopeId' => $review->scope_id,
+            'scopeType' => $review->scope_type,
+            'decision' => $review->decision,
+            'notes' => $review->notes,
+            'reviewedBy' => $review->reviewedBy
+                ? [
+                    'id' => (string) $review->reviewedBy->id,
+                    'name' => $review->reviewedBy->name,
+                    'email' => $review->reviewedBy->email,
+                ]
+                : null,
+            'reviewedAt' => optional($review->reviewed_at)->toISOString(),
+            'updatedAt' => optional($review->updated_at)->toISOString(),
+        ])->values()->all();
     }
 
     /**

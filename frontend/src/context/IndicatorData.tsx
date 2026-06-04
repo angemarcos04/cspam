@@ -22,12 +22,20 @@ import type {
   IndicatorSubmission,
   IndicatorSubmissionFiles,
   IndicatorSubmissionFileType,
+  IndicatorSubmissionScopeReview,
   FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
   SessionUser,
 } from "@/types";
 
 type ReviewDecision = "validated" | "returned";
+type ScopeReviewDecision = "verified" | "returned";
+
+interface ReviewSubmissionScopePayload {
+  scopeId: string;
+  decision: ScopeReviewDecision;
+  notes?: string | null;
+}
 
 export interface IndicatorListParams {
   page?: number;
@@ -118,6 +126,7 @@ interface LightweightIndicatorSubmission {
     submittedRequiredScopeCount?: number;
     totalRequiredScopeCount?: number;
   };
+  scopeReviews?: IndicatorSubmissionScopeReview[];
   files?: IndicatorSubmissionFiles;
   academicYear?: {
     id: string;
@@ -184,6 +193,7 @@ export interface IndicatorDataContextType {
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
   submitSubmissionScopes: (id: string, targets: string[]) => Promise<IndicatorSubmission>;
   reviewSubmission: (id: string, decision: ReviewDecision, notes?: string) => Promise<IndicatorSubmission>;
+  reviewSubmissionScope: (id: string, payload: ReviewSubmissionScopePayload) => Promise<IndicatorSubmission>;
   loadHistory: (id: string) => Promise<FormSubmissionHistoryEntry[]>;
 }
 
@@ -537,6 +547,7 @@ export function patchSubmissionWithLightweightPayload(
     completion: nextCompletion,
     presentation: patch.presentation ?? current.presentation,
     scopeProgress: patch.scopeProgress ?? current.scopeProgress,
+    scopeReviews: patch.scopeReviews ?? current.scopeReviews,
     files: nextFiles,
     academicYear: patch.academicYear?.id
       ? {
@@ -649,6 +660,7 @@ export function materializeSubmissionFromLightweightPayload(
       submittedRequiredScopeCount: 0,
       totalRequiredScopeCount: 0,
     },
+    scopeReviews: patch.scopeReviews ?? [],
     indicators: [],
     academicYear: {
       id: patch.academicYear?.id ?? patch.academicYearId,
@@ -1605,6 +1617,28 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [runSubmissionMutation, token],
   );
 
+  const reviewSubmissionScope = useCallback(
+    async (id: string, payload: ReviewSubmissionScopePayload): Promise<IndicatorSubmission> => {
+      if (!token) {
+        throw new Error("You are signed out. Please sign in again.");
+      }
+
+      return runSubmissionMutation(async () => {
+        const response = await apiRequest<IndicatorSubmissionResponse>(`/api/indicators/submissions/${id}/scope-review`, {
+          method: "POST",
+          token,
+          body: {
+            scopeId: payload.scopeId,
+            decision: payload.decision,
+            notes: payload.notes?.trim() || null,
+          },
+        });
+        return response.data;
+      });
+    },
+    [runSubmissionMutation, token],
+  );
+
   const loadHistory = useCallback(
     async (id: string): Promise<FormSubmissionHistoryEntry[]> => {
       if (!token) {
@@ -1715,6 +1749,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       submitSubmission,
       submitSubmissionScopes,
       reviewSubmission,
+      reviewSubmissionScope,
       loadHistory,
     }),
     [
@@ -1743,6 +1778,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       submitSubmission,
       submitSubmissionScopes,
       reviewSubmission,
+      reviewSubmissionScope,
       loadHistory,
     ],
   );

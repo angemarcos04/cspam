@@ -117,6 +117,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
     Route::post('/submissions/{submission}/submit-scopes', [IndicatorSubmissionController::class, 'submitScopes']);
     Route::post('/submissions/{submission}/submit', [IndicatorSubmissionController::class, 'submit']);
     Route::post('/submissions/{submission}/review', [IndicatorSubmissionController::class, 'review']);
+    Route::post('/submissions/{submission}/scope-review', [IndicatorSubmissionController::class, 'reviewScope']);
     Route::post('/submissions/{submission}/reset-workspace', [IndicatorSubmissionController::class, 'resetWorkspace']);
     Route::get('/submissions/{submission}/history', [IndicatorSubmissionController::class, 'history']);
 });
