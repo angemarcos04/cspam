@@ -703,6 +703,36 @@ export function MonitorDashboard() {
       formatDateTime,
     },
   });
+  const handleDownloadSchoolCsvFormat = useCallback(() => {
+    downloadCsvFile(
+      `cspams-school-import-${new Date().toISOString().slice(0, 10)}.csv`,
+      [
+        "school_id",
+        "school_name",
+        "level",
+        "type",
+        "address",
+        "district",
+        "region",
+        "status",
+        "school_head_name",
+        "school_head_email",
+      ],
+      records.map((record) => [
+        record.schoolCode ?? record.schoolId ?? "",
+        record.schoolName,
+        record.level ?? "",
+        record.type ?? "",
+        record.address ?? "",
+        record.district ?? "",
+        record.region ?? "",
+        record.status,
+        record.schoolHeadAccount?.name ?? "",
+        record.schoolHeadAccount?.email ?? "",
+      ]),
+    );
+  }, [records]);
+
   const schoolsSectionApi = useMonitorSchoolsSection({
     isMobileViewport,
     isLoading,
@@ -740,6 +770,7 @@ export function MonitorDashboard() {
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
     removeSchoolHeadAccountsBatch,
+    onDownloadCsvFormat: handleDownloadSchoolCsvFormat,
     onOpenSchoolRecord: handleOpenSchoolRecord,
     onOpenSchool: handleOpenSchool,
     onReviewSchool: handleReviewSchool,
@@ -906,6 +937,7 @@ export function MonitorDashboard() {
               showSchoolHeadAccountsPanel={schoolsSectionApi.showSchoolHeadAccountsPanel}
               onToggleActionsMenu={schoolsSectionApi.toggleActionsMenu}
               isSchoolActionsMenuOpen={schoolsSectionApi.isSchoolActionsMenuOpen}
+              onDownloadCsvFormat={schoolsSectionApi.downloadCsvFormat}
               onOpenBulkImportPicker={schoolsSectionApi.openBulkImportPicker}
               isBulkImporting={schoolsSectionApi.isBulkImporting}
               onToggleArchivedRecords={() => {

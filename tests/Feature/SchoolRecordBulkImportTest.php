@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\AuditLog;
 use App\Models\School;
 use App\Models\User;
+use App\Support\Auth\UserRoleResolver;
+use App\Support\Domain\AccountStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -14,6 +17,13 @@ class SchoolRecordBulkImportTest extends TestCase
 {
     use InteractsWithSeededCredentials;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        config()->set('app.key', 'base64:'.base64_encode(str_repeat('a', 32)));
+    }
 
     public function test_bulk_import_rejects_duplicate_school_codes_in_same_batch(): void
     {
@@ -284,6 +294,181 @@ class SchoolRecordBulkImportTest extends TestCase
             ]);
     }
 
+    public function test_bulk_import_rejects_partial_school_head_account_columns(): void
+    {
+        $this->seed();
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955557',
+                    'schoolHeadName' => 'Head Without Email',
+                ]),
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['rows.0.schoolHeadEmail']);
+    }
+
+    public function test_bulk_import_creates_school_head_account_with_temporary_password(): void
+    {
+        $this->seed();
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955558',
+                    'schoolName' => 'CSV Account School',
+                    'schoolHeadName' => 'CSV School Head',
+                    'schoolHeadEmail' => 'csv.head@example.com',
+                ]),
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.results.0.accountAction', 'created')
+            ->assertJsonPath('data.results.0.schoolHeadEmail', 'csv.head@example.com');
+
+        $temporaryPassword = (string) $response->json('data.results.0.temporaryPassword');
+        $this->assertMatchesRegularExpression('/^[ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789]{8}$/', $temporaryPassword);
+
+        $school = School::query()->where('school_code', '955558')->firstOrFail();
+        $account = User::query()->where('email', 'csv.head@example.com')->firstOrFail();
+        $this->assertSame($school->id, $account->school_id);
+        $this->assertSame(AccountStatus::ACTIVE->value, $account->accountStatus()->value);
+        $this->assertTrue((bool) $account->must_reset_password);
+        $this->assertTrue(Hash::check($temporaryPassword, (string) $account->password));
+        $this->assertSame($temporaryPassword, $account->temporary_password_display);
+        $this->assertTrue($account->hasRole(UserRoleResolver::SCHOOL_HEAD));
+
+        $audit = AuditLog::query()->where('action', 'school.bulk_imported')->latest('id')->firstOrFail();
+        $this->assertSame(1, data_get($audit->metadata, 'accounts.created'));
+        $this->assertSame('created', data_get($audit->metadata, 'schools.0.account_action'));
+        $this->assertStringNotContainsString($temporaryPassword, json_encode($audit->metadata, JSON_THROW_ON_ERROR));
+    }
+
+    public function test_bulk_import_creates_account_for_existing_school_without_account(): void
+    {
+        $this->seed();
+
+        $school = School::query()->create([
+            'school_code' => '955559',
+            'name' => 'Existing No Account',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'address' => 'Original Address',
+            'district' => 'Original District',
+            'region' => 'Original Region',
+            'status' => 'active',
+        ]);
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955559',
+                    'schoolHeadName' => 'Existing CSV Head',
+                    'schoolHeadEmail' => 'existing.csv.head@example.com',
+                ]),
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.updated', 1)
+            ->assertJsonPath('data.results.0.accountAction', 'created');
+
+        $account = User::query()->where('email', 'existing.csv.head@example.com')->firstOrFail();
+        $this->assertSame($school->id, $account->school_id);
+        $this->assertNotEmpty($response->json('data.results.0.temporaryPassword'));
+    }
+
+    public function test_bulk_import_does_not_update_existing_school_head_account(): void
+    {
+        $this->seed();
+
+        $school = School::query()->create([
+            'school_code' => '955560',
+            'name' => 'Existing Account School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'address' => 'Original Address',
+            'district' => 'Original District',
+            'region' => 'Original Region',
+            'status' => 'active',
+        ]);
+        $account = $this->createSchoolHeadForSchool($school, 'Original Head', 'original.head@example.com');
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955560',
+                    'schoolHeadName' => 'Changed Head',
+                    'schoolHeadEmail' => 'changed.head@example.com',
+                ]),
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.results.0.accountAction', 'skipped_existing_account')
+            ->assertJsonPath('data.results.0.schoolHeadEmail', 'original.head@example.com');
+
+        $this->assertNotEmpty($response->json('data.results.0.warning'));
+        $account->refresh();
+        $this->assertSame('Original Head', $account->name);
+        $this->assertSame('original.head@example.com', $account->email);
+        $this->assertNull($response->json('data.results.0.temporaryPassword'));
+    }
+
+    public function test_bulk_import_returns_account_warning_for_duplicate_email(): void
+    {
+        $this->seed();
+
+        $otherSchool = School::query()->create([
+            'school_code' => '955561',
+            'name' => 'Other School',
+            'level' => 'Elementary',
+            'type' => 'public',
+            'address' => 'Other Address',
+            'district' => 'Other District',
+            'region' => 'Other Region',
+            'status' => 'active',
+        ]);
+        $this->createSchoolHeadForSchool($otherSchool, 'Used Email Head', 'used.email@example.com');
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955562',
+                    'schoolName' => 'Duplicate Email Target',
+                    'schoolHeadName' => 'Duplicate Email Head',
+                    'schoolHeadEmail' => 'used.email@example.com',
+                ]),
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.created', 1)
+            ->assertJsonPath('data.results.0.accountAction', 'failed')
+            ->assertJsonPath('data.results.0.schoolHeadEmail', 'used.email@example.com');
+
+        $this->assertNotEmpty($response->json('data.results.0.warning'));
+        $this->assertDatabaseMissing('users', [
+            'school_id' => School::query()->where('school_code', '955562')->firstOrFail()->id,
+            'email' => 'used.email@example.com',
+        ]);
+    }
+
     public function test_school_head_cannot_bulk_import_school_records(): void
     {
         $this->seed();
@@ -331,6 +516,23 @@ class SchoolRecordBulkImportTest extends TestCase
         $response->assertOk();
 
         return (string) $response->json('token');
+    }
+
+    private function createSchoolHeadForSchool(School $school, string $name, string $email): User
+    {
+        $account = new User();
+        $account->name = $name;
+        $account->email = $email;
+        $account->password = Hash::make('TempPass123!');
+        $account->must_reset_password = false;
+        $account->account_status = AccountStatus::ACTIVE->value;
+        $account->school_id = $school->id;
+        $account->email_verified_at = now();
+        $account->account_type = UserRoleResolver::SCHOOL_HEAD;
+        $account->save();
+        $account->assignRole(UserRoleResolver::SCHOOL_HEAD);
+
+        return $account;
     }
 
 }

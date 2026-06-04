@@ -256,6 +256,8 @@ export interface SchoolBulkImportRowPayload {
   district?: string | null;
   region?: string | null;
   status?: SchoolStatus;
+  schoolHeadName?: string | null;
+  schoolHeadEmail?: string | null;
 }
 
 export interface SchoolBulkImportResult {
@@ -269,7 +271,11 @@ export interface SchoolBulkImportResult {
     schoolId: string;
     schoolName?: string;
     action: "created" | "updated" | "restored" | "skipped" | "failed";
+    accountAction?: "created" | "unchanged" | "skipped_existing_account" | "failed" | "none" | string;
+    schoolHeadEmail?: string | null;
+    temporaryPassword?: string | null;
     message?: string;
+    warning?: string;
   }>;
 }
 

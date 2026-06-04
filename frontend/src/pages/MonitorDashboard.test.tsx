@@ -384,6 +384,57 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(schoolStatusPills.length).toBeGreaterThan(0);
   });
 
+  it("downloads the editable school CSV format from the Schools menu", async () => {
+    const originalCreateObjectUrl = window.URL.createObjectURL;
+    const originalRevokeObjectUrl = window.URL.revokeObjectURL;
+    const createObjectUrlMock = vi.fn((_blob: Blob | MediaSource) => "blob:cspams-school-csv");
+    const revokeObjectUrlMock = vi.fn();
+    const clickMock = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+
+    Object.defineProperty(window.URL, "createObjectURL", { configurable: true, value: createObjectUrlMock });
+    Object.defineProperty(window.URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrlMock });
+
+    try {
+      render(<MonitorDashboard />);
+
+      fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+      const downloadButton = screen.getByRole("button", { name: "Download CSV Format" });
+      expect(downloadButton).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Import CSV" })).toBeTruthy();
+
+      fireEvent.click(downloadButton);
+
+      expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
+      const csvBlob = createObjectUrlMock.mock.calls[0]?.[0] as Blob;
+      const csvText = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(reader.error);
+        reader.readAsText(csvBlob);
+      });
+
+      expect(csvText).toContain(
+        "school_id,school_name,level,type,address,district,region,status,school_head_name,school_head_email",
+      );
+      expect(csvText).toContain("900001,Santiago Elementary,Elementary,public,\"District 1, Santiago City\"");
+      expect(csvText).toContain("Maria Santos,maria@example.com");
+      expect(csvText).not.toContain("temporary_password");
+      expect(clickMock).toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(window.URL, "createObjectURL", {
+        configurable: true,
+        value: originalCreateObjectUrl,
+      });
+      Object.defineProperty(window.URL, "revokeObjectURL", {
+        configurable: true,
+        value: originalRevokeObjectUrl,
+      });
+      clickMock.mockRestore();
+    }
+  });
+
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {
     render(<MonitorDashboard />);
 
@@ -400,8 +451,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByRole("button", { name: "Review Workspace" })).toBeTruthy();
 
     const globalSearch = screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
-    fireEvent.change(globalSearch, { target: { value: "Batal" } });
-    expect(globalSearch.value).toBe("Batal");
+    fireEvent.change(globalSearch, { target: { value: "Santiago" } });
+    expect(globalSearch.value).toBe("Santiago");
 
     expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();

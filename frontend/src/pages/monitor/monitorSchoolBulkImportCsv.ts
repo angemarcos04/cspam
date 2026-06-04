@@ -74,6 +74,8 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     district: resolveCsvColumnIndex(headerIndexes, ["district"]),
     region: resolveCsvColumnIndex(headerIndexes, ["region"]),
     status: resolveCsvColumnIndex(headerIndexes, ["status"]),
+    schoolHeadName: resolveCsvColumnIndex(headerIndexes, ["school_head_name", "schoolhead_name", "head_name"]),
+    schoolHeadEmail: resolveCsvColumnIndex(headerIndexes, ["school_head_email", "schoolhead_email", "head_email"]),
   };
 
   const missingRequiredColumns = [
@@ -110,8 +112,10 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     const district = getValue(values, columnIndex.district);
     const region = getValue(values, columnIndex.region);
     const statusRaw = getValue(values, columnIndex.status).toLowerCase();
+    const schoolHeadName = getValue(values, columnIndex.schoolHeadName);
+    const schoolHeadEmail = getValue(values, columnIndex.schoolHeadEmail).toLowerCase();
 
-    if (!schoolId && !schoolName && !level && !address) {
+    if (!schoolId && !schoolName && !level && !address && !schoolHeadName && !schoolHeadEmail) {
       continue;
     }
 
@@ -146,6 +150,16 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
       continue;
     }
 
+    if ((schoolHeadName && !schoolHeadEmail) || (!schoolHeadName && schoolHeadEmail)) {
+      errors.push(`Row ${rowIndex + 1}: School Head name and email must be provided together.`);
+      continue;
+    }
+
+    if (schoolHeadEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(schoolHeadEmail)) {
+      errors.push(`Row ${rowIndex + 1}: School Head email must be a valid email address.`);
+      continue;
+    }
+
     rows.push({
       schoolId,
       schoolName,
@@ -155,6 +169,8 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
       district: district || null,
       region: region || null,
       status: normalizedStatus as SchoolStatus,
+      schoolHeadName: schoolHeadName || null,
+      schoolHeadEmail: schoolHeadEmail || null,
     });
   }
 

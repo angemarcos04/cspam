@@ -29,6 +29,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
@@ -665,6 +666,14 @@ class SchoolRecordController extends Controller
         $failed = 0;
         $results = [];
         $upsertRows = [];
+        $accountRequests = [];
+        $accountStats = [
+            'created' => 0,
+            'unchanged' => 0,
+            'skipped_existing_account' => 0,
+            'failed' => 0,
+            'none' => 0,
+        ];
 
         $normalizedSchoolCodes = [];
         foreach ($rows as $row) {
@@ -686,16 +695,21 @@ class SchoolRecordController extends Controller
             try {
                 $schoolCode = $this->normalizeSchoolCode((string) ($row['schoolId'] ?? ''));
                 $school = $existingSchoolsByCode->get(strtolower($schoolCode));
+                $schoolHeadName = trim((string) ($row['schoolHeadName'] ?? ''));
+                $schoolHeadEmail = strtolower(trim((string) ($row['schoolHeadEmail'] ?? '')));
+                $hasAccountRequest = $schoolHeadName !== '' && $schoolHeadEmail !== '';
 
                 $action = 'created';
                 if ($school) {
                     if ($school->trashed()) {
                         if (! $restoreArchived) {
                             $skipped++;
+                            $accountStats['none']++;
                             $results[] = [
                                 'row' => $index + 1,
                                 'schoolId' => $schoolCode,
                                 'action' => 'skipped',
+                                'accountAction' => 'none',
                                 'message' => 'School is archived and restore is disabled.',
                             ];
                             continue;
@@ -705,10 +719,12 @@ class SchoolRecordController extends Controller
                         $action = 'restored';
                     } elseif (! $updateExisting) {
                         $skipped++;
+                        $accountStats['none']++;
                         $results[] = [
                             'row' => $index + 1,
                             'schoolId' => $schoolCode,
                             'action' => 'skipped',
+                            'accountAction' => 'none',
                             'message' => 'School already exists and update is disabled.',
                         ];
                         continue;
@@ -727,18 +743,30 @@ class SchoolRecordController extends Controller
                     $school?->getRawOriginal('created_at'),
                 );
 
+                if ($hasAccountRequest) {
+                    $accountRequests[$schoolCode] = [
+                        'name' => $schoolHeadName,
+                        'email' => $schoolHeadEmail,
+                    ];
+                } else {
+                    $accountStats['none']++;
+                }
+
                 $results[] = [
                     'row' => $index + 1,
                     'schoolId' => $schoolCode,
                     'schoolName' => (string) ($upsertRows[$schoolCode]['name'] ?? ''),
                     'action' => $action,
+                    'accountAction' => 'none',
                 ];
             } catch (\Throwable $exception) {
                 $failed++;
+                $accountStats['none']++;
                 $results[] = [
                     'row' => $index + 1,
                     'schoolId' => (string) ($row['schoolId'] ?? 'N/A'),
                     'action' => 'failed',
+                    'accountAction' => 'none',
                     'message' => $exception->getMessage(),
                 ];
             }
@@ -747,6 +775,7 @@ class SchoolRecordController extends Controller
         if ($upsertRows !== []) {
             DB::transaction(function () use (
                 $upsertRows,
+                $accountRequests,
                 $user,
                 $request,
                 $created,
@@ -754,7 +783,8 @@ class SchoolRecordController extends Controller
                 $restored,
                 $skipped,
                 $failed,
-                $results,
+                &$results,
+                &$accountStats,
                 $updateExisting,
                 $restoreArchived,
             ): void {
@@ -777,6 +807,93 @@ class SchoolRecordController extends Controller
                     ],
                 );
 
+                if ($accountRequests !== []) {
+                    $schoolsByCode = School::query()
+                        ->with(['schoolHeadAccounts' => fn ($query) => $this->applyDashboardSchoolHeadAccountQuery($query)])
+                        ->whereIn(
+                            'school_code_normalized',
+                            array_map(static fn (string $code): string => strtolower($code), array_keys($accountRequests)),
+                        )
+                        ->get()
+                        ->keyBy(static fn (School $school): string => (string) $school->school_code_normalized);
+
+                    foreach ($results as $resultIndex => $result) {
+                        $schoolCode = (string) ($result['schoolId'] ?? '');
+                        $accountRequest = $accountRequests[$schoolCode] ?? null;
+                        if (! is_array($accountRequest)) {
+                            continue;
+                        }
+
+                        /** @var School|null $school */
+                        $school = $schoolsByCode->get(strtolower($schoolCode));
+                        if (! $school) {
+                            $accountStats['failed']++;
+                            $results[$resultIndex]['accountAction'] = 'failed';
+                            $results[$resultIndex]['warning'] = 'School Head account was not created because the imported school could not be resolved.';
+                            continue;
+                        }
+
+                        /** @var User|null $existingAccount */
+                        $existingAccount = $school->schoolHeadAccounts->first();
+                        if ($existingAccount) {
+                            $requestedName = trim((string) ($accountRequest['name'] ?? ''));
+                            $requestedEmail = strtolower(trim((string) ($accountRequest['email'] ?? '')));
+                            $existingName = trim((string) $existingAccount->name);
+                            $existingEmail = strtolower(trim((string) $existingAccount->email));
+
+                            $results[$resultIndex]['schoolHeadEmail'] = $existingEmail;
+                            if ($requestedName === $existingName && $requestedEmail === $existingEmail) {
+                                $accountStats['unchanged']++;
+                                $results[$resultIndex]['accountAction'] = 'unchanged';
+                                continue;
+                            }
+
+                            $accountStats['skipped_existing_account']++;
+                            $results[$resultIndex]['accountAction'] = 'skipped_existing_account';
+                            $results[$resultIndex]['warning'] = 'School imported, but the existing School Head account was not changed. Use the Accounts panel because account email changes require verification.';
+                            continue;
+                        }
+
+                        $email = strtolower(trim((string) ($accountRequest['email'] ?? '')));
+                        if (User::query()->where('email_normalized', $email)->exists()) {
+                            $accountStats['failed']++;
+                            $results[$resultIndex]['accountAction'] = 'failed';
+                            $results[$resultIndex]['schoolHeadEmail'] = $email;
+                            $results[$resultIndex]['warning'] = 'School imported, but the School Head account was not created because that email is already used.';
+                            continue;
+                        }
+
+                        try {
+                            $accountMeta = $this->createTemporaryPasswordSchoolHeadAccount(
+                                $school,
+                                $user,
+                                trim((string) ($accountRequest['name'] ?? '')),
+                                $email,
+                                'Provisioned by Division Monitor through school CSV import.',
+                                $request,
+                            );
+
+                            $accountStats['created']++;
+                            $results[$resultIndex]['accountAction'] = 'created';
+                            $results[$resultIndex]['schoolHeadEmail'] = $email;
+                            $results[$resultIndex]['temporaryPassword'] = $accountMeta['temporaryPassword'];
+                            $results[$resultIndex]['message'] = 'School Head account created with a temporary password.';
+                        } catch (\Throwable $exception) {
+                            Log::warning('Bulk import School Head account creation failed.', [
+                                'school_id' => (string) $school->id,
+                                'school_code' => (string) $school->school_code,
+                                'school_head_email_domain' => str_contains($email, '@') ? substr(strrchr($email, '@') ?: '', 1) : null,
+                                'exception' => $exception::class,
+                            ]);
+
+                            $accountStats['failed']++;
+                            $results[$resultIndex]['accountAction'] = 'failed';
+                            $results[$resultIndex]['schoolHeadEmail'] = $email;
+                            $results[$resultIndex]['warning'] = 'School imported, but the School Head account could not be created.';
+                        }
+                    }
+                }
+
                 AuditLog::query()->create([
                     'user_id' => $user->id,
                     'action' => 'school.bulk_imported',
@@ -790,6 +907,7 @@ class SchoolRecordController extends Controller
                         'restored' => $restored,
                         'skipped' => $skipped,
                         'failed' => $failed,
+                        'accounts' => $accountStats,
                         'options' => [
                             'updateExisting' => $updateExisting,
                             'restoreArchived' => $restoreArchived,
@@ -797,6 +915,7 @@ class SchoolRecordController extends Controller
                         'schools' => array_map(static fn (array $result): array => [
                             'school_id' => $result['schoolId'] ?? null,
                             'action' => $result['action'] ?? null,
+                            'account_action' => $result['accountAction'] ?? null,
                         ], $results),
                     ],
                     'ip_address' => $request->ip(),
@@ -818,6 +937,7 @@ class SchoolRecordController extends Controller
                     'restored' => $restored,
                     'skipped' => $skipped,
                     'failed' => $failed,
+                    'accounts' => $accountStats,
                     'options' => [
                         'updateExisting' => $updateExisting,
                         'restoreArchived' => $restoreArchived,
@@ -825,6 +945,7 @@ class SchoolRecordController extends Controller
                     'schools' => array_map(static fn (array $result): array => [
                         'school_id' => $result['schoolId'] ?? null,
                         'action' => $result['action'] ?? null,
+                        'account_action' => $result['accountAction'] ?? null,
                     ], $results),
                 ],
                 'ip_address' => $request->ip(),
@@ -1099,6 +1220,27 @@ class SchoolRecordController extends Controller
             ]);
         }
 
+        return $this->createTemporaryPasswordSchoolHeadAccount(
+            $school,
+            $monitor,
+            $name,
+            $email,
+            'Provisioned by Division Monitor with a one-time temporary password.',
+            $request,
+        );
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function createTemporaryPasswordSchoolHeadAccount(
+        School $school,
+        User $monitor,
+        string $name,
+        string $email,
+        string $verificationNotes,
+        Request $request,
+    ): array {
         $account = new User();
         $account->name = $name;
         $account->email = $email;
@@ -1116,7 +1258,7 @@ class SchoolRecordController extends Controller
         $account->email_verified_at = now();
         $account->verified_by_user_id = $monitor->id;
         $account->verified_at = now();
-        $account->verification_notes = 'Provisioned by Division Monitor with a one-time temporary password.';
+        $account->verification_notes = $verificationNotes;
         if ($this->usersHaveAccountTypeColumn()) {
             $account->account_type = UserRoleResolver::SCHOOL_HEAD;
         }

@@ -112,6 +112,7 @@ interface UseMonitorSchoolsSectionOptions {
     schoolIds: string[],
     payload?: { reason?: string | null },
   ) => Promise<SchoolHeadAccountBatchRemovalResult>;
+  onDownloadCsvFormat: () => void;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   onOpenSchool: (summary: MonitorSchoolRequirementSummary) => void;
   onReviewSchool: (summary: MonitorSchoolRequirementSummary) => void;
@@ -142,6 +143,7 @@ export interface UseMonitorSchoolsSectionResult {
   toggleSchoolHeadAccountsPanel: () => void;
   toggleActionsMenu: () => void;
   closeActionsMenu: () => void;
+  downloadCsvFormat: () => void;
   openBulkImportPicker: () => void;
   toggleArchivedRecords: () => Promise<void>;
   activeSchoolPresetLabel: string | null;
@@ -184,6 +186,7 @@ export function useMonitorSchoolsSection({
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
   removeSchoolHeadAccountsBatch,
+  onDownloadCsvFormat,
   onOpenSchoolRecord,
   onOpenSchool,
   onReviewSchool,
@@ -293,6 +296,11 @@ export function useMonitorSchoolsSection({
     bulkImportApi.openBulkImportPicker();
   }, [bulkImportApi, closeActionsMenu]);
 
+  const downloadCsvFormat = useCallback(() => {
+    closeActionsMenu();
+    onDownloadCsvFormat();
+  }, [closeActionsMenu, onDownloadCsvFormat]);
+
   const toggleArchivedRecords = useCallback(async () => {
     closeActionsMenu();
     await archivedApi.toggleArchivedRecords();
@@ -360,6 +368,7 @@ export function useMonitorSchoolsSection({
     toggleSchoolHeadAccountsPanel,
     toggleActionsMenu,
     closeActionsMenu,
+    downloadCsvFormat,
     openBulkImportPicker,
     toggleArchivedRecords,
     activeSchoolPresetLabel,

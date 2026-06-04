@@ -22,6 +22,8 @@ describe("parseSchoolBulkImportCsv", () => {
         district: null,
         region: null,
         status: "active",
+        schoolHeadName: null,
+        schoolHeadEmail: null,
       },
     ]);
   });
@@ -53,6 +55,42 @@ describe("parseSchoolBulkImportCsv", () => {
     expect(result.errors.join(" ")).not.toContain("student_count");
     expect(result.errors.join(" ")).not.toContain("teacher_count");
     expect(result.rows).toHaveLength(1);
+  });
+
+  it("accepts School Head account columns when name and email are both present", () => {
+    const result = parseSchoolBulkImportCsv(
+      [
+        "school_id,school_name,level,type,address,school_head_name,school_head_email",
+        "955556,With Head,Elementary,public,Main,Head Teacher,HEAD@example.com",
+      ].join("\n"),
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.rows[0]).toMatchObject({
+      schoolHeadName: "Head Teacher",
+      schoolHeadEmail: "head@example.com",
+    });
+  });
+
+  it("rejects rows with only one School Head account field", () => {
+    const missingEmail = parseSchoolBulkImportCsv(
+      "school_id,school_name,level,type,address,school_head_name\n955557,Missing Email,Elementary,public,Main,Head Teacher",
+    );
+    const missingName = parseSchoolBulkImportCsv(
+      "school_id,school_name,level,type,address,school_head_email\n955558,Missing Name,Elementary,public,Main,head@example.com",
+    );
+
+    expect(missingEmail.errors).toEqual(["Row 2: School Head name and email must be provided together."]);
+    expect(missingName.errors).toEqual(["Row 2: School Head name and email must be provided together."]);
+  });
+
+  it("rejects invalid School Head email values", () => {
+    const result = parseSchoolBulkImportCsv(
+      "school_id,school_name,level,type,address,school_head_name,school_head_email\n955559,Bad Email,Elementary,public,Main,Head Teacher,not-email",
+    );
+
+    expect(result.errors).toEqual(["Row 2: School Head email must be a valid email address."]);
+    expect(result.rows).toEqual([]);
   });
 
   it("rejects invalid school code, type, and status values", () => {

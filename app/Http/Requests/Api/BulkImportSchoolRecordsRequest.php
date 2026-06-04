@@ -4,6 +4,7 @@ namespace App\Http\Requests\Api;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class BulkImportSchoolRecordsRequest extends FormRequest
 {
@@ -50,6 +51,8 @@ class BulkImportSchoolRecordsRequest extends FormRequest
                     'district' => $normalize($row['district'] ?? null),
                     'region' => $normalize($row['region'] ?? null),
                     'status' => strtolower((string) $normalize($row['status'] ?? null)),
+                    'schoolHeadName' => $normalize($row['schoolHeadName'] ?? null),
+                    'schoolHeadEmail' => strtolower((string) $normalize($row['schoolHeadEmail'] ?? null)),
                 ];
             }, $rows),
             'options' => [
@@ -79,10 +82,42 @@ class BulkImportSchoolRecordsRequest extends FormRequest
             'rows.*.district' => ['sometimes', 'nullable', 'string', 'max:255'],
             'rows.*.region' => ['sometimes', 'nullable', 'string', 'max:255'],
             'rows.*.status' => ['sometimes', 'nullable', 'string', Rule::in(['active', 'inactive', 'pending'])],
+            'rows.*.schoolHeadName' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'rows.*.schoolHeadEmail' => ['sometimes', 'nullable', 'email', 'max:255'],
             'options' => ['sometimes', 'array'],
             'options.updateExisting' => ['sometimes', 'boolean'],
             'options.restoreArchived' => ['sometimes', 'boolean'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator): void {
+            $rows = $this->input('rows', []);
+            if (! is_array($rows)) {
+                return;
+            }
+
+            foreach ($rows as $index => $row) {
+                if (! is_array($row)) {
+                    continue;
+                }
+
+                $name = trim((string) ($row['schoolHeadName'] ?? ''));
+                $email = trim((string) ($row['schoolHeadEmail'] ?? ''));
+                if ($name === '' && $email === '') {
+                    continue;
+                }
+
+                if ($name === '') {
+                    $validator->errors()->add("rows.{$index}.schoolHeadName", 'School Head name is required when School Head email is provided.');
+                }
+
+                if ($email === '') {
+                    $validator->errors()->add("rows.{$index}.schoolHeadEmail", 'School Head email is required when School Head name is provided.');
+                }
+            }
+        });
     }
 
     /**

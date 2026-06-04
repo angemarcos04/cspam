@@ -3,6 +3,7 @@ import {
   Building2,
   ChevronDown,
   Database,
+  Download,
   Plus,
   ShieldCheck,
   Trash2,
@@ -43,6 +44,7 @@ interface MonitorSchoolsSectionProps {
   showSchoolHeadAccountsPanel: boolean;
   onToggleActionsMenu: () => void;
   isSchoolActionsMenuOpen: boolean;
+  onDownloadCsvFormat: () => void;
   onOpenBulkImportPicker: () => void;
   isBulkImporting: boolean;
   onToggleArchivedRecords: () => void;
@@ -77,6 +79,7 @@ export function MonitorSchoolsSection({
   showSchoolHeadAccountsPanel,
   onToggleActionsMenu,
   isSchoolActionsMenuOpen,
+  onDownloadCsvFormat,
   onOpenBulkImportPicker,
   isBulkImporting,
   onToggleArchivedRecords,
@@ -271,6 +274,14 @@ export function MonitorSchoolsSection({
               </button>
               {isSchoolActionsMenuOpen && (
                 <div className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
+                  <button
+                    type="button"
+                    onClick={onDownloadCsvFormat}
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    <Download className="h-3.5 w-3.5 text-primary-600" />
+                    Download CSV Format
+                  </button>
                   <button
                     type="button"
                     onClick={onOpenBulkImportPicker}
