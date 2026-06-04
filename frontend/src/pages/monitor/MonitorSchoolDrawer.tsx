@@ -99,6 +99,18 @@ function packageRowStatusClass(tone: MonitorDrawerPackageRow["tone"]): string {
   return "border-emerald-200 bg-emerald-50 text-emerald-700";
 }
 
+function disabledPackageActionTitle(row: MonitorDrawerPackageRow): string {
+  if (!row.submissionId) {
+    return "No submission yet.";
+  }
+
+  if (row.kind === "file" && !row.viewUrl && !row.downloadUrl) {
+    return "File has not been uploaded yet.";
+  }
+
+  return "This requirement must be submitted before review.";
+}
+
 function errorMessageFromUnknown(error: unknown): string {
   if (error instanceof Error && error.message.trim()) {
     return error.message;
@@ -415,34 +427,43 @@ export function MonitorSchoolDrawer({
                                         Download
                                       </a>
                                     ) : null}
-                                    {row.canReview ? (
-                                      <>
-                                        <button
-                                          type="button"
-                                          onClick={() => void saveScopeReview(row, "verified")}
-                                          disabled={scopeReviewSavingKey !== null}
-                                          className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
-                                        >
-                                          <CheckCircle2 className="h-3.5 w-3.5" />
-                                          Verify
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => {
-                                            setScopeReviewError("");
-                                            setReturnReviewNotes(row.reviewNotes ?? "");
-                                            setReturnReviewRow(row);
-                                          }}
-                                          disabled={scopeReviewSavingKey !== null}
-                                          className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-wait disabled:opacity-60"
-                                        >
-                                          <RotateCcw className="h-3.5 w-3.5" />
-                                          Return
-                                        </button>
-                                      </>
-                                    ) : !row.viewUrl && !row.downloadUrl ? (
-                                      <span className="text-xs text-slate-400">-</span>
-                                    ) : null}
+                                    {!row.viewUrl && !row.downloadUrl && (
+                                      <button
+                                        type="button"
+                                        disabled
+                                        title={disabledPackageActionTitle(row)}
+                                        className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-400"
+                                      >
+                                        View
+                                      </button>
+                                    )}
+                                    <button
+                                      type="button"
+                                      onClick={() => void saveScopeReview(row, "verified")}
+                                      disabled={!row.canReview || scopeReviewSavingKey !== null}
+                                      title={row.canReview ? "Verify this requirement." : disabledPackageActionTitle(row)}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
+                                    >
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Verify
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (!row.canReview) {
+                                          return;
+                                        }
+                                        setScopeReviewError("");
+                                        setReturnReviewNotes(row.reviewNotes ?? "");
+                                        setReturnReviewRow(row);
+                                      }}
+                                      disabled={!row.canReview || scopeReviewSavingKey !== null}
+                                      title={row.canReview ? "Return this requirement with a note." : disabledPackageActionTitle(row)}
+                                      className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
+                                    >
+                                      <RotateCcw className="h-3.5 w-3.5" />
+                                      Return
+                                    </button>
                                   </div>
                                 </td>
                               </tr>

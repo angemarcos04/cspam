@@ -1,10 +1,12 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
+const reviewSubmissionScopeMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/context/IndicatorData", () => ({
   useIndicatorData: () => ({
-    reviewSubmissionScope: vi.fn(),
+    reviewSubmissionScope: reviewSubmissionScopeMock,
   }),
 }));
 
@@ -319,5 +321,172 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getAllByText("Viewing SY 2026-2027.").length).toBeGreaterThan(0);
     expect(screen.getByRole("link", { name: "View BMEF" }).getAttribute("href")).toBe("/api/submissions/sub-2026/view/bmef");
     expect(screen.queryByText("bmef.pdf")).toBeNull();
+  });
+
+  it("shows disabled package actions for public and private rows without submissions", () => {
+    reviewSubmissionScopeMock.mockClear();
+
+    const baseProps: Parameters<typeof MonitorSchoolDrawer>[0] = {
+      viewState: {
+        isOpen: true,
+        showNavigatorManual: true,
+        isMobileViewport: false,
+        activeTopNavigator: "schools" as const,
+        activeSchoolDrawerTab: "submissions" as const,
+        selectedSchoolDrawerYear: "2025-2026",
+        highlightedDrawerIndicatorKey: null,
+        expandedDrawerIndicatorRows: {},
+      },
+      loadingState: {
+        syncedCountsLoadingSchoolKey: null,
+        syncedCountsError: "",
+        isSchoolDrawerSubmissionsLoading: false,
+        schoolDrawerSubmissionsError: "",
+      },
+      data: {
+        schoolDetail: {
+          schoolKey: "school-public",
+          schoolCode: "103823",
+          schoolName: "Abra Elementary School",
+          region: "II",
+          level: "Elementary",
+          type: "Public",
+          schoolTypeRaw: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
+          address: "N/A",
+          hasComplianceRecord: false,
+          indicatorStatus: null,
+          hasActivePackageSubmission: false,
+          missingCount: 4,
+          awaitingReviewCount: 0,
+          lastActivityAt: null,
+          reportedStudents: 0,
+          reportedTeachers: 0,
+          synchronizedStudents: 0,
+          synchronizedTeachers: 0,
+        },
+        availableSchoolDrawerYears: ["2025-2026"],
+        schoolDrawerYearDetail: {
+          selectedYearLabel: "2025-2026",
+          availableYears: [{ id: "2025-2026", label: "2025-2026" }],
+          currentIssueLabel: "No submission activity yet for this year.",
+          currentIssueTone: "info",
+          checklistItems: [],
+          packageRows: [
+            {
+              id: "school_achievements_learning_outcomes",
+              label: "School Achievements",
+              kind: "section",
+              statusLabel: "Not Submitted",
+              tone: "warning",
+              submittedAt: null,
+              detail: "No submitted package exists for the selected year.",
+              viewUrl: null,
+              downloadUrl: null,
+              actionLabel: null,
+              submissionId: null,
+              canReview: false,
+            },
+            {
+              id: "bmef",
+              label: "BMEF",
+              kind: "file",
+              statusLabel: "Not Submitted",
+              tone: "warning",
+              submittedAt: null,
+              detail: "File is still missing for the selected year.",
+              viewUrl: null,
+              downloadUrl: null,
+              actionLabel: null,
+              submissionId: null,
+              canReview: false,
+            },
+          ],
+          checklistCompleteCount: 0,
+          checklistMissingCount: 2,
+          selectedYearLatestSubmissionId: null,
+          selectedYearLatestStatus: null,
+          finalizedReportSubmission: null,
+          reportSourceContext: [],
+          reportBlankStateLines: ["No finalized submitted report package exists yet for the selected academic year.", "The report tables are shown for reference."],
+          schoolAchievementRows: [],
+          kpiRows: [],
+        },
+        schoolDrawerHistorySummary: null,
+        schoolDrawerCriticalAlerts: [],
+        schoolIndicatorPackageRows: [],
+        latestSchoolPackage: null,
+        schoolIndicatorMatrix: { years: [], rows: [], latestSubmission: null },
+        latestSchoolIndicatorYear: "",
+        schoolDrawerIndicatorSubmissions: [],
+        schoolIndicatorRowsByCategory: [],
+        missingDrawerIndicatorKeys: [],
+        returnedDrawerIndicatorKeys: [],
+        missingDrawerIndicatorKeySet: new Set(),
+        returnedDrawerIndicatorKeySet: new Set(),
+      },
+      actions: {
+        setActiveSchoolDrawerTab: vi.fn(),
+        setSelectedSchoolDrawerYear: vi.fn(),
+        closeSchoolDrawer: vi.fn(),
+        handleJumpToMissingIndicators: vi.fn(),
+        handleJumpToReturnedIndicators: vi.fn(),
+        toggleDrawerIndicatorLabel: vi.fn(),
+      },
+      formatting: {
+        workflowTone: () => "",
+        workflowLabel: (status: string | null) => status ?? "N/A",
+        formatDateTime: () => "N/A",
+      },
+    };
+
+    const { rerender } = render(<MonitorSchoolDrawer {...baseProps} />);
+
+    expect(screen.getAllByRole("button", { name: "View" }).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByRole("button", { name: "Verify" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Return" }).every((button) => button.hasAttribute("disabled"))).toBe(true);
+    fireEvent.click(screen.getAllByRole("button", { name: "Verify" })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: "Return" })[0]);
+    expect(reviewSubmissionScopeMock).not.toHaveBeenCalled();
+
+    rerender(
+      <MonitorSchoolDrawer
+        {...baseProps}
+        data={{
+          ...baseProps.data,
+          schoolDetail: {
+            ...baseProps.data.schoolDetail!,
+            schoolKey: "school-private",
+            schoolName: "Private School",
+            type: "Private",
+            schoolTypeRaw: "private",
+          },
+          schoolDrawerYearDetail: {
+            ...baseProps.data.schoolDrawerYearDetail!,
+            packageRows: [
+              {
+                id: "fm_qad_001",
+                label: "FM-QAD-001",
+                kind: "file",
+                statusLabel: "Not Submitted",
+                tone: "warning",
+                submittedAt: null,
+                detail: "File is still missing for the selected year.",
+                viewUrl: null,
+                downloadUrl: null,
+                actionLabel: null,
+                submissionId: null,
+                canReview: false,
+              },
+            ],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.getAllByRole("button", { name: "View" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("button", { name: "Verify" })[0].hasAttribute("disabled")).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Return" })[0].hasAttribute("disabled")).toBe(true);
   });
 });
