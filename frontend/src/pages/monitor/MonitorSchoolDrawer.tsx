@@ -87,6 +87,10 @@ function sanitizeAnchorToken(value: string): string {
   return normalized || "row";
 }
 
+function isSubItemMetric(label: string): boolean {
+  return /^[a-e]\.\s/i.test(label);
+}
+
 function packageRowStatusClass(tone: MonitorDrawerPackageRow["tone"]): string {
   if (tone === "warning") {
     return "border-amber-300 bg-amber-50 text-amber-700";
@@ -572,6 +576,91 @@ export function MonitorSchoolDrawer({
                     </div>
                   </div>
 
+                  <div className="mt-3 overflow-hidden rounded-sm border border-slate-200 bg-white">
+                    <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
+                      <div className="flex flex-col gap-1">
+                        <span className="inline-block border-l-[3px] border-primary-600 pl-3 text-base font-semibold text-slate-900">
+                          Submitted Report View
+                        </span>
+                        <span className="pl-3 text-xs font-medium text-slate-500">
+                          Monitor-visible values appear here after the School Head sends the item or submits the package.
+                        </span>
+                        {schoolDrawerYearDetail?.reportSourceContext.map((line) => (
+                          <span key={`monitor-report-context-${line}`} className="pl-3 text-xs text-slate-500">
+                            {line}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    {isSchoolDrawerSubmissionsLoading ? (
+                      <div className="px-4 py-5 text-sm text-slate-500">
+                        Loading submitted indicators for this school...
+                      </div>
+                    ) : schoolDrawerYearDetail
+                      && (schoolDrawerYearDetail.schoolAchievementRows.length > 0 || schoolDrawerYearDetail.kpiRows.length > 0) ? (
+                      <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+                        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
+                          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+                            <h3 className="text-sm font-semibold text-slate-800">
+                              School&apos;s Achievement (SY {schoolDrawerYearDetail.selectedYearLabel ?? "N/A"})
+                            </h3>
+                          </div>
+                          <table className="w-full text-[13px] text-slate-900">
+                            <thead>
+                              <tr className="border-b border-slate-200 bg-slate-50">
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
+                                <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {schoolDrawerYearDetail.schoolAchievementRows.map((row) => (
+                                <tr key={`monitor-achievement-report-${row.key}`}>
+                                  <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                                    {row.label}
+                                  </td>
+                                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{row.value}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+
+                        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
+                          <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+                            <h3 className="text-sm font-semibold text-slate-800">
+                              Key Performance Indicators (SY {schoolDrawerYearDetail.selectedYearLabel ?? "N/A"})
+                            </h3>
+                          </div>
+                          <table className="w-full text-[13px] text-slate-900">
+                            <thead>
+                              <tr className="border-b border-slate-200 bg-slate-50">
+                                <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
+                                <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
+                                <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
+                                <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-200">
+                              {schoolDrawerYearDetail.kpiRows.map((row) => (
+                                <tr key={`monitor-kpi-report-${row.key}`}>
+                                  <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
+                                  <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.target}</td>
+                                  <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.actual}</td>
+                                  <td className="px-4 py-2.5 text-center text-slate-900">{row.status}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="px-4 py-5 text-sm text-slate-500">
+                        {schoolDrawerYearDetail?.reportBlankStateLines[0] ?? "No monitor-visible submitted report package exists yet for the selected academic year."}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div>
@@ -655,17 +744,11 @@ export function MonitorSchoolDrawer({
                     )}
                   </div>
 
-                  {schoolIndicatorMatrix.rows.length === 0 && (isSchoolDrawerSubmissionsLoading || schoolDrawerIndicatorSubmissions.length === 0) ? (
-                    <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-5 text-sm text-slate-500">
-                      {isSchoolDrawerSubmissionsLoading
-                        ? "Loading submitted indicators for this school..."
-                        : "No package history exists yet for this school."}
-                    </div>
-                  ) : schoolIndicatorMatrix.rows.length > 0 ? (
+                  {isHistoryDetailsOpen && schoolIndicatorMatrix.rows.length > 0 ? (
                     <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Indicator Matrix</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Historical Indicator Matrix</p>
                           <p className="mt-0.5 text-[11px] text-slate-500">
                             Currently representing package {schoolDrawerHistorySummary?.latestRenderableSubmissionId ? `#${schoolDrawerHistorySummary.latestRenderableSubmissionId}` : "history source unavailable"} for {schoolDrawerHistorySummary?.latestRenderableSchoolYear ?? (latestSchoolIndicatorYear || "N/A")}.
                           </p>

@@ -1427,6 +1427,56 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.scopeProgress.pendingScopeIds', fn (array $ids): bool => in_array('smea', $ids, true));
     }
 
+    public function test_monitor_can_review_sent_draft_scope_but_not_unsent_draft_scope(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('sent-draft-scope-review-monitor', ['role:monitor'])->plainTextToken;
+
+        $unsentReview = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+        $unsentReview->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission']);
+
+        $scoped = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ]);
+        $scoped->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
+
+        $sentReview = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+        $sentReview->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
+            ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
+    }
+
     public function test_private_school_can_submit_multiple_ready_fm_qad_scopes_in_one_batch(): void
     {
         Storage::fake('local');

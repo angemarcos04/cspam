@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
 const reviewSubmissionScopeMock = vi.hoisted(() => vi.fn());
@@ -11,6 +11,10 @@ vi.mock("@/context/IndicatorData", () => ({
 }));
 
 describe("MonitorSchoolDrawer", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   it("keeps submissions as the main page and history as secondary reference", () => {
     render(
       <MonitorSchoolDrawer
@@ -287,6 +291,148 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByText(/Matrix source year:/)).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "Reviewed" })).toBeNull();
+  });
+
+  it("renders report-style tables in indicator history and keeps the matrix collapsed", () => {
+    render(
+      <MonitorSchoolDrawer
+        viewState={{
+          isOpen: true,
+          showNavigatorManual: true,
+          isMobileViewport: false,
+          activeTopNavigator: "reviews",
+          activeSchoolDrawerTab: "history",
+          selectedSchoolDrawerYear: "2025-2026",
+          highlightedDrawerIndicatorKey: null,
+          expandedDrawerIndicatorRows: {},
+        }}
+        loadingState={{
+          syncedCountsLoadingSchoolKey: null,
+          syncedCountsError: "",
+          isSchoolDrawerSubmissionsLoading: false,
+          schoolDrawerSubmissionsError: "",
+        }}
+        data={{
+          schoolDetail: {
+            schoolKey: "school-1",
+            schoolCode: "401777",
+            schoolName: "AMA CC - Santiago City",
+            region: "II",
+            level: "High School",
+            type: "Public",
+            schoolTypeRaw: "public",
+            requirementModeLabel: "",
+            activePackageLabel: "",
+            address: "N/A",
+            hasComplianceRecord: true,
+            indicatorStatus: "submitted",
+            hasActivePackageSubmission: true,
+            missingCount: 0,
+            awaitingReviewCount: 1,
+            lastActivityAt: null,
+            reportedStudents: 0,
+            reportedTeachers: 0,
+            synchronizedStudents: 0,
+            synchronizedTeachers: 0,
+          },
+          availableSchoolDrawerYears: ["2025-2026"],
+          schoolDrawerYearDetail: {
+            selectedYearLabel: "2025-2026",
+            availableYears: [{ id: "2025-2026", label: "2025-2026" }],
+            currentIssueLabel: "Awaiting monitor review.",
+            currentIssueTone: "info",
+            checklistItems: [],
+            packageRows: [],
+            checklistCompleteCount: 2,
+            checklistMissingCount: 0,
+            selectedYearLatestSubmissionId: "sub-2025",
+            selectedYearLatestStatus: "submitted",
+            finalizedReportSubmission: null,
+            reportSourceContext: ["Viewing monitor-visible report data for SY 2025-2026.", "Source package: #sub-2025 (Submitted)."],
+            reportBlankStateLines: [
+              "No finalized submitted report package exists yet for the selected academic year.",
+              "The report tables are shown for reference.",
+            ],
+            schoolAchievementRows: [{ key: "head", label: "NAME OF SCHOOL HEAD", value: "Jane Doe" }],
+            kpiRows: [{ key: "ner", label: "Net Enrollment Rate", target: "100.00%", actual: "98.00%", status: "met" }],
+          },
+          schoolDrawerHistorySummary: {
+            historyPackageCount: 1,
+            historySchoolYearCount: 1,
+            latestHistoryPackageId: "sub-2025",
+            latestHistorySchoolYear: "2025-2026",
+            latestRenderableSubmissionId: "sub-2025",
+            latestRenderableSchoolYear: "2025-2026",
+            packagesWithRenderableRowsCount: 1,
+            packagesWithoutRenderableRowsCount: 0,
+            historyAvailabilityLabel: "Historical indicator detail available",
+            historyExplanation: "Showing the most recent package with renderable indicator rows.",
+            historyFallbackReason: null,
+          },
+          schoolDrawerCriticalAlerts: [],
+          schoolIndicatorPackageRows: [],
+          latestSchoolPackage: null,
+          schoolIndicatorMatrix: {
+            years: ["2025-2026"],
+            latestSubmission: null,
+            rows: [
+              {
+                key: "NER",
+                code: "NER",
+                label: "Net Enrollment Rate",
+                category: "KEY PERFORMANCE INDICATORS",
+                sortOrder: 1,
+                valuesByYear: { "2025-2026": { target: "100.00%", actual: "98.00%" } },
+              },
+            ],
+          },
+          latestSchoolIndicatorYear: "2025-2026",
+          schoolDrawerIndicatorSubmissions: [],
+          schoolIndicatorRowsByCategory: [
+            {
+              category: "KEY PERFORMANCE INDICATORS",
+              rows: [
+                {
+                  key: "NER",
+                  code: "NER",
+                  label: "Net Enrollment Rate",
+                  category: "KEY PERFORMANCE INDICATORS",
+                  sortOrder: 1,
+                  valuesByYear: { "2025-2026": { target: "100.00%", actual: "98.00%" } },
+                },
+              ],
+            },
+          ],
+          missingDrawerIndicatorKeys: [],
+          returnedDrawerIndicatorKeys: [],
+          missingDrawerIndicatorKeySet: new Set(),
+          returnedDrawerIndicatorKeySet: new Set(),
+        }}
+        actions={{
+          setActiveSchoolDrawerTab: vi.fn(),
+          setSelectedSchoolDrawerYear: vi.fn(),
+          closeSchoolDrawer: vi.fn(),
+          handleJumpToMissingIndicators: vi.fn(),
+          handleJumpToReturnedIndicators: vi.fn(),
+          toggleDrawerIndicatorLabel: vi.fn(),
+        }}
+        formatting={{
+          workflowTone: () => "",
+          workflowLabel: (status) => status ?? "N/A",
+          formatDateTime: () => "N/A",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("Submitted Report View")).toBeTruthy();
+    expect(screen.getByText("School's Achievement (SY 2025-2026)")).toBeTruthy();
+    expect(screen.getByText("Key Performance Indicators (SY 2025-2026)")).toBeTruthy();
+    expect(screen.getByText("Jane Doe")).toBeTruthy();
+    expect(screen.getByText("98.00%")).toBeTruthy();
+    expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show package details" }));
+    expect(screen.getByText("Historical Indicator Matrix")).toBeTruthy();
   });
 
   it("keeps the rendered checklist and report tied to the selected year context", () => {

@@ -841,16 +841,6 @@ class IndicatorSubmissionController extends Controller
         $this->assertCanReview($user);
         $this->assertCanView($user, $submission->school_id);
 
-        $fromStatus = $this->statusValue($submission->status);
-        if (! in_array($fromStatus, [
-            FormSubmissionStatus::SUBMITTED->value,
-            FormSubmissionStatus::RETURNED->value,
-        ], true)) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only submitted or returned indicator scopes can be reviewed.',
-            ]);
-        }
-
         /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
         $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
         $scopeId = strtolower(trim($request->string('scopeId')->toString()));
@@ -866,6 +856,22 @@ class IndicatorSubmissionController extends Controller
         if (! $scopeProgressResolver->isScopeComplete($submission, $scopeId)) {
             throw ValidationException::withMessages([
                 'scopeId' => 'Only submitted file or data requirements can be reviewed.',
+            ]);
+        }
+
+        $fromStatus = $this->statusValue($submission->status);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+        $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
+            ? $scopeProgress['submittedScopeIds']
+            : [];
+        $isSentDraftScope = $fromStatus === FormSubmissionStatus::DRAFT->value
+            && in_array($scopeId, $submittedScopeIds, true);
+        if (! $isSentDraftScope && ! in_array($fromStatus, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only sent indicator scopes can be reviewed.',
             ]);
         }
 

@@ -18,9 +18,7 @@ import {
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
   buildSubmittedReportBlankStateLines,
-  buildSubmittedReportSourceContext,
   resolveIndicatorValue,
-  resolveSelectedYearReportSubmission,
   resolveSubmittedReportIndicatorByMetricCode,
   submissionRows,
 } from "@/pages/schoolAdminSubmittedReportView";
@@ -29,6 +27,8 @@ import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
 
 const BASE_SCHOOL_YEAR_START = 2025;
 const SCHOOL_YEAR_WINDOW_SIZE = 5;
+const SCHOOL_ACHIEVEMENTS_SCOPE_ID = "school_achievements_learning_outcomes";
+const KEY_PERFORMANCE_SCOPE_ID = "key_performance_indicators";
 
 function toSubmissionActivityTime(submission: IndicatorSubmission | null | undefined): number {
   return new Date(
@@ -41,7 +41,51 @@ function toSubmissionActivityTime(submission: IndicatorSubmission | null | undef
 
 function isMonitorRelevantPackageStatus(status: string | null | undefined): boolean {
   const normalizedStatus = String(status ?? "").trim().toLowerCase();
+  return normalizedStatus === "draft" || normalizedStatus === "submitted" || normalizedStatus === "validated" || normalizedStatus === "returned";
+}
+
+function isFullMonitorReportStatus(status: string | null | undefined): boolean {
+  const normalizedStatus = String(status ?? "").trim().toLowerCase();
   return normalizedStatus === "submitted" || normalizedStatus === "validated" || normalizedStatus === "returned";
+}
+
+function normalizeScopeId(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function submittedScopeIdSet(submission: IndicatorSubmission | null | undefined): Set<string> {
+  return new Set(
+    (submission?.scopeProgress?.submittedScopeIds ?? [])
+      .map((scopeId) => normalizeScopeId(scopeId))
+      .filter(Boolean),
+  );
+}
+
+function hasSentMonitorScopes(submission: IndicatorSubmission | null | undefined): boolean {
+  return submittedScopeIdSet(submission).size > 0;
+}
+
+function isMonitorReportSourceSubmission(submission: IndicatorSubmission | null | undefined): boolean {
+  if (!submission) {
+    return false;
+  }
+
+  return isFullMonitorReportStatus(submission.status) || hasSentMonitorScopes(submission);
+}
+
+function isScopeVisibleToMonitor(
+  submission: IndicatorSubmission | null | undefined,
+  scopeId: string,
+): boolean {
+  if (!submission) {
+    return false;
+  }
+
+  if (isFullMonitorReportStatus(submission.status)) {
+    return true;
+  }
+
+  return submittedScopeIdSet(submission).has(normalizeScopeId(scopeId));
 }
 
 function normalizeWorkflowStatus(status: string | null | undefined): string | null {
@@ -90,10 +134,11 @@ function buildMonitorChecklistSectionItems(
   latestYearIndicators: ReturnType<typeof submissionRows>,
   selectedYearWorkflowStatus: string | null,
   selectedYearLabel: string | null,
+  submittedScopeIds: Set<string>,
 ): MonitorDrawerChecklistItem[] {
   const sectionDefinitions = [
-    { id: "school_achievements_learning_outcomes", label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
-    { id: "key_performance_indicators", label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
+    { id: SCHOOL_ACHIEVEMENTS_SCOPE_ID, label: "School Achievements", category: SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL },
+    { id: KEY_PERFORMANCE_SCOPE_ID, label: "Key Performance", category: KEY_PERFORMANCE_CATEGORY_LABEL },
   ] as const;
 
   return sectionDefinitions.map<MonitorDrawerChecklistItem>((section) => {
@@ -117,9 +162,10 @@ function buildMonitorChecklistSectionItems(
     });
 
     let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = isComplete ? "Complete" : "Missing";
+    const isScopeSent = submittedScopeIds.has(normalizeScopeId(section.id));
     if (isComplete && selectedYearWorkflowStatus === "returned") {
       statusLabel = "Returned";
-    } else if (isComplete && selectedYearWorkflowStatus === "submitted") {
+    } else if (isComplete && (selectedYearWorkflowStatus === "submitted" || isScopeSent)) {
       statusLabel = "For Review";
     }
 
@@ -142,6 +188,7 @@ function buildMonitorChecklistFileItems(
   schoolTypeRaw: string | null,
   latestYearSubmission: IndicatorSubmission | null,
   selectedYearWorkflowStatus: string | null,
+  submittedScopeIds: Set<string>,
 ): MonitorDrawerChecklistItem[] {
   const requirementProfile = resolveSubmissionRequirementProfile(schoolTypeRaw);
   const uploadedFileTypes = new Set(getSubmissionUploadedFileTypes(latestYearSubmission));
@@ -149,9 +196,10 @@ function buildMonitorChecklistFileItems(
   return requirementProfile.requiredFileTypes.map<MonitorDrawerChecklistItem>((type) => {
     const definition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
     let statusLabel: MonitorDrawerChecklistItem["statusLabel"] = uploadedFileTypes.has(type) ? "Uploaded" : "Missing";
+    const isScopeSent = submittedScopeIds.has(normalizeScopeId(type));
     if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "returned") {
       statusLabel = "Returned";
-    } else if (uploadedFileTypes.has(type) && selectedYearWorkflowStatus === "submitted") {
+    } else if (uploadedFileTypes.has(type) && (selectedYearWorkflowStatus === "submitted" || isScopeSent)) {
       statusLabel = "For Review";
     }
 
@@ -228,6 +276,46 @@ export function compareMonitorPackagePriority(left: IndicatorSubmission, right: 
   return String(right.id ?? "").localeCompare(String(left.id ?? ""));
 }
 
+function resolveSelectedYearMonitorReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
+  const visibleEntries = entries
+    .filter(isMonitorReportSourceSubmission)
+    .slice()
+    .sort(compareMonitorPackagePriority);
+
+  return visibleEntries[0] ?? null;
+}
+
+function buildMonitorSubmittedReportSourceContext(
+  submission: IndicatorSubmission | null | undefined,
+  selectedReportYearLabel: string,
+): string[] {
+  const lines = [`Viewing monitor-visible report data for SY ${selectedReportYearLabel}.`];
+
+  if (!submission?.id) {
+    lines.push("Source package: None yet.");
+    lines.push("Status: Reference only.");
+    return lines;
+  }
+
+  const packageId = String(submission.id ?? "").trim();
+  const statusLabel = String(submission.statusLabel ?? submission.status ?? "").trim() || "Submitted";
+  lines.push(`Source package: #${packageId} (${statusLabel}).`);
+
+  if (isFullMonitorReportStatus(submission.status)) {
+    const submittedAtLabel = submission.submittedAt
+      ? new Date(submission.submittedAt).toLocaleDateString()
+      : null;
+    if (submittedAtLabel) {
+      lines.push(`Submitted: ${submittedAtLabel}.`);
+    }
+    return lines;
+  }
+
+  const sentScopes = submittedScopeIdSet(submission).size;
+  lines.push(`Sent workspace items: ${sentScopes.toLocaleString()}.`);
+  return lines;
+}
+
 export function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSubmission | null | undefined): string {
   return (submission?.academicYear?.name ?? "").trim()
     || deriveSchoolYearLabel(submission?.submittedAt ?? submission?.updatedAt ?? submission?.createdAt);
@@ -280,7 +368,8 @@ function buildMonitorPackageRows(
     (latestYearSubmission?.scopeReviews ?? []).map((review) => [review.scopeId, review]),
   );
   const reviewableStatus = normalizeWorkflowStatus(latestYearSubmission?.status);
-  const canReviewSubmission = reviewableStatus === "submitted" || reviewableStatus === "returned";
+  const canReviewFullSubmission = reviewableStatus === "submitted" || reviewableStatus === "returned";
+  const sentScopeIds = submittedScopeIdSet(latestYearSubmission);
 
   return checklistItems.map<MonitorDrawerPackageRow>((item) => {
     const submittedAt = latestYearSubmission?.submittedAt ?? latestYearSubmission?.updatedAt ?? latestYearSubmission?.createdAt ?? null;
@@ -316,7 +405,7 @@ function buildMonitorPackageRows(
         viewUrl: fileViewUrl,
         downloadUrl: fileDownloadUrl,
         actionLabel: fileViewUrl ? `View ${item.label}` : null,
-        canReview: canReviewSubmission && hasUploadedFile,
+        canReview: hasUploadedFile && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
         reviewDecision,
         reviewNotes: review?.notes ?? null,
         reviewedAt: review?.reviewedAt ?? null,
@@ -338,7 +427,7 @@ function buildMonitorPackageRows(
       viewUrl: null,
       downloadUrl: null,
       actionLabel: null,
-      canReview: canReviewSubmission && isComplete,
+      canReview: isComplete && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
       reviewDecision,
       reviewNotes: review?.notes ?? null,
       reviewedAt: review?.reviewedAt ?? null,
@@ -362,32 +451,37 @@ export function buildMonitorDrawerYearDetail(
     sortedSelectedYearSubmissions,
     latestYearSubmission,
   } = resolveMonitorSchoolDetailYearSelection(schoolDrawerSubmissions, selectedSchoolDrawerYear);
-  const selectedYearFinalizedSubmission = resolveSelectedYearReportSubmission(sortedSelectedYearSubmissions);
+  const selectedYearMonitorReportSubmission = resolveSelectedYearMonitorReportSubmission(sortedSelectedYearSubmissions);
   const selectedYearWorkflowStatus = normalizeWorkflowStatus(
     sortedSelectedYearSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status))?.status
     ?? latestYearSubmission?.status,
   );
+  const latestYearSubmittedScopeIds = submittedScopeIdSet(latestYearSubmission);
   const currentYearRows = schoolIndicatorRows.filter((row) =>
     Object.prototype.hasOwnProperty.call(row.valuesByYear, effectiveSelectedYear ?? ""),
   );
   const reportRows = currentYearRows.length > 0 ? currentYearRows : schoolIndicatorRows;
-  const finalizedSubmissionRows = submissionRows(selectedYearFinalizedSubmission);
+  const monitorReportSubmissionRows = submissionRows(selectedYearMonitorReportSubmission);
   const latestYearIndicatorRows = submissionRows(latestYearSubmission);
+  const canShowSchoolAchievements = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, SCHOOL_ACHIEVEMENTS_SCOPE_ID);
+  const canShowKeyPerformance = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, KEY_PERFORMANCE_SCOPE_ID);
 
   const schoolAchievementRows = reportRows
     .filter((row) => row.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL)
     .map<MonitorDrawerSchoolAchievementReportRow>((row) => ({
       key: row.key,
       label: row.label,
-      value: selectedYearFinalizedSubmission
-        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code), "actual", effectiveSelectedYear)
+      value: canShowSchoolAchievements
+        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(monitorReportSubmissionRows, row.code), "actual", effectiveSelectedYear)
         : "-",
     }));
 
   const kpiRows = reportRows
     .filter((row) => row.category === KEY_PERFORMANCE_CATEGORY_LABEL)
     .map<MonitorDrawerKpiReportRow>((row) => {
-      const indicator = resolveSubmittedReportIndicatorByMetricCode(finalizedSubmissionRows, row.code);
+      const indicator = canShowKeyPerformance
+        ? resolveSubmittedReportIndicatorByMetricCode(monitorReportSubmissionRows, row.code)
+        : null;
       return {
         key: row.key,
         label: row.label,
@@ -398,8 +492,8 @@ export function buildMonitorDrawerYearDetail(
     });
 
   const checklistItems = [
-    ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus, effectiveSelectedYear),
-    ...buildMonitorChecklistFileItems(schoolDetail.schoolTypeRaw, latestYearSubmission, selectedYearWorkflowStatus),
+    ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus, effectiveSelectedYear, latestYearSubmittedScopeIds),
+    ...buildMonitorChecklistFileItems(schoolDetail.schoolTypeRaw, latestYearSubmission, selectedYearWorkflowStatus, latestYearSubmittedScopeIds),
   ];
   const checklistCompleteCount = checklistItems.filter(
     (item) => item.statusLabel === "Complete" || item.statusLabel === "Uploaded",
@@ -422,9 +516,9 @@ export function buildMonitorDrawerYearDetail(
     checklistMissingCount,
     selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,
     selectedYearLatestStatus: latestYearSubmission?.status ?? null,
-    finalizedReportSubmission: selectedYearFinalizedSubmission,
-    reportSourceContext: buildSubmittedReportSourceContext(
-      selectedYearFinalizedSubmission,
+    finalizedReportSubmission: selectedYearMonitorReportSubmission,
+    reportSourceContext: buildMonitorSubmittedReportSourceContext(
+      selectedYearMonitorReportSubmission,
       effectiveSelectedYear ?? "N/A",
     ),
     reportBlankStateLines: buildSubmittedReportBlankStateLines(),

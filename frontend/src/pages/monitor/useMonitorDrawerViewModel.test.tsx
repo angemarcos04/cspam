@@ -234,6 +234,121 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-002" && item.statusLabel === "Missing")).toBe(true);
   });
 
+  it("shows only sent draft scope values to the monitor report view", () => {
+    const detail = buildMonitorDrawerYearDetail(
+      {
+        schoolKey: "school-1",
+        schoolCode: "401777",
+        schoolName: "Sample Public School",
+        region: "II",
+        level: "Elementary",
+        type: "Public",
+        schoolTypeRaw: "public",
+        requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+        activePackageLabel: "BMEF and SMEA",
+        address: "N/A",
+        hasComplianceRecord: true,
+        indicatorStatus: "draft",
+        hasActivePackageSubmission: true,
+        missingCount: 1,
+        awaitingReviewCount: 1,
+        lastActivityAt: null,
+        reportedStudents: 0,
+        reportedTeachers: 0,
+        synchronizedStudents: 0,
+        synchronizedTeachers: 0,
+      },
+      "2025-2026",
+      [
+        {
+          id: "draft-sent-1",
+          formType: "indicator",
+          status: "draft",
+          statusLabel: "Draft",
+          reportingPeriod: "ANNUAL",
+          version: 1,
+          notes: null,
+          reviewNotes: null,
+          submittedAt: null,
+          reviewedAt: null,
+          createdAt: "2026-05-17T07:00:00.000Z",
+          updatedAt: "2026-05-17T08:00:00.000Z",
+          summary: { totalIndicators: 2, metIndicators: 1, belowTargetIndicators: 0, complianceRatePercent: 100 },
+          scopeProgress: {
+            requiredScopeIds: ["school_achievements_learning_outcomes", "key_performance_indicators", "bmef", "smea"],
+            submittedScopeIds: ["school_achievements_learning_outcomes"],
+            pendingScopeIds: ["key_performance_indicators", "bmef", "smea"],
+            submittedRequiredScopeCount: 1,
+            totalRequiredScopeCount: 4,
+          },
+          indicators: [
+            {
+              id: "a1",
+              metric: {
+                id: "m1",
+                code: "IMETA_HEAD_NAME",
+                name: "Name",
+                sortOrder: 1,
+                inputSchema: { valueType: "text", years: ["2025-2026"] },
+              },
+              targetValue: null,
+              actualValue: null,
+              varianceValue: null,
+              actualDisplay: "Maria Santos",
+              targetDisplay: null,
+              complianceStatus: "recorded",
+              remarks: null,
+            },
+            {
+              id: "k1",
+              metric: {
+                id: "m2",
+                code: "NER",
+                name: "NER",
+                sortOrder: 2,
+                inputSchema: { valueType: "percentage", years: ["2025-2026"] },
+              },
+              targetValue: 100,
+              actualValue: 98,
+              varianceValue: 2,
+              targetTypedValue: { values: { "2025-2026": 100 } },
+              actualTypedValue: { values: { "2025-2026": 98 } },
+              complianceStatus: "met",
+              remarks: null,
+            },
+          ],
+          academicYear: { id: "year-1", name: "2025-2026" },
+        } as never,
+      ],
+      [
+        {
+          key: "IMETA_HEAD_NAME",
+          code: "IMETA_HEAD_NAME",
+          label: "NAME OF SCHOOL HEAD",
+          category: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES",
+          sortOrder: 1,
+          valuesByYear: { "2025-2026": { target: "", actual: "Maria Santos" } },
+        },
+        {
+          key: "NER",
+          code: "NER",
+          label: "Net Enrollment Rate",
+          category: "KEY PERFORMANCE INDICATORS",
+          sortOrder: 2,
+          valuesByYear: { "2025-2026": { target: "100.00%", actual: "98.00%" } },
+        },
+      ],
+    );
+
+    expect(detail?.schoolAchievementRows[0]?.value).toBe("Maria Santos");
+    expect(detail?.kpiRows[0]?.target).toBe("-");
+    expect(detail?.kpiRows[0]?.actual).toBe("-");
+    expect(detail?.checklistItems.find((item) => item.label === "School Achievements")?.statusLabel).toBe("For Review");
+    expect(detail?.checklistItems.find((item) => item.label === "Key Performance")?.statusLabel).toBe("Complete");
+    expect(detail?.packageRows.find((row) => row.label === "School Achievements")?.canReview).toBe(true);
+    expect(detail?.packageRows.find((row) => row.label === "Key Performance")?.canReview).toBe(false);
+  });
+
   it("keeps the initial five-year academic-year FIFO window in ascending order", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
