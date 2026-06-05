@@ -312,6 +312,7 @@ export function MonitorDashboard() {
   });
   useEffect(() => {
     if (!reviewWorkspaceSchoolKey) return;
+    if (queueWorkspaceSchoolFilterKeys === null) return;
     if (queueWorkspaceSchoolFilterKeys?.has(reviewWorkspaceSchoolKey)) return;
 
     setReviewWorkspaceSchoolKey(null);

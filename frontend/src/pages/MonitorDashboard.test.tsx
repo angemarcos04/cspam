@@ -503,6 +503,28 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByRole("button", { name: /Needs account/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("opens the review workspace for a queue row when no dashboard filters are active", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
+    expect(screen.getByText("Select a school from the queue to start reviewing submissions.")).toBeTruthy();
+
+    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    scrollIntoViewMock.mockClear();
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
+      expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
+    });
+    expect(scrollIntoViewMock).not.toHaveBeenCalled();
+
+    const latestWorkspaceProps = monitorIndicatorPanelMock.mock.calls[monitorIndicatorPanelMock.mock.calls.length - 1]?.[0];
+    expect(latestWorkspaceProps?.onSchoolFocusChange).toBeUndefined();
+  });
+
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {
     render(<MonitorDashboard />);
 
