@@ -11,6 +11,8 @@ import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
 
+const monitorIndicatorPanelMock = vi.hoisted(() => vi.fn());
+
 vi.mock("@/context/Auth", () => ({
   useAuth: vi.fn(),
 }));
@@ -65,7 +67,17 @@ vi.mock("@/components/charts/SubmissionTrendChart", () => ({
 }));
 
 vi.mock("@/components/indicators/MonitorIndicatorPanel", () => ({
-  MonitorIndicatorPanel: () => null,
+  MonitorIndicatorPanel: (props: {
+    schoolFilterKeys?: Set<string> | null;
+    onSchoolFocusChange?: (schoolKey: string, schoolName: string) => void;
+  }) => {
+    monitorIndicatorPanelMock(props);
+    return (
+      <div data-testid="monitor-indicator-panel">
+        Review workspace schools: {[...(props.schoolFilterKeys ?? new Set<string>())].join(",")}
+      </div>
+    );
+  },
 }));
 
 vi.mock("@/components/students/StudentRecordsPanel", () => ({
@@ -83,6 +95,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
     bulkImportRecordsMock.mockReset();
+    monitorIndicatorPanelMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
@@ -526,6 +539,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
     await new Promise((resolve) => window.setTimeout(resolve, 120));
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
+    const latestWorkspaceProps = monitorIndicatorPanelMock.mock.calls[monitorIndicatorPanelMock.mock.calls.length - 1]?.[0];
+    expect(latestWorkspaceProps?.onSchoolFocusChange).toBeUndefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Queue List" }));
     expect(scrollIntoViewMock).toHaveBeenCalled();

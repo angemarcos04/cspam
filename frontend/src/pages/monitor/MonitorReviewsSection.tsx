@@ -58,7 +58,6 @@ interface MonitorReviewsSectionProps {
   records: SchoolRecord[];
   pushToast: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onToast"]>;
   sendReminderForSchool: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onSendReminder"]>;
-  handleQueueSchoolFocus: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onSchoolFocusChange"]>;
   handleQueueReviewCompleted: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onReviewCompleted"]>;
 }
 
@@ -94,7 +93,6 @@ export function MonitorReviewsSection({
   records,
   pushToast,
   sendReminderForSchool,
-  handleQueueSchoolFocus,
   handleQueueReviewCompleted,
 }: MonitorReviewsSectionProps) {
   const [reminderTarget, setReminderTarget] = useState<ReviewQueueRow | null>(null);
@@ -415,7 +413,6 @@ export function MonitorReviewsSection({
             schoolRecords={records}
             onToast={pushToast}
             onSendReminder={sendReminderForSchool}
-            onSchoolFocusChange={handleQueueSchoolFocus}
             onReviewCompleted={handleQueueReviewCompleted}
           />
         ) : (

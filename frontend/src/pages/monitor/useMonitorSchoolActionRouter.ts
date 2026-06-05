@@ -16,6 +16,7 @@ interface UseMonitorSchoolActionRouterArgs {
   recordBySchoolKey: Map<string, SchoolRecord>;
   schoolRequirementByKey: Map<string, MonitorSchoolRequirementSummary>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
+  setReviewWorkspaceSchoolKey: Dispatch<SetStateAction<string | null>>;
   openSchoolDrawer: (schoolKey: string) => void;
   focusAndScrollTo: (targetId: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
@@ -30,7 +31,6 @@ export interface UseMonitorSchoolActionRouterResult {
   handleSendReminder: (summary: SchoolActionSummary, notes?: string | null) => Promise<void>;
   handleReviewRecord: (record: SchoolRecord) => void;
   handleOpenSchoolRecord: (record: SchoolRecord) => void;
-  handleQueueSchoolFocus: (schoolKey: string) => void;
 }
 
 function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: string) {
@@ -48,6 +48,7 @@ export function useMonitorSchoolActionRouter({
   recordBySchoolKey,
   schoolRequirementByKey,
   setActiveTopNavigator,
+  setReviewWorkspaceSchoolKey,
   openSchoolDrawer,
   focusAndScrollTo,
   pushToast,
@@ -89,11 +90,11 @@ export function useMonitorSchoolActionRouter({
 
   const handleReviewSchool = useCallback(
     (summary: SchoolActionSummary) => {
-      openSchoolDrawer(summary.schoolKey);
+      setReviewWorkspaceSchoolKey(summary.schoolKey);
       setActiveTopNavigator("reviews");
-      pushToast(`Review workspace opened for ${summary.schoolName}.`, "info");
+      pushToast(`Review workspace selected for ${summary.schoolName}.`, "info");
     },
-    [openSchoolDrawer, pushToast, setActiveTopNavigator],
+    [pushToast, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
   );
 
   const handleOpenSchool = useCallback(
@@ -127,11 +128,11 @@ export function useMonitorSchoolActionRouter({
         return;
       }
 
-      openSchoolDrawer(schoolKey);
+      setReviewWorkspaceSchoolKey(schoolKey);
       setActiveTopNavigator("reviews");
-      pushToast(`Review workspace opened for ${record.schoolName}.`, "info");
+      pushToast(`Review workspace selected for ${record.schoolName}.`, "info");
     },
-    [handleReviewSchool, openSchoolDrawer, pushToast, schoolRequirementByKey, setActiveTopNavigator],
+    [handleReviewSchool, pushToast, schoolRequirementByKey, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
   );
 
   const handleOpenSchoolRecord = useCallback(
@@ -150,16 +151,6 @@ export function useMonitorSchoolActionRouter({
     [focusAndScrollTo, openSchoolDrawer, pushToast, setActiveTopNavigator],
   );
 
-  const handleQueueSchoolFocus = useCallback(
-    (schoolKey: string) => {
-      if (schoolKey === "unknown") return;
-
-      openSchoolDrawer(schoolKey);
-      setActiveTopNavigator("reviews");
-    },
-    [openSchoolDrawer, setActiveTopNavigator],
-  );
-
   return {
     remindingSchoolKey,
     sendReminderForSchool,
@@ -168,6 +159,5 @@ export function useMonitorSchoolActionRouter({
     handleSendReminder,
     handleReviewRecord,
     handleOpenSchoolRecord,
-    handleQueueSchoolFocus,
   };
 }

@@ -976,40 +976,13 @@ export function MonitorIndicatorPanel({
   useEffect(() => {
     if (!embedded) return;
 
-    if (filteredRows.length === 0) {
-      if (detailSubmissionId !== null) {
-        setDetailSubmissionId(null);
-      }
-      return;
+    if (detailSubmissionId !== null && !filteredRows.some((row) => row.submission.id === detailSubmissionId)) {
+      setDetailSubmissionId(null);
     }
-
-    if (detailSubmissionId && filteredRows.some((row) => row.submission.id === detailSubmissionId)) {
-      return;
-    }
-
-    const nextRow = filteredRows.find((row) => row.status === "submitted") ?? filteredRows[0];
-    if (!nextRow) return;
-
-    setDetailSubmissionId(nextRow.submission.id);
-    setDetailTab("overview");
-    if (nextRow.schoolKey !== "unknown") {
-      onSchoolFocusChange?.(nextRow.schoolKey, nextRow.schoolName);
-    }
-    void ensureHistoryLoaded(nextRow.submission.id);
-  }, [detailSubmissionId, embedded, filteredRows, onSchoolFocusChange, ensureHistoryLoaded]);
+  }, [detailSubmissionId, embedded, filteredRows]);
 
   const closeDetails = () => {
     setDetailSubmissionId(null);
-  };
-
-  const detailRowIndex = detailRow ? filteredRows.findIndex((row) => row.submission.id === detailRow.submission.id) : -1;
-  const hasNextDetailRow = detailRowIndex >= 0 && detailRowIndex < filteredRows.length - 1;
-
-  const openNextDetailRow = () => {
-    if (!hasNextDetailRow) return;
-    const nextRow = filteredRows[detailRowIndex + 1];
-    if (!nextRow) return;
-    openDetails(nextRow);
   };
 
   const clearFilters = () => {
@@ -1167,13 +1140,6 @@ export function MonitorIndicatorPanel({
 
       const key = event.key.toLowerCase();
 
-      if (key === "n") {
-        if (!hasNextDetailRow) return;
-        event.preventDefault();
-        openNextDetailRow();
-        return;
-      }
-
       if (detailRow.status !== "submitted") return;
 
       if (key === "v") {
@@ -1189,7 +1155,7 @@ export function MonitorIndicatorPanel({
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [detailRow, hasNextDetailRow, openNextDetailRow, openReviewAction]);
+  }, [detailRow, openReviewAction]);
 
   const applyBatchReviewer = () => {
     if (selectedRows.length === 0) {
@@ -2109,16 +2075,7 @@ export function MonitorIndicatorPanel({
                   >
                     History
                   </button>
-                  <span className="ml-2 shrink-0 text-[11px] text-slate-500">Keyboard: V validate, R return, N next</span>
-                  {hasNextDetailRow && (
-                    <button
-                      type="button"
-                      onClick={openNextDetailRow}
-                      className="inline-flex shrink-0 items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                    >
-                      Next Row
-                    </button>
-                  )}
+                  <span className="ml-2 shrink-0 text-[11px] text-slate-500">Keyboard: V validate, R return</span>
                 </div>
               </div>
             </div>
@@ -2422,15 +2379,6 @@ export function MonitorIndicatorPanel({
                       <CheckCircle2 className="h-3 w-3" />
                       Validate
                     </button>
-                    {hasNextDetailRow && (
-                      <button
-                        type="button"
-                        onClick={openNextDetailRow}
-                        className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-                      >
-                        Next School
-                      </button>
-                    )}
                   </div>
                 </div>
               </div>

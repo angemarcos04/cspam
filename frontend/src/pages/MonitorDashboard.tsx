@@ -78,6 +78,7 @@ export function MonitorDashboard() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
+  const [reviewWorkspaceSchoolKey, setReviewWorkspaceSchoolKey] = useState<string | null>(null);
   const {
     records,
     recordCount,
@@ -309,6 +310,16 @@ export function MonitorDashboard() {
     allSchoolScopeKey: ALL_SCHOOL_SCOPE,
     requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
   });
+  useEffect(() => {
+    if (!reviewWorkspaceSchoolKey) return;
+    if (queueWorkspaceSchoolFilterKeys?.has(reviewWorkspaceSchoolKey)) return;
+
+    setReviewWorkspaceSchoolKey(null);
+  }, [queueWorkspaceSchoolFilterKeys, reviewWorkspaceSchoolKey]);
+  const effectiveQueueWorkspaceSchoolFilterKeys = useMemo(
+    () => (reviewWorkspaceSchoolKey ? new Set([reviewWorkspaceSchoolKey]) : queueWorkspaceSchoolFilterKeys),
+    [queueWorkspaceSchoolFilterKeys, reviewWorkspaceSchoolKey],
+  );
   const dashboardLastSyncedAt = useMemo(() => {
     const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
     const indicatorTime = indicatorLastSyncedAt ? Date.parse(indicatorLastSyncedAt) : Number.NaN;
@@ -559,12 +570,12 @@ export function MonitorDashboard() {
     handleSendReminder,
     handleReviewRecord,
     handleOpenSchoolRecord,
-    handleQueueSchoolFocus,
   } = useMonitorSchoolActionRouter({
     scopedRecordBySchoolKey,
     recordBySchoolKey,
     schoolRequirementByKey,
     setActiveTopNavigator,
+    setReviewWorkspaceSchoolKey,
     openSchoolDrawer,
     focusAndScrollTo,
     pushToast,
@@ -899,11 +910,10 @@ export function MonitorDashboard() {
               safeRequirementsPage={safeRequirementsPage}
               totalRequirementPages={totalRequirementPages}
               setRequirementsPage={setRequirementsPage}
-              queueWorkspaceSchoolFilterKeys={queueWorkspaceSchoolFilterKeys}
+              queueWorkspaceSchoolFilterKeys={effectiveQueueWorkspaceSchoolFilterKeys}
               records={records}
               pushToast={pushToast}
               sendReminderForSchool={sendReminderForSchool}
-              handleQueueSchoolFocus={handleQueueSchoolFocus}
               handleQueueReviewCompleted={handleQueueReviewCompleted}
             />
           )}
