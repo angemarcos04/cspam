@@ -17,6 +17,7 @@ import {
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveSelectedYearSchoolHeadCurrentReportSubmission,
+  resolveSchoolHeadReportSourceMode,
   resolveSchoolHeadCurrentReportSubmissionForView,
   resolveStableSchoolHeadCurrentReportViewSubmission,
   resolveStableSubmittedReportViewSubmission,
@@ -437,10 +438,10 @@ describe("buildSubmittedReportBlankStateLines", () => {
 });
 
 describe("buildSchoolHeadCurrentReportBlankStateLines", () => {
-  it("explains that School Head report values appear only after final submit", () => {
+  it("explains that School Head report values appear after save or final submit", () => {
     expect(buildSchoolHeadCurrentReportBlankStateLines()).toEqual([
-      "No submitted School Head report package exists yet for the selected academic year.",
-      "The report tables are shown for reference. Submitted values will appear here after you final-submit the package.",
+      "No saved School Head report package exists yet for the selected academic year.",
+      "The report tables are shown for reference. Saved values will appear here after you save or final-submit the package.",
     ]);
   });
 });
@@ -482,6 +483,25 @@ describe("buildSubmittedReportSourceContext", () => {
 });
 
 describe("buildSchoolHeadCurrentReportSourceContext", () => {
+  it("shows School Head workspace-preview context for draft packages using the saved timestamp", () => {
+    expect(
+      buildSchoolHeadCurrentReportSourceContext(
+        submission({
+          id: "draft-42",
+          status: "draft",
+          statusLabel: "Draft",
+          updatedAt: "2026-05-17T00:00:00.000Z",
+          submittedAt: null,
+        }),
+        "2025-2026",
+      ),
+    ).toEqual([
+      "Viewing saved workspace preview for SY 2025-2026.",
+      "Source package: #draft-42 (Draft).",
+      `Saved: ${new Date("2026-05-17T00:00:00.000Z").toLocaleDateString()}.`,
+    ]);
+  });
+
   it("shows School Head report context for submitted packages using the submitted timestamp", () => {
     expect(
       buildSchoolHeadCurrentReportSourceContext(
@@ -598,7 +618,7 @@ describe("resolveSubmittedReportSubmissionForView", () => {
 });
 
 describe("resolveSchoolHeadCurrentReportSubmissionForView", () => {
-  it("rejects draft and returned submissions even when they match the selected school and academic year", () => {
+  it("accepts draft and returned submissions when they match the selected school and academic year", () => {
     const draftResult = resolveSchoolHeadCurrentReportSubmissionForView(
       submission({
         status: "draft",
@@ -618,13 +638,27 @@ describe("resolveSchoolHeadCurrentReportSubmissionForView", () => {
       { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
     );
 
-    expect(draftResult).toBeNull();
-    expect(returnedResult).toBeNull();
+    expect(draftResult?.status).toBe("draft");
+    expect(returnedResult?.status).toBe("returned");
+  });
+
+  it("still rejects another school's draft submission", () => {
+    const result = resolveSchoolHeadCurrentReportSubmissionForView(
+      submission({
+        status: "draft",
+        statusLabel: "Draft",
+        schoolId: "school-2",
+        school: { id: "school-2", schoolCode: "002", name: "Other School", type: "private" },
+      }),
+      { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
+    );
+
+    expect(result).toBeNull();
   });
 });
 
 describe("resolveSelectedYearSchoolHeadCurrentReportSubmission", () => {
-  it("ignores fresher editable drafts and keeps the submitted package for report view", () => {
+  it("prefers a fresher saved draft over an older submitted package for School Head preview", () => {
     const result = resolveSelectedYearSchoolHeadCurrentReportSubmission([
       submission({
         id: "submitted-1",
@@ -642,7 +676,19 @@ describe("resolveSelectedYearSchoolHeadCurrentReportSubmission", () => {
       }),
     ]);
 
-    expect(result?.id).toBe("submitted-1");
+    expect(result?.id).toBe("draft-1");
+  });
+});
+
+describe("resolveSchoolHeadReportSourceMode", () => {
+  it("labels draft and returned packages as workspace previews", () => {
+    expect(resolveSchoolHeadReportSourceMode(submission({ status: "draft" }))).toBe("workspace_preview");
+    expect(resolveSchoolHeadReportSourceMode(submission({ status: "returned" }))).toBe("workspace_preview");
+  });
+
+  it("labels submitted and validated packages as submitted report sources", () => {
+    expect(resolveSchoolHeadReportSourceMode(submission({ status: "submitted" }))).toBe("submitted");
+    expect(resolveSchoolHeadReportSourceMode(submission({ status: "validated" }))).toBe("submitted");
   });
 });
 
@@ -784,7 +830,7 @@ describe("resolveStableSchoolHeadCurrentReportViewSubmission", () => {
     expect(result).toBe(hydrated);
   });
 
-  it("does not hydrate a draft into the submitted report view", () => {
+  it("hydrates a draft into the School Head workspace preview", () => {
     const selected = submission({
       id: "submission-1",
       status: "draft",
@@ -826,7 +872,7 @@ describe("resolveStableSchoolHeadCurrentReportViewSubmission", () => {
       selectedAcademicYearId: "year-1",
     });
 
-    expect(result).toBeNull();
+    expect(result).toBe(hydrated);
   });
 });
 

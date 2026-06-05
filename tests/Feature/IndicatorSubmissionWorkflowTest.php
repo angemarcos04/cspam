@@ -1778,6 +1778,79 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         Storage::disk('local')->assertExists((string) $submissionRow->smea_file_path);
     }
 
+    public function test_school_head_save_stays_draft_until_final_submit_makes_it_monitor_reviewable(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $saved = $this->withToken($token)->putJson("/api/indicators/submissions/{$submissionId}", [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'workspace_section' => GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+            'mode' => 'upsert',
+            'replace_missing' => false,
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $saved->assertOk()
+            ->assertJsonPath('data.status', 'draft')
+            ->assertJsonPath('data.submittedAt', null);
+
+        $this->assertDatabaseHas('indicator_submissions', [
+            'id' => (int) $submissionId,
+            'status' => 'draft',
+            'submitted_at' => null,
+        ]);
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $submittedBeforeFinalSubmit = $this->withToken($monitorToken)
+            ->getJson('/api/indicators/submissions?status=submitted&per_page=100');
+        $submittedBeforeFinalSubmit->assertOk();
+        $this->assertFalse(
+            collect($submittedBeforeFinalSubmit->json('data', []))->contains(
+                static fn (mixed $row): bool => is_array($row) && (string) ($row['id'] ?? '') === $submissionId,
+            ),
+            'Saved draft appeared in the monitor submitted review list before final submit.',
+        );
+
+        $this->uploadRequiredSubmissionFiles($token, $submissionId);
+
+        $submitted = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $submitted->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.submittedAt', fn (?string $value): bool => $value !== null);
+
+        $submittedAfterFinalSubmit = $this->withToken($monitorToken)
+            ->getJson('/api/indicators/submissions?status=submitted&per_page=100');
+        $submittedAfterFinalSubmit->assertOk();
+        $this->assertTrue(
+            collect($submittedAfterFinalSubmit->json('data', []))->contains(
+                static fn (mixed $row): bool => is_array($row) && (string) ($row['id'] ?? '') === $submissionId,
+            ),
+            'Final submitted package did not appear in the monitor submitted review list.',
+        );
+    }
+
     public function test_submitted_indicator_submission_cannot_be_updated(): void
     {
         $this->seedIndicatorFixtures();

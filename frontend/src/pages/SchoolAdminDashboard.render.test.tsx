@@ -252,6 +252,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("Source package: #101 (Submitted).")).not.toBeNull();
     });
+    expect(screen.getByText("Submitted Report Package")).not.toBeNull();
     expect(screen.getByText("1,515")).not.toBeNull();
     expect(screen.queryByText("Source package: #202 (Submitted).")).toBeNull();
 
@@ -265,7 +266,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("9,999")).not.toBeNull();
   });
 
-  it("keeps the submitted package in Report View even when a newer draft exists", async () => {
+  it("shows a newer saved draft in Report View as a workspace preview", async () => {
     const finalized = buildSubmission({
       id: "finalized-101",
       status: "submitted",
@@ -280,6 +281,15 @@ describe("SchoolAdminDashboard submitted report view", () => {
       status: "draft",
       statusLabel: "Draft",
       indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+    const hydratedDraft = buildSubmission({
+      id: "draft-101",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(2024)],
       items: [],
       submittedAt: null,
       updatedAt: "2026-05-10T00:00:00.000Z",
@@ -320,7 +330,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
         { id: "year-1", name: "2025-2026", isCurrent: true },
       ],
       downloadSubmissionFile: vi.fn(),
-      fetchSubmission: vi.fn(async () => finalized),
+      fetchSubmission: vi.fn(async (id: string) => (id === "draft-101" ? hydratedDraft : finalized)),
       loadSubmissionsForYear: vi.fn(async () => [draft, finalized]),
       refreshAllSubmissions: refreshAllSubmissionsMock,
       refreshSubmissions: refreshSubmissionsMock,
@@ -329,11 +339,13 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #finalized-101 (Submitted).")).not.toBeNull();
+      expect(screen.getByText("Saved Workspace Preview")).not.toBeNull();
     });
-    expect(screen.getByText("1,515")).not.toBeNull();
-    expect(screen.queryByText("Source package: #draft-101 (Draft).")).toBeNull();
-    expect(screen.queryByText("2,024")).toBeNull();
+    expect(screen.getByText("Source package: #draft-101 (Draft).")).not.toBeNull();
+    expect(screen.getByText("Saved locally for this school account. Not sent to the monitor until final submit.")).not.toBeNull();
+    expect(screen.getByText("2,024")).not.toBeNull();
+    expect(screen.queryByText("Source package: #finalized-101 (Submitted).")).toBeNull();
+    expect(screen.queryByText("1,515")).toBeNull();
   });
 
   it("rerenders the selected-year submitted report immediately when indicator submissions refresh", async () => {

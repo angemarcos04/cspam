@@ -19,7 +19,25 @@ export function isFinalizedSubmissionStatus(status: string | null | undefined): 
 }
 
 export function isSchoolHeadCurrentReportStatus(status: string | null | undefined): boolean {
-  return isFinalizedSubmissionStatus(status);
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "draft" || normalized === "returned" || isFinalizedSubmissionStatus(normalized);
+}
+
+export function isSchoolHeadWorkspacePreviewStatus(status: string | null | undefined): boolean {
+  const normalized = String(status ?? "").trim().toLowerCase();
+  return normalized === "draft" || normalized === "returned";
+}
+
+export type SchoolHeadReportSourceMode = "workspace_preview" | "submitted";
+
+export function resolveSchoolHeadReportSourceMode(
+  submission: IndicatorSubmission | null | undefined,
+): SchoolHeadReportSourceMode | null {
+  if (!submission || !isSchoolHeadCurrentReportStatus(submission.status)) {
+    return null;
+  }
+
+  return isSchoolHeadWorkspacePreviewStatus(submission.status) ? "workspace_preview" : "submitted";
 }
 
 export function submittedReportLineageTimestamp(submission: IndicatorSubmission): number {
@@ -80,14 +98,28 @@ export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission
 }
 
 export function schoolHeadCurrentReportRecencyScore(submission: IndicatorSubmission): number {
-  return submittedReportRecencyScore(submission);
+  const timestamp = isSchoolHeadWorkspacePreviewStatus(submission.status)
+    ? (
+      safeSubmissionTimestamp(submission.updatedAt)
+      || safeSubmissionTimestamp(submission.createdAt)
+      || safeSubmissionTimestamp(submission.submittedAt)
+      || safeSubmissionTimestamp(submission.reviewedAt)
+    )
+    : submittedReportLineageTimestamp(submission);
+  const version = Number(submission.version ?? 0);
+  return (Number.isFinite(timestamp) ? timestamp : 0) * 1_000 + (Number.isFinite(version) ? version : 0);
 }
 
 export function compareSelectedYearSchoolHeadCurrentReportSubmissions(
   left: IndicatorSubmission,
   right: IndicatorSubmission,
 ): number {
-  return compareSelectedYearFinalizedReportSubmissions(left, right);
+  const recencyDelta = schoolHeadCurrentReportRecencyScore(right) - schoolHeadCurrentReportRecencyScore(left);
+  if (recencyDelta !== 0) {
+    return recencyDelta;
+  }
+
+  return String(right.id ?? "").localeCompare(String(left.id ?? ""));
 }
 
 export function resolveSelectedYearSchoolHeadCurrentReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
@@ -247,8 +279,8 @@ export function buildSubmittedReportBlankStateLines(): [string, string] {
 
 export function buildSchoolHeadCurrentReportBlankStateLines(): [string, string] {
   return [
-    "No submitted School Head report package exists yet for the selected academic year.",
-    "The report tables are shown for reference. Submitted values will appear here after you final-submit the package.",
+    "No saved School Head report package exists yet for the selected academic year.",
+    "The report tables are shown for reference. Saved values will appear here after you save or final-submit the package.",
   ];
 }
 
@@ -282,7 +314,12 @@ export function buildSchoolHeadCurrentReportSourceContext(
   submission: IndicatorSubmission | null | undefined,
   selectedReportYearLabel: string,
 ): string[] {
-  const lines = [`Viewing submitted School Head report for SY ${selectedReportYearLabel}.`];
+  const sourceMode = resolveSchoolHeadReportSourceMode(submission);
+  const lines = [
+    sourceMode === "workspace_preview"
+      ? `Viewing saved workspace preview for SY ${selectedReportYearLabel}.`
+      : `Viewing submitted School Head report for SY ${selectedReportYearLabel}.`,
+  ];
 
   if (!submission?.id) {
     lines.push("Source package: None yet.");
@@ -294,8 +331,12 @@ export function buildSchoolHeadCurrentReportSourceContext(
   const statusLabel = String(submission.statusLabel ?? submission.status ?? "").trim() || "Submitted";
   lines.push(`Source package: #${packageId} (${statusLabel}).`);
 
-  const timestampLabel = submission.submittedAt || submission.reviewedAt;
-  const timestampPrefix = submission.submittedAt ? "Submitted" : "Reviewed";
+  const timestampLabel = sourceMode === "workspace_preview"
+    ? submission.updatedAt || submission.createdAt
+    : submission.submittedAt || submission.reviewedAt;
+  const timestampPrefix = sourceMode === "workspace_preview"
+    ? "Saved"
+    : (submission.submittedAt ? "Submitted" : "Reviewed");
   const renderedLabel = timestampLabel
     ? new Date(timestampLabel).toLocaleDateString()
     : null;

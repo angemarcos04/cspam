@@ -33,6 +33,7 @@ import {
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveSelectedYearSchoolHeadCurrentReportSubmission,
+  resolveSchoolHeadReportSourceMode,
   schoolHeadCurrentReportRecencyScore,
   resolveStableSchoolHeadCurrentReportViewSubmission,
   resolveSchoolHeadCurrentReportSubmissionForView,
@@ -920,7 +921,7 @@ export function SchoolAdminDashboard() {
 
     return {
       submission,
-      hasSubmittedPackage: Boolean(submission),
+      sourceMode: resolveSchoolHeadReportSourceMode(submission),
       getIndicatorByGroupAKey,
       completedIndicators: indicators.length > 0
         ? indicators.filter((indicator) => isCountableComplianceStatus(indicator.complianceStatus)).length
@@ -1312,7 +1313,7 @@ export function SchoolAdminDashboard() {
             <div>
               <h2 className="text-[18px] font-semibold text-slate-900">Report View</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Submitted School Head package data is shown for the selected academic year. Saved drafts stay in the workspace until final submit.
+                Saved workspace values appear here immediately. Final submitted packages are visible to the monitor.
               </p>
               {!isYearScopedLoading && (
                 <div className="mt-2 space-y-1">
@@ -1321,6 +1322,11 @@ export function SchoolAdminDashboard() {
                       {line}
                     </p>
                   ))}
+                  {groupAReportView.sourceMode === "workspace_preview" && (
+                    <p className="text-xs font-medium text-amber-700">
+                      Saved locally for this school account. Not sent to the monitor until final submit.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1439,15 +1445,17 @@ export function SchoolAdminDashboard() {
           <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
               <div className="flex flex-col gap-1">
-                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
+                <span className="inline-block border-l-[3px] border-primary-600 pl-3">
+                  {groupAReportView.sourceMode === "workspace_preview" ? "Saved Workspace Preview" : "Submitted Report Package"}
+                </span>
                 {groupAReportView.submission && groupAReportView.totalIndicators > 0 && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
-                    Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
+                    {groupAReportView.sourceMode === "workspace_preview" ? "Saved workspace" : "Submitted package"} completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
                   </span>
                 )}
                 {!groupAReportView.submission && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
-                    Reference table structure only. Submitted values appear here after final submit.
+                    Reference table structure only. Saved values appear here after save or final submit.
                   </span>
                 )}
               </div>
