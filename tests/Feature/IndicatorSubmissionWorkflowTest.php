@@ -711,6 +711,30 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $forbidden->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
+    public function test_school_head_cannot_access_other_public_schools_indicator_submission_surfaces(): void
+    {
+        $this->assertSchoolHeadCannotAccessOtherSchoolsIndicatorSubmissionSurfaces(
+            ownerEmail: 'schoolhead1@cspams.local',
+            outsiderEmail: 'schoolhead2@cspams.local',
+            ownerSchoolType: 'public',
+            fileType: 'bmef',
+            filename: 'bmef-report.pdf',
+            mimeType: 'application/pdf',
+        );
+    }
+
+    public function test_school_head_cannot_access_other_private_schools_indicator_submission_surfaces(): void
+    {
+        $this->assertSchoolHeadCannotAccessOtherSchoolsIndicatorSubmissionSurfaces(
+            ownerEmail: 'schoolhead2@cspams.local',
+            outsiderEmail: 'schoolhead1@cspams.local',
+            ownerSchoolType: 'private',
+            fileType: 'fm_qad_001',
+            filename: 'fm-qad-001.pdf',
+            mimeType: 'application/pdf',
+        );
+    }
+
     public function test_returned_indicator_review_requires_notes_and_resubmission_clears_review_metadata(): void
     {
         $this->seedIndicatorFixtures();
@@ -1799,6 +1823,88 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $forbiddenUpdate->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonPath('errors.submission.0', 'Only draft or returned indicator submissions can be updated.');
+    }
+
+    private function assertSchoolHeadCannotAccessOtherSchoolsIndicatorSubmissionSurfaces(
+        string $ownerEmail,
+        string $outsiderEmail,
+        string $ownerSchoolType,
+        string $fileType,
+        string $filename,
+        string $mimeType,
+    ): void {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $owner */
+        $owner = User::query()->where('email', $ownerEmail)->firstOrFail();
+        /** @var User $outsider */
+        $outsider = User::query()->where('email', $outsiderEmail)->firstOrFail();
+        School::query()->whereKey($owner->school_id)->update(['type' => $ownerSchoolType]);
+
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $ownerToken = $this->loginToken('school_head', $this->schoolHeadLogin($owner));
+        $created = $this->withToken($ownerToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($ownerToken, $submissionId, $fileType, $filename, $mimeType)
+            ->assertOk();
+
+        $outsiderToken = $this->loginToken('school_head', $this->schoolHeadLogin($outsider));
+
+        $listed = $this->withToken($outsiderToken)->getJson('/api/indicators/submissions?per_page=100');
+        $listed->assertOk();
+        $this->assertFalse(
+            collect($listed->json('data', []))->contains(
+                static fn (mixed $row): bool => is_array($row) && (string) ($row['id'] ?? '') === $submissionId,
+            ),
+            'School Head index response leaked another school indicator submission.',
+        );
+
+        $this->withToken($outsiderToken)
+            ->getJson("/api/indicators/submissions/{$submissionId}")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($outsiderToken)
+            ->putJson("/api/indicators/submissions/{$submissionId}", [
+                'academic_year_id' => $academicYearId,
+                'reporting_period' => 'ANNUAL',
+                'indicators' => [
+                    [
+                        'metric_code' => 'IMETA_HEAD_NAME',
+                        'actual' => ['values' => [$year => 'Unauthorized Edit']],
+                    ],
+                ],
+            ])
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->uploadSubmissionDocument($outsiderToken, $submissionId, $fileType, $filename, $mimeType)
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($outsiderToken)
+            ->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($outsiderToken)
+            ->getJson("/api/indicators/submissions/{$submissionId}/history")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($outsiderToken)
+            ->get("/api/submissions/{$submissionId}/view/{$fileType}")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($outsiderToken)
+            ->get("/api/submissions/{$submissionId}/download/{$fileType}")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
     }
 
     private function loginToken(string $role, string $login): string

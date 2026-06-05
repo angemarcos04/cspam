@@ -265,7 +265,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("9,999")).not.toBeNull();
   });
 
-  it("prefers the freshest editable same-year package in the School Head report view after updates", async () => {
+  it("keeps the submitted package in Report View even when a newer draft exists", async () => {
     const finalized = buildSubmission({
       id: "finalized-101",
       status: "submitted",
@@ -284,16 +284,6 @@ describe("SchoolAdminDashboard submitted report view", () => {
       submittedAt: null,
       updatedAt: "2026-05-10T00:00:00.000Z",
     });
-    const hydratedDraft = buildSubmission({
-      id: "draft-101",
-      status: "draft",
-      statusLabel: "Draft",
-      indicators: [buildEnrollmentIndicator(2024)],
-      items: [],
-      submittedAt: null,
-      updatedAt: "2026-05-10T00:00:00.000Z",
-    });
-
     useAuthMock.mockReturnValue({
       user: {
         id: 7,
@@ -330,7 +320,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
         { id: "year-1", name: "2025-2026", isCurrent: true },
       ],
       downloadSubmissionFile: vi.fn(),
-      fetchSubmission: vi.fn(async (id: string) => (id === "draft-101" ? hydratedDraft : finalized)),
+      fetchSubmission: vi.fn(async () => finalized),
       loadSubmissionsForYear: vi.fn(async () => [draft, finalized]),
       refreshAllSubmissions: refreshAllSubmissionsMock,
       refreshSubmissions: refreshSubmissionsMock,
@@ -339,47 +329,48 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-101 (Draft).")).not.toBeNull();
+      expect(screen.getByText("Source package: #finalized-101 (Submitted).")).not.toBeNull();
     });
-    expect(screen.getByText("2,024")).not.toBeNull();
-    expect(screen.queryByText("Source package: #finalized-101 (Submitted).")).toBeNull();
+    expect(screen.getByText("1,515")).not.toBeNull();
+    expect(screen.queryByText("Source package: #draft-101 (Draft).")).toBeNull();
+    expect(screen.queryByText("2,024")).toBeNull();
   });
 
-  it("rerenders the selected-year current report immediately when indicator submissions refresh", async () => {
-    const staleDraft = buildSubmission({
-      id: "draft-202",
-      status: "draft",
-      statusLabel: "Draft",
+  it("rerenders the selected-year submitted report immediately when indicator submissions refresh", async () => {
+    const staleSubmitted = buildSubmission({
+      id: "submitted-202",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-10T00:00:00.000Z",
       updatedAt: "2026-05-10T00:00:00.000Z",
     });
-    const hydratedStaleDraft = buildSubmission({
-      id: "draft-202",
-      status: "draft",
-      statusLabel: "Draft",
+    const hydratedStaleSubmitted = buildSubmission({
+      id: "submitted-202",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [buildEnrollmentIndicator(1515), buildKpiIndicator({ targetValue: 96, actualValue: 94, complianceStatus: "below_target" })],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-10T00:00:00.000Z",
       updatedAt: "2026-05-10T00:00:00.000Z",
     });
-    const refreshedDraft = buildSubmission({
-      id: "draft-202",
-      status: "draft",
-      statusLabel: "Draft",
+    const refreshedSubmitted = buildSubmission({
+      id: "submitted-202",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-11T00:00:00.000Z",
       updatedAt: "2026-05-11T00:00:00.000Z",
     });
-    const hydratedRefreshedDraft = buildSubmission({
-      id: "draft-202",
-      status: "draft",
-      statusLabel: "Draft",
+    const hydratedRefreshedSubmitted = buildSubmission({
+      id: "submitted-202",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [buildEnrollmentIndicator(2024), buildKpiIndicator({ targetValue: 97, actualValue: 96, complianceStatus: "met" })],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-11T00:00:00.000Z",
       updatedAt: "2026-05-11T00:00:00.000Z",
     });
 
@@ -415,9 +406,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     let loadCount = 0;
     const loadSubmissionsForYear = vi.fn(async () => {
       loadCount += 1;
-      return [loadCount === 1 ? staleDraft : refreshedDraft];
+      return [loadCount === 1 ? staleSubmitted : refreshedSubmitted];
     });
-    const fetchSubmission = vi.fn(async () => (loadCount <= 1 ? hydratedStaleDraft : hydratedRefreshedDraft));
+    const fetchSubmission = vi.fn(async () => (loadCount <= 1 ? hydratedStaleSubmitted : hydratedRefreshedSubmitted));
 
     const indicatorDataState = {
       submissions: [],
@@ -438,7 +429,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     const view = render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-202 (Draft).")).not.toBeNull();
+      expect(screen.getByText("Source package: #submitted-202 (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("1,515")).not.toBeNull();
     expect(screen.getByText("94")).not.toBeNull();
@@ -456,22 +447,22 @@ describe("SchoolAdminDashboard submitted report view", () => {
   });
 
   it("prefers a fresher same-year submission from indicator state before the selected-year list reload catches up", async () => {
-    const staleDraft = buildSubmission({
-      id: "draft-stale",
-      status: "draft",
-      statusLabel: "Draft",
+    const staleSubmitted = buildSubmission({
+      id: "submitted-stale",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [buildEnrollmentIndicator(1515), buildKpiIndicator({ targetValue: 96, actualValue: 94, complianceStatus: "below_target" })],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-10T00:00:00.000Z",
       updatedAt: "2026-05-10T00:00:00.000Z",
     });
-    const fresherDraft = buildSubmission({
-      id: "draft-fresh",
-      status: "draft",
-      statusLabel: "Draft",
+    const fresherSubmitted = buildSubmission({
+      id: "submitted-fresh",
+      status: "submitted",
+      statusLabel: "Submitted",
       indicators: [buildEnrollmentIndicator(2024), buildKpiIndicator({ targetValue: 97, actualValue: 96, complianceStatus: "met" })],
       items: [],
-      submittedAt: null,
+      submittedAt: "2026-05-11T00:00:00.000Z",
       updatedAt: "2026-05-11T00:00:00.000Z",
     });
 
@@ -504,15 +495,15 @@ describe("SchoolAdminDashboard submitted report view", () => {
       refreshRecords: refreshRecordsMock,
     });
 
-    const loadSubmissionsForYear = vi.fn(async () => [staleDraft]);
+    const loadSubmissionsForYear = vi.fn(async () => [staleSubmitted]);
     const indicatorDataState = {
       submissions: [],
-      allSubmissions: [staleDraft],
+      allSubmissions: [staleSubmitted],
       academicYears: [
         { id: "year-1", name: "2025-2026", isCurrent: true },
       ],
       downloadSubmissionFile: vi.fn(),
-      fetchSubmission: vi.fn(async (id: string) => (id === "draft-fresh" ? fresherDraft : staleDraft)),
+      fetchSubmission: vi.fn(async (id: string) => (id === "submitted-fresh" ? fresherSubmitted : staleSubmitted)),
       lastSyncedAt: "2026-05-17T00:00:00.000Z",
       loadSubmissionsForYear,
       refreshAllSubmissions: refreshAllSubmissionsMock,
@@ -524,16 +515,16 @@ describe("SchoolAdminDashboard submitted report view", () => {
     const view = render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-stale (Draft).")).not.toBeNull();
+      expect(screen.getByText("Source package: #submitted-stale (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("1,515")).not.toBeNull();
     expect(screen.getByText("94")).not.toBeNull();
 
-    indicatorDataState.allSubmissions = [staleDraft, fresherDraft];
+    indicatorDataState.allSubmissions = [staleSubmitted, fresherSubmitted];
     view.rerender(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-fresh (Draft).")).not.toBeNull();
+      expect(screen.getByText("Source package: #submitted-fresh (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("2,024")).not.toBeNull();
     expect(screen.getByText("96")).not.toBeNull();

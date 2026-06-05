@@ -249,11 +249,12 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       indicators: [],
       items: [],
     });
-    const fresherHydratedDraft = submission({
-      id: "draft-2",
-      status: "draft",
-      statusLabel: "Draft",
+    const fresherHydratedSubmitted = submission({
+      id: "submitted-2",
+      status: "submitted",
+      statusLabel: "Submitted",
       academicYear: { id: "year-1", name: "2025-2026" },
+      submittedAt: "2026-05-02T00:00:00.000Z",
       updatedAt: "2026-05-02T00:00:00.000Z",
       indicators: [
         {
@@ -277,7 +278,7 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
     });
 
     const result = resolveHydratedCurrentReportSubmissionCandidate(
-      fresherHydratedDraft,
+      fresherHydratedSubmitted,
       staleSelectedRow,
       {
         selectedSchoolId: "",
@@ -285,16 +286,17 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       },
     );
 
-    expect(result?.id).toBe("draft-2");
+    expect(result?.id).toBe("submitted-2");
     expect(result?.indicators?.[0]?.actualValue).toBe(2024);
   });
 
   it("does not borrow indicator details across different submission ids", () => {
     const olderDetailedSubmission = submission({
-      id: "draft-1",
-      status: "draft",
-      statusLabel: "Draft",
+      id: "submitted-1",
+      status: "submitted",
+      statusLabel: "Submitted",
       academicYear: { id: "year-1", name: "2025-2026" },
+      submittedAt: "2026-05-01T00:00:00.000Z",
       updatedAt: "2026-05-01T00:00:00.000Z",
       indicators: [
         {
@@ -317,10 +319,11 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       items: [],
     });
     const newerLightweightSubmission = submission({
-      id: "draft-2",
-      status: "draft",
-      statusLabel: "Draft",
+      id: "submitted-2",
+      status: "submitted",
+      statusLabel: "Submitted",
       academicYear: { id: "year-1", name: "2025-2026" },
+      submittedAt: "2026-05-02T00:00:00.000Z",
       updatedAt: "2026-05-02T00:00:00.000Z",
       indicators: [],
       items: [],
@@ -335,16 +338,17 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       },
     );
 
-    expect(result?.id).toBe("draft-2");
+    expect(result?.id).toBe("submitted-2");
     expect(result?.indicators ?? []).toHaveLength(0);
   });
 
   it("prefers the newly fetched hydrated detail when the same submission id ties on recency", () => {
     const preservedHydratedSubmission = submission({
-      id: "draft-2",
-      status: "draft",
-      statusLabel: "Draft",
+      id: "submitted-2",
+      status: "submitted",
+      statusLabel: "Submitted",
       academicYear: { id: "year-1", name: "2025-2026" },
+      submittedAt: "2026-05-02T00:00:00.000Z",
       updatedAt: "2026-05-02T00:00:00.000Z",
       indicators: [
         {
@@ -367,10 +371,11 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       items: [],
     });
     const fetchedHydratedSubmission = submission({
-      id: "draft-2",
-      status: "draft",
-      statusLabel: "Draft",
+      id: "submitted-2",
+      status: "submitted",
+      statusLabel: "Submitted",
       academicYear: { id: "year-1", name: "2025-2026" },
+      submittedAt: "2026-05-02T00:00:00.000Z",
       updatedAt: "2026-05-02T00:00:00.000Z",
       indicators: [
         {
@@ -402,7 +407,7 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
       },
     );
 
-    expect(result?.id).toBe("draft-2");
+    expect(result?.id).toBe("submitted-2");
     expect(result?.indicators?.[0]?.actualValue).toBe(2024);
   });
 });
@@ -432,10 +437,10 @@ describe("buildSubmittedReportBlankStateLines", () => {
 });
 
 describe("buildSchoolHeadCurrentReportBlankStateLines", () => {
-  it("explains the School Head current report blank state without requiring a finalized package", () => {
+  it("explains that School Head report values appear only after final submit", () => {
     expect(buildSchoolHeadCurrentReportBlankStateLines()).toEqual([
-      "No School Head report package exists yet for the selected academic year.",
-      "The report tables are shown for reference. Current values will appear here after you start or update the package.",
+      "No submitted School Head report package exists yet for the selected academic year.",
+      "The report tables are shown for reference. Submitted values will appear here after you final-submit the package.",
     ]);
   });
 });
@@ -477,22 +482,22 @@ describe("buildSubmittedReportSourceContext", () => {
 });
 
 describe("buildSchoolHeadCurrentReportSourceContext", () => {
-  it("shows School Head current-report context for draft packages using the updated timestamp", () => {
+  it("shows School Head report context for submitted packages using the submitted timestamp", () => {
     expect(
       buildSchoolHeadCurrentReportSourceContext(
         submission({
           id: "42",
-          status: "draft",
-          statusLabel: "Draft",
+          status: "submitted",
+          statusLabel: "Submitted",
           updatedAt: "2026-05-17T00:00:00.000Z",
-          submittedAt: null,
+          submittedAt: "2026-05-18T00:00:00.000Z",
         }),
         "2025-2026",
       ),
     ).toEqual([
-      "Viewing School Head report for SY 2025-2026.",
-      "Source package: #42 (Draft).",
-      `Updated: ${new Date("2026-05-17T00:00:00.000Z").toLocaleDateString()}.`,
+      "Viewing submitted School Head report for SY 2025-2026.",
+      "Source package: #42 (Submitted).",
+      `Submitted: ${new Date("2026-05-18T00:00:00.000Z").toLocaleDateString()}.`,
     ]);
   });
 });
@@ -593,8 +598,8 @@ describe("resolveSubmittedReportSubmissionForView", () => {
 });
 
 describe("resolveSchoolHeadCurrentReportSubmissionForView", () => {
-  it("accepts a draft submission when it matches the selected school and academic year", () => {
-    const result = resolveSchoolHeadCurrentReportSubmissionForView(
+  it("rejects draft and returned submissions even when they match the selected school and academic year", () => {
+    const draftResult = resolveSchoolHeadCurrentReportSubmissionForView(
       submission({
         status: "draft",
         statusLabel: "Draft",
@@ -603,13 +608,23 @@ describe("resolveSchoolHeadCurrentReportSubmissionForView", () => {
       }),
       { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
     );
+    const returnedResult = resolveSchoolHeadCurrentReportSubmissionForView(
+      submission({
+        status: "returned",
+        statusLabel: "Returned",
+        schoolId: "school-1",
+        school: { id: "school-1", schoolCode: "001", name: "Test School", type: "private" },
+      }),
+      { selectedSchoolId: "school-1", selectedAcademicYearId: "year-1" },
+    );
 
-    expect(result?.status).toBe("draft");
+    expect(draftResult).toBeNull();
+    expect(returnedResult).toBeNull();
   });
 });
 
 describe("resolveSelectedYearSchoolHeadCurrentReportSubmission", () => {
-  it("prefers the freshest same-year editable draft over an older finalized package", () => {
+  it("ignores fresher editable drafts and keeps the submitted package for report view", () => {
     const result = resolveSelectedYearSchoolHeadCurrentReportSubmission([
       submission({
         id: "submitted-1",
@@ -627,7 +642,7 @@ describe("resolveSelectedYearSchoolHeadCurrentReportSubmission", () => {
       }),
     ]);
 
-    expect(result?.id).toBe("draft-1");
+    expect(result?.id).toBe("submitted-1");
   });
 });
 
@@ -722,7 +737,54 @@ describe("resolveStableSubmittedReportViewSubmission", () => {
 });
 
 describe("resolveStableSchoolHeadCurrentReportViewSubmission", () => {
-  it("keeps hydrated draft detail when it belongs to the freshest current School Head report source", () => {
+  it("keeps hydrated submitted detail when it belongs to the selected School Head report source", () => {
+    const selected = submission({
+      id: "submission-1",
+      status: "submitted",
+      statusLabel: "Submitted",
+      indicators: [],
+      items: [],
+      schoolId: "school-1",
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const hydrated = submission({
+      id: "submission-1",
+      status: "submitted",
+      statusLabel: "Submitted",
+      schoolId: "school-1",
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+      indicators: [
+        {
+          id: "indicator-1",
+          metric: {
+            id: "NER",
+            code: "NER",
+            name: "Net Enrollment Rate",
+            category: "test",
+            framework: "imeta",
+            dataType: "number",
+          },
+          targetValue: 1,
+          actualValue: 2,
+          varianceValue: 1,
+          complianceStatus: "met",
+          remarks: null,
+        },
+      ],
+      items: [],
+    });
+
+    const result = resolveStableSchoolHeadCurrentReportViewSubmission(selected, hydrated, {
+      selectedSchoolId: "school-1",
+      selectedAcademicYearId: "year-1",
+    });
+
+    expect(result).toBe(hydrated);
+  });
+
+  it("does not hydrate a draft into the submitted report view", () => {
     const selected = submission({
       id: "submission-1",
       status: "draft",
@@ -764,7 +826,7 @@ describe("resolveStableSchoolHeadCurrentReportViewSubmission", () => {
       selectedAcademicYearId: "year-1",
     });
 
-    expect(result).toBe(hydrated);
+    expect(result).toBeNull();
   });
 });
 

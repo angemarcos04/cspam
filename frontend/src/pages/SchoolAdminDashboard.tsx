@@ -1312,7 +1312,7 @@ export function SchoolAdminDashboard() {
             <div>
               <h2 className="text-[18px] font-semibold text-slate-900">Report View</h2>
               <p className="mt-1 text-xs text-slate-500">
-                Current School Head package data is shown for the selected academic year. Older school submissions remain available when you switch years.
+                Submitted School Head package data is shown for the selected academic year. Saved drafts stay in the workspace until final submit.
               </p>
               {!isYearScopedLoading && (
                 <div className="mt-2 space-y-1">
@@ -1439,7 +1439,7 @@ export function SchoolAdminDashboard() {
           <div className="mt-6 overflow-hidden rounded-sm border border-slate-200 bg-white">
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
               <div className="flex flex-col gap-1">
-                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Current Report Package</span>
+                <span className="inline-block border-l-[3px] border-primary-600 pl-3">Submitted Report Package</span>
                 {groupAReportView.submission && groupAReportView.totalIndicators > 0 && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
                     Submitted package completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
@@ -1447,7 +1447,7 @@ export function SchoolAdminDashboard() {
                 )}
                 {!groupAReportView.submission && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
-                    Reference table structure only. Current values appear here after you start or update the package.
+                    Reference table structure only. Submitted values appear here after final submit.
                   </span>
                 )}
               </div>

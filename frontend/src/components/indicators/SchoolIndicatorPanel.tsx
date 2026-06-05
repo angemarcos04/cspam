@@ -3301,7 +3301,6 @@ function SchoolIndicatorPanelComponent({
       dismissRestoreBanner: false,
       action: () => {
         if (options.resetToBlank) {
-          console.log("[GroupB] Reset using blank defaults for selected year");
           resetWorkspaceToBlankStateForSelectedYear();
           setActiveWorkspaceSubmission(null);
           setEditingSubmissionId(null);
@@ -3310,7 +3309,6 @@ function SchoolIndicatorPanelComponent({
           const latestSubmission = activeSubmission?.id
             ? schoolScopedSubmissions.find((submission) => submission.id === activeSubmission.id) ?? activeSubmission
             : null;
-          console.log("[GroupB] Reset using submission:", latestSubmission?.id ?? null);
           if (latestSubmission) {
             rehydrateWorkspaceFromSubmission(latestSubmission);
           } else {
@@ -4432,10 +4430,6 @@ function SchoolIndicatorPanelComponent({
     return null;
   }, [activeCategory, activeTab]);
   const handleResetDraft = useCallback(async () => {
-    console.log("[GroupB] Reset clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Reset draft", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
@@ -4577,10 +4571,6 @@ function SchoolIndicatorPanelComponent({
 
   const handleSaveActiveSection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    console.log("[GroupB] Save section clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Save section", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
@@ -4630,7 +4620,6 @@ function SchoolIndicatorPanelComponent({
         mode: "upsert",
         replace_missing: false,
       } satisfies IndicatorSubmissionPayload;
-      console.log("[GroupB] payload:", payload);
       setSavingSection(sectionToSave);
       await runCriticalWorkspaceMutation({
         mutation: async () => {
@@ -4670,10 +4659,6 @@ function SchoolIndicatorPanelComponent({
   };
 
   const handleCreateAndSubmit = async () => {
-    console.log("[GroupB] Final submit clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Final submit package", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
@@ -4703,7 +4688,6 @@ function SchoolIndicatorPanelComponent({
         return;
       }
       const payload = prepared.payload;
-      console.log("[GroupB] payload:", payload);
 
       await runCriticalWorkspaceMutation({
         mutation: async () => {
@@ -5003,10 +4987,6 @@ function SchoolIndicatorPanelComponent({
   };
 
   const handleSubmitToMonitor = async (submission: IndicatorSubmission) => {
-    console.log("[GroupB] Final submit clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Final submit package", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
@@ -5040,7 +5020,6 @@ function SchoolIndicatorPanelComponent({
 
             const canUpdateActiveSubmission = isDraftOrReturnedWorkflowStatus(submission.status);
             if (!canUpdateActiveSubmission) {
-              console.log("[GroupB] payload:", prepared.payload);
               submissionToSubmit = await createSubmission(prepared.payload);
               setActiveWorkspaceSubmission(submissionToSubmit);
               setEditingSubmissionId(submissionToSubmit.id);
@@ -5050,7 +5029,6 @@ function SchoolIndicatorPanelComponent({
               setServerAutosaveAt(savedAt);
               lastAutosaveFingerprintRef.current = `${submissionToSubmit.id}:${prepared.fingerprint}`;
             } else if (hasUnsavedWorkspaceChanges) {
-              console.log("[GroupB] payload:", prepared.payload);
               submissionToSubmit = await updateSubmission(submission.id, prepared.payload);
               setActiveWorkspaceSubmission(submissionToSubmit);
               setEditingSubmissionId(submissionToSubmit.id);
@@ -5138,10 +5116,6 @@ function SchoolIndicatorPanelComponent({
 
   const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
-    console.log("[GroupB] Upload clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     await runGroupBAction("Upload", async () => {
       setSavingSection(type);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
@@ -5417,10 +5391,6 @@ function SchoolIndicatorPanelComponent({
   }, []);
 
   const handleRequestUpload = useCallback((type: IndicatorSubmissionFileType) => {
-    console.log("[GroupB] Upload clicked");
-    console.log("[GroupB] mode:", workspaceMode);
-    console.log("[GroupB] busy:", isGroupBActionBusy);
-    console.log("[GroupB] hasUnsavedWorkspaceChanges:", hasUnsavedWorkspaceChanges);
     if (isManualActionBlocked) {
       setSubmitError("Please wait for the current action to finish.");
       return;
