@@ -123,6 +123,42 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     expect((await screen.findAllByRole("progressbar", { name: "Workspace readiness progress" })).length).toBeGreaterThan(0);
   });
 
+  it("follows the academic year selected by the parent dashboard", async () => {
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [],
+      metrics: [],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+        { id: "year-2", name: "2026-2027", isCurrent: false },
+      ],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
+      fetchSubmission: vi.fn().mockImplementation(async (submissionId = "submission-1") =>
+        buildHydratedSubmission(String(submissionId)),
+      ),
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
+      loadHistory: vi.fn(),
+    });
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" selectedAcademicYearId="year-2" />);
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).value).toBe("year-2");
+    });
+  });
+
 });
 
 describe("SchoolIndicatorPanel batch submit", () => {

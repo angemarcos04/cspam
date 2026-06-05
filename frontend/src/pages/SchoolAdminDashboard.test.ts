@@ -3,6 +3,7 @@ import {
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   formatComplianceStatusLabel,
+  resolveInitialSchoolHeadReportAcademicYearId,
   resolveInitialSubmittedReportAcademicYearId,
   resolveCurrentReportIndicatorByGroupAKey,
   resolveHydratedCurrentReportSubmissionCandidate,
@@ -14,6 +15,7 @@ import {
   buildSchoolHeadCurrentReportSourceContext,
   buildSubmittedReportBlankStateLines,
   buildSubmittedReportSourceContext,
+  resolvePreferredSchoolHeadCurrentReportAcademicYearId,
   resolvePreferredSubmittedReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveSelectedYearSchoolHeadCurrentReportSubmission,
@@ -159,6 +161,58 @@ describe("resolvePreferredSubmittedReportAcademicYearId", () => {
   });
 });
 
+describe("resolvePreferredSchoolHeadCurrentReportAcademicYearId", () => {
+  it("prefers the academic year of the latest saved School Head package, including drafts", () => {
+    const result = resolvePreferredSchoolHeadCurrentReportAcademicYearId([
+      submission({
+        id: "submitted-old",
+        status: "submitted",
+        statusLabel: "Submitted",
+        schoolId: "school-1",
+        academicYear: { id: "year-1", name: "2025-2026" },
+        updatedAt: "2026-04-29T00:00:00.000Z",
+        submittedAt: "2026-04-29T00:00:00.000Z",
+        school: { id: "school-1", schoolCode: "001", name: "Test School" },
+      }),
+      submission({
+        id: "draft-newest",
+        status: "draft",
+        statusLabel: "Draft",
+        schoolId: "school-1",
+        academicYear: { id: "year-2", name: "2026-2027" },
+        updatedAt: "2026-05-01T00:00:00.000Z",
+        submittedAt: null,
+        school: { id: "school-1", schoolCode: "001", name: "Test School" },
+      }),
+    ], "school-1");
+
+    expect(result).toBe("year-2");
+  });
+
+  it("ignores saved packages from another school", () => {
+    const result = resolvePreferredSchoolHeadCurrentReportAcademicYearId([
+      submission({
+        id: "other-draft",
+        status: "draft",
+        statusLabel: "Draft",
+        schoolId: "school-2",
+        academicYear: { id: "year-2", name: "2026-2027" },
+        updatedAt: "2026-05-01T00:00:00.000Z",
+      }),
+      submission({
+        id: "own-returned",
+        status: "returned",
+        statusLabel: "Returned",
+        schoolId: "school-1",
+        academicYear: { id: "year-1", name: "2025-2026" },
+        updatedAt: "2026-04-30T00:00:00.000Z",
+      }),
+    ], "school-1");
+
+    expect(result).toBe("year-1");
+  });
+});
+
 describe("resolveInitialSubmittedReportAcademicYearId", () => {
   it("prefers a stored academic year when it is valid for the current School Head session", () => {
     const result = resolveInitialSubmittedReportAcademicYearId([
@@ -177,6 +231,26 @@ describe("resolveInitialSubmittedReportAcademicYearId", () => {
     ], "");
 
     expect(result).toBe("year-2");
+  });
+});
+
+describe("resolveInitialSchoolHeadReportAcademicYearId", () => {
+  it("prefers the latest saved package year when there is no manual stored selection", () => {
+    const result = resolveInitialSchoolHeadReportAcademicYearId([
+      { id: "year-1", isCurrent: true },
+      { id: "year-2", isCurrent: false },
+    ], "year-1", "year-2", false);
+
+    expect(result).toBe("year-2");
+  });
+
+  it("keeps a manually stored academic year when it is valid", () => {
+    const result = resolveInitialSchoolHeadReportAcademicYearId([
+      { id: "year-1", isCurrent: true },
+      { id: "year-2", isCurrent: false },
+    ], "year-1", "year-2", true);
+
+    expect(result).toBe("year-1");
   });
 });
 

@@ -86,6 +86,23 @@ export function resolvePreferredSubmittedReportAcademicYearId(
   return finalizedEntries[0]?.academicYear?.id ?? null;
 }
 
+export function resolvePreferredSchoolHeadCurrentReportAcademicYearId(
+  entries: IndicatorSubmission[],
+  selectedSchoolId: string,
+): string | null {
+  const eligibleEntries = entries
+    .filter((entry) => isSchoolHeadCurrentReportStatus(entry.status))
+    .filter((entry) => (
+      selectedSchoolId.length === 0
+      || resolveSubmissionSchoolId(entry) === selectedSchoolId
+    ))
+    .filter((entry) => String(entry.academicYear?.id ?? "").trim() !== "")
+    .slice()
+    .sort(compareSelectedYearSchoolHeadCurrentReportSubmissions);
+
+  return eligibleEntries[0]?.academicYear?.id ?? null;
+}
+
 export function resolveSelectedYearReportSubmission(entries: IndicatorSubmission[]): IndicatorSubmission | null {
   const finalizedEntries = entries.filter((entry) => isFinalizedSubmissionStatus(entry.status));
   if (finalizedEntries.length === 0) {

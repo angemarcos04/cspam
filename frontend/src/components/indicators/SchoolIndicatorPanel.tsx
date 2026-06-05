@@ -73,6 +73,8 @@ interface ComplianceCategory {
 
 interface SchoolIndicatorPanelProps {
   initialAcademicYearId?: string;
+  selectedAcademicYearId?: string;
+  onAcademicYearChange?: (academicYearId: string) => void | Promise<void>;
 }
 
 const WORKSPACE_YEAR_STORAGE_KEY_PREFIX = "cspams:school-indicator-panel:workspace-year";
@@ -1497,6 +1499,8 @@ function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
 
 function SchoolIndicatorPanelComponent({
   initialAcademicYearId,
+  selectedAcademicYearId,
+  onAcademicYearChange,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
   const {
@@ -1728,18 +1732,37 @@ function SchoolIndicatorPanelComponent({
       && eligibleAcademicYears.some((year) => year.id === storedAcademicYearId)
       ? storedAcademicYearId
       : "";
+    const preferredSelectedAcademicYearId = selectedAcademicYearId
+      && eligibleAcademicYears.some((year) => year.id === selectedAcademicYearId)
+      ? selectedAcademicYearId
+      : "";
     const preferredInitialAcademicYearId = initialAcademicYearId
       && eligibleAcademicYears.some((year) => year.id === initialAcademicYearId)
       ? initialAcademicYearId
       : "";
 
-    const nextAcademicYearId = preferredStoredAcademicYearId || preferredInitialAcademicYearId || yearWorkspaceState.workspaceAcademicYearId;
+    const nextAcademicYearId = preferredSelectedAcademicYearId || preferredStoredAcademicYearId || preferredInitialAcademicYearId || yearWorkspaceState.workspaceAcademicYearId;
     if (!nextAcademicYearId) {
       return;
     }
 
     setWorkspaceAcademicYearId(nextAcademicYearId);
-  }, [eligibleAcademicYears, initialAcademicYearId, workspaceAcademicYearId, workspaceYearSelectionStorageKey, yearWorkspaceState.workspaceAcademicYearId]);
+  }, [eligibleAcademicYears, initialAcademicYearId, selectedAcademicYearId, workspaceAcademicYearId, workspaceYearSelectionStorageKey, yearWorkspaceState.workspaceAcademicYearId]);
+
+  useEffect(() => {
+    if (!selectedAcademicYearId || eligibleAcademicYears.length === 0) {
+      return;
+    }
+
+    const nextAcademicYearId = eligibleAcademicYears.some((year) => year.id === selectedAcademicYearId)
+      ? selectedAcademicYearId
+      : "";
+    if (!nextAcademicYearId || workspaceAcademicYearId === nextAcademicYearId) {
+      return;
+    }
+
+    setWorkspaceAcademicYearId(nextAcademicYearId);
+  }, [eligibleAcademicYears, selectedAcademicYearId, workspaceAcademicYearId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !workspaceYearSelectionStorageKey || !workspaceAcademicYearId) {
@@ -5232,10 +5255,13 @@ function SchoolIndicatorPanelComponent({
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
         endOnComplete: false,
-        action: () => setWorkspaceAcademicYearId(nextAcademicYearId),
+        action: () => {
+          setWorkspaceAcademicYearId(nextAcademicYearId);
+          void onAcademicYearChange?.(nextAcademicYearId);
+        },
       });
     });
-  }, [activeAcademicYearId, runCriticalWorkspaceTransition, runGroupBAction]);
+  }, [activeAcademicYearId, onAcademicYearChange, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {

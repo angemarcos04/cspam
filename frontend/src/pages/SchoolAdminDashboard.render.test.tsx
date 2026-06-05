@@ -32,7 +32,9 @@ vi.mock("@/components/DashboardHelpDialog", () => ({
 }));
 
 vi.mock("@/components/indicators/SchoolIndicatorPanel", () => ({
-  SchoolIndicatorPanel: () => <div data-testid="workspace-panel" />,
+  SchoolIndicatorPanel: ({ selectedAcademicYearId }: { selectedAcademicYearId?: string }) => (
+    <div data-testid="workspace-panel" data-selected-academic-year-id={selectedAcademicYearId ?? ""} />
+  ),
 }));
 
 function buildSubmission(overrides: Partial<IndicatorSubmission>): IndicatorSubmission {
@@ -246,6 +248,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
       refreshAllSubmissions: refreshAllSubmissionsMock,
       refreshSubmissions: refreshSubmissionsMock,
     });
+    window.sessionStorage.setItem("cspams:school-admin-dashboard:view-year:7:school-1", "year-1");
+    window.sessionStorage.setItem("cspams:school-admin-dashboard:view-year:7:school-1:manual", "true");
 
     render(<SchoolAdminDashboard />);
 
@@ -343,9 +347,99 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
     expect(screen.getByText("Source package: #draft-101 (Draft).")).not.toBeNull();
     expect(screen.getByText("Saved locally for this school account. Not sent to the monitor until final submit.")).not.toBeNull();
-    expect(screen.getByText("2,024")).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.getByText("2,024")).not.toBeNull();
+    });
     expect(screen.queryByText("Source package: #finalized-101 (Submitted).")).toBeNull();
     expect(screen.queryByText("1,515")).toBeNull();
+  });
+
+  it("selects the latest saved draft academic year on fresh login and aligns the workspace", async () => {
+    const finalized = buildSubmission({
+      id: "finalized-101",
+      academicYear: { id: "year-1", name: "2025-2026" },
+      status: "submitted",
+      statusLabel: "Submitted",
+      indicators: [buildEnrollmentIndicator(1515)],
+      items: [],
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const draft = buildSubmission({
+      id: "draft-202",
+      academicYear: { id: "year-2", name: "2026-2027" },
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+    const hydratedDraft = buildSubmission({
+      id: "draft-202",
+      academicYear: { id: "year-2", name: "2026-2027" },
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(2024)],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    const loadSubmissionsForYear = vi.fn(async (_schoolId: string, academicYearId: string) => (
+      academicYearId === "year-2" ? [draft] : [finalized]
+    ));
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [finalized, draft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+        { id: "year-2", name: "2026-2027", isCurrent: false },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async (id: string) => (id === "draft-202" ? hydratedDraft : finalized)),
+      loadSubmissionsForYear,
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #draft-202 (Draft).")).not.toBeNull();
+    });
+    expect(screen.getByText("Saved Workspace Preview")).not.toBeNull();
+    expect(screen.getByText("9,999")).not.toBeNull();
+    expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
+    expect(loadSubmissionsForYear).toHaveBeenCalledWith("school-1", "year-2");
   });
 
   it("rerenders the selected-year submitted report immediately when indicator submissions refresh", async () => {
@@ -443,8 +537,10 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("Source package: #submitted-202 (Submitted).")).not.toBeNull();
     });
-    expect(screen.getByText("1,515")).not.toBeNull();
-    expect(screen.getByText("94")).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.getByText("1,515")).not.toBeNull();
+      expect(screen.getByText("94")).not.toBeNull();
+    });
 
     indicatorDataState.lastSyncedAt = "2026-05-17T00:00:05.000Z";
     view.rerender(<SchoolAdminDashboard />);

@@ -30,7 +30,7 @@ import {
   compareSelectedYearFinalizedReportSubmissions,
   isFinalizedSubmissionStatus,
   resolveIndicatorValue,
-  resolvePreferredSubmittedReportAcademicYearId,
+  resolvePreferredSchoolHeadCurrentReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveSelectedYearSchoolHeadCurrentReportSubmission,
   resolveSchoolHeadReportSourceMode,
@@ -60,6 +60,7 @@ import type {
 } from "@/types";
 
 export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
+const DASHBOARD_VIEW_YEAR_MANUAL_STORAGE_KEY_SUFFIX = ":manual";
 
 export function buildSchoolAdminRefreshBatches(
   refreshRecords: () => Promise<unknown>,
@@ -94,6 +95,14 @@ export function buildDashboardViewYearStorageKey(
   return `${DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX}:${normalizedUserId}:${normalizedSchoolId}`;
 }
 
+export function buildDashboardViewYearManualStorageKey(
+  userId: number | string | null | undefined,
+  schoolId: string,
+): string {
+  const baseKey = buildDashboardViewYearStorageKey(userId, schoolId);
+  return baseKey ? `${baseKey}${DASHBOARD_VIEW_YEAR_MANUAL_STORAGE_KEY_SUFFIX}` : "";
+}
+
 export function resolveInitialSubmittedReportAcademicYearId(
   years: Array<{ id: string; isCurrent?: boolean }>,
   storedAcademicYearId: string | null | undefined,
@@ -104,6 +113,32 @@ export function resolveInitialSubmittedReportAcademicYearId(
   }
 
   return years.find((year) => year.isCurrent)?.id ?? years[0]?.id ?? "";
+}
+
+export function resolveInitialSchoolHeadReportAcademicYearId(
+  years: Array<{ id: string; isCurrent?: boolean }>,
+  storedAcademicYearId: string | null | undefined,
+  preferredSavedAcademicYearId: string | null | undefined,
+  hasManualStoredSelection: boolean,
+): string {
+  const normalizedStoredAcademicYearId = String(storedAcademicYearId ?? "").trim();
+  if (
+    hasManualStoredSelection
+    && normalizedStoredAcademicYearId
+    && years.some((year) => year.id === normalizedStoredAcademicYearId)
+  ) {
+    return normalizedStoredAcademicYearId;
+  }
+
+  const normalizedPreferredSavedAcademicYearId = String(preferredSavedAcademicYearId ?? "").trim();
+  if (
+    normalizedPreferredSavedAcademicYearId
+    && years.some((year) => year.id === normalizedPreferredSavedAcademicYearId)
+  ) {
+    return normalizedPreferredSavedAcademicYearId;
+  }
+
+  return resolveInitialSubmittedReportAcademicYearId(years, "");
 }
 
 export function resolveSchoolAdminHeaderContext(
@@ -721,11 +756,12 @@ export function SchoolAdminDashboard() {
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
   const [hydratedSubmittedReportSubmission, setHydratedSubmittedReportSubmission] = useState<IndicatorSubmission | null>(null);
+  const [isHydratingReportSubmission, setIsHydratingReportSubmission] = useState(false);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
   const initialLoadStartedRef = useRef(false);
-  const initialAcademicYearAppliedRef = useRef(false);
+  const hasManualDashboardYearSelectionRef = useRef(false);
   const finalizedSubmissionRefreshRef = useRef("");
   const lastLoadedYearKeyRef = useRef("");
   const previousDashboardContextKeyRef = useRef("");
@@ -750,6 +786,10 @@ export function SchoolAdminDashboard() {
     () => buildDashboardViewYearStorageKey(user?.id, selectedSchoolId),
     [selectedSchoolId, user?.id],
   );
+  const dashboardYearManualStorageKey = useMemo(
+    () => buildDashboardViewYearManualStorageKey(user?.id, selectedSchoolId),
+    [selectedSchoolId, user?.id],
+  );
 
   const currentAcademicYearOption = useMemo(
     () => orderedAcademicYears.find((y) => y.isCurrent) ?? orderedAcademicYears[0] ?? null,
@@ -767,6 +807,10 @@ export function SchoolAdminDashboard() {
         : []
     ),
     [indicatorSubmissions, selectedSchoolId],
+  );
+  const preferredSavedAcademicYearId = useMemo(
+    () => resolvePreferredSchoolHeadCurrentReportAcademicYearId(schoolScopedSubmissions, selectedSchoolId),
+    [schoolScopedSubmissions, selectedSchoolId],
   );
   const submissionsForSelectedContext = useMemo(() => {
     if (!effectiveAcademicYearId) {
@@ -792,12 +836,13 @@ export function SchoolAdminDashboard() {
 
     previousDashboardContextKeyRef.current = dashboardContextKey;
     initialLoadStartedRef.current = false;
-    initialAcademicYearAppliedRef.current = false;
+    hasManualDashboardYearSelectionRef.current = false;
     finalizedSubmissionRefreshRef.current = "";
     lastLoadedYearKeyRef.current = "";
     setDashboardViewAcademicYearId("");
     setDashboardViewSubmissions([]);
     setHydratedSubmittedReportSubmission(null);
+    setIsHydratingReportSubmission(false);
     setIsDashboardYearSwitching(false);
     setActiveReportModalType(null);
   }, [dashboardContextKey]);
@@ -806,6 +851,7 @@ export function SchoolAdminDashboard() {
     if (!groupAReportSourceSubmission?.id) {
       finalizedSubmissionRefreshRef.current = "";
       setHydratedSubmittedReportSubmission(null);
+      setIsHydratingReportSubmission(false);
       return;
     }
 
@@ -823,12 +869,14 @@ export function SchoolAdminDashboard() {
     const submissionId = groupAReportSourceSubmission.id;
 
     if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
+      setIsHydratingReportSubmission(false);
       return () => {
         cancelled = true;
       };
     }
 
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
+    setIsHydratingReportSubmission(!submissionHasRenderableIndicatorDetails(groupAReportSourceSubmission));
     void fetchSubmission(submissionId)
       .then((submission) => {
         if (!cancelled && submission.id === submissionId) {
@@ -842,7 +890,12 @@ export function SchoolAdminDashboard() {
           ));
         }
       })
-      .catch(() => undefined);
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) {
+          setIsHydratingReportSubmission(false);
+        }
+      });
 
     return () => {
       cancelled = true;
@@ -936,6 +989,11 @@ export function SchoolAdminDashboard() {
       kpiRows,
     };
   }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupAReportSourceSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
+  const isCurrentReportHydratingDetails = Boolean(
+    groupAReportSourceSubmission
+    && isHydratingReportSubmission
+    && !submissionHasRenderableIndicatorDetails(groupAReportView.submission),
+  );
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
@@ -1036,17 +1094,43 @@ export function SchoolAdminDashboard() {
   }, []);
 
   useEffect(() => {
-    if (initialAcademicYearAppliedRef.current) return;
+    if (orderedAcademicYears.length === 0) return;
     const storedAcademicYearId = (
       typeof window !== "undefined" && dashboardYearSelectionStorageKey
         ? window.sessionStorage.getItem(dashboardYearSelectionStorageKey) ?? ""
         : ""
     );
-    const initialAcademicYearId = resolveInitialSubmittedReportAcademicYearId(orderedAcademicYears, storedAcademicYearId);
+    const hasManualStoredSelection = (
+      typeof window !== "undefined"
+      && dashboardYearManualStorageKey
+      && window.sessionStorage.getItem(dashboardYearManualStorageKey) === "true"
+    );
+
+    if (!dashboardViewAcademicYearId) {
+      hasManualDashboardYearSelectionRef.current = Boolean(hasManualStoredSelection);
+    }
+
+    const initialAcademicYearId = resolveInitialSchoolHeadReportAcademicYearId(
+      orderedAcademicYears,
+      storedAcademicYearId,
+      preferredSavedAcademicYearId,
+      hasManualDashboardYearSelectionRef.current,
+    );
     if (!initialAcademicYearId) return;
+    if (dashboardViewAcademicYearId === initialAcademicYearId) return;
+
+    if (hasManualDashboardYearSelectionRef.current && dashboardViewAcademicYearId) {
+      return;
+    }
+
     setDashboardViewAcademicYearId(initialAcademicYearId);
-    initialAcademicYearAppliedRef.current = true;
-  }, [dashboardYearSelectionStorageKey, orderedAcademicYears]);
+  }, [
+    dashboardViewAcademicYearId,
+    dashboardYearManualStorageKey,
+    dashboardYearSelectionStorageKey,
+    orderedAcademicYears,
+    preferredSavedAcademicYearId,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !dashboardYearSelectionStorageKey || !dashboardViewAcademicYearId) {
@@ -1061,6 +1145,10 @@ export function SchoolAdminDashboard() {
       return;
     }
 
+    hasManualDashboardYearSelectionRef.current = true;
+    if (typeof window !== "undefined" && dashboardYearManualStorageKey) {
+      window.sessionStorage.setItem(dashboardYearManualStorageKey, "true");
+    }
     setDashboardViewAcademicYearId(nextYearId);
 
     if (!selectedSchoolId || !nextYearId || nextYearId === "all") {
@@ -1068,7 +1156,7 @@ export function SchoolAdminDashboard() {
       setDashboardViewSubmissions([]);
       setIsDashboardYearSwitching(false);
     }
-  }, [dashboardViewAcademicYearId, selectedSchoolId]);
+  }, [dashboardViewAcademicYearId, dashboardYearManualStorageKey, selectedSchoolId]);
 
   useEffect(() => {
     if (!selectedSchoolId || !dashboardViewAcademicYearId || dashboardViewAcademicYearId === "all") {
@@ -1335,6 +1423,9 @@ export function SchoolAdminDashboard() {
           {isYearScopedLoading && (
             <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
           )}
+          {!isYearScopedLoading && isCurrentReportHydratingDetails && (
+            <p className="mb-3 text-xs font-medium text-slate-500">Loading saved report details...</p>
+          )}
           {!isYearScopedLoading && !groupAReportSourceSubmission && (
             <div className="mb-3 space-y-1">
               <p className="text-xs font-medium text-slate-500">
@@ -1346,7 +1437,7 @@ export function SchoolAdminDashboard() {
             </div>
           )}
 
-          {groupAReportSourceSubmission && (
+          {groupAReportSourceSubmission && !isCurrentReportHydratingDetails && (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visibleSubmittedReportFiles.map((definition) => {
@@ -1648,6 +1739,8 @@ export function SchoolAdminDashboard() {
         </div>
         <SchoolIndicatorPanel
           initialAcademicYearId={currentAcademicYearOption?.id ?? ""}
+          selectedAcademicYearId={effectiveAcademicYearId}
+          onAcademicYearChange={handleDashboardViewAcademicYearChange}
         />
       </section>
       </div>
