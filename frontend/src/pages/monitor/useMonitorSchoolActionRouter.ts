@@ -92,9 +92,10 @@ export function useMonitorSchoolActionRouter({
     (summary: SchoolActionSummary) => {
       setReviewWorkspaceSchoolKey(summary.schoolKey);
       setActiveTopNavigator("reviews");
+      openSchoolDrawer(summary.schoolKey);
       pushToast(`Review workspace selected for ${summary.schoolName}.`, "info");
     },
-    [pushToast, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
+    [openSchoolDrawer, pushToast, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
   );
 
   const handleOpenSchool = useCallback(
@@ -130,9 +131,10 @@ export function useMonitorSchoolActionRouter({
 
       setReviewWorkspaceSchoolKey(schoolKey);
       setActiveTopNavigator("reviews");
+      openSchoolDrawer(schoolKey);
       pushToast(`Review workspace selected for ${record.schoolName}.`, "info");
     },
-    [handleReviewSchool, pushToast, schoolRequirementByKey, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
+    [handleReviewSchool, openSchoolDrawer, pushToast, schoolRequirementByKey, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
   );
 
   const handleOpenSchoolRecord = useCallback(

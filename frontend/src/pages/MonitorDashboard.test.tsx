@@ -518,6 +518,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     await waitFor(() => {
       expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
       expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
+      const schoolDetail = screen.getByText("School Detail").closest("aside");
+      expect(schoolDetail).toBeTruthy();
+      expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
     });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
 
@@ -562,6 +565,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     await new Promise((resolve) => window.setTimeout(resolve, 120));
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
     expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
+    const schoolDetail = screen.getByText("School Detail").closest("aside");
+    expect(schoolDetail).toBeTruthy();
+    expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
     const latestWorkspaceProps = monitorIndicatorPanelMock.mock.calls[monitorIndicatorPanelMock.mock.calls.length - 1]?.[0];
     expect(latestWorkspaceProps?.onSchoolFocusChange).toBeUndefined();
 
