@@ -551,7 +551,13 @@ class SchoolRecordController extends Controller
                 'school_code' => (string) $school->school_code,
                 'school_name' => (string) $school->name,
                 'recipient_count' => $schoolHeads->count(),
-                'recipient_emails' => $schoolHeads->pluck('email')->values()->all(),
+                'recipient_domains' => $schoolHeads
+                    ->pluck('email')
+                    ->map(fn (mixed $email): ?string => $this->maskedEmailDomain((string) $email))
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all(),
                 'has_notes' => $normalizedNotes !== null,
                 'notes_length' => $normalizedNotes !== null ? strlen($normalizedNotes) : 0,
                 'delivery_mode' => $deliveryMode,

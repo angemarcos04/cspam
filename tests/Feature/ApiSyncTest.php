@@ -418,6 +418,14 @@ class ApiSyncTest extends TestCase
                 return in_array('mail', $channels, true) && in_array('database', $channels, true);
             },
         );
+
+        $audit = \App\Models\AuditLog::query()
+            ->where('action', 'school.reminder_sent')
+            ->latest('id')
+            ->firstOrFail();
+
+        $this->assertArrayHasKey('recipient_domains', $audit->metadata ?? []);
+        $this->assertArrayNotHasKey('recipient_emails', $audit->metadata ?? []);
     }
 
     public function test_school_head_cannot_send_school_reminder(): void

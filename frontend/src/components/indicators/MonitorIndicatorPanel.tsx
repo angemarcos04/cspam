@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -448,7 +448,6 @@ export function MonitorIndicatorPanel({
   const [detailTab, setDetailTab] = useState<DetailTab>("overview");
   const [detailFileDownloadError, setDetailFileDownloadError] = useState("");
   const [downloadingFileType, setDownloadingFileType] = useState<IndicatorSubmissionFileType | null>(null);
-  const filteredRowsRef = useRef<ReviewQueueRow[]>([]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -829,10 +828,6 @@ export function MonitorIndicatorPanel({
   ]);
 
   useEffect(() => {
-    filteredRowsRef.current = filteredRows;
-  }, [filteredRows]);
-
-  useEffect(() => {
     setSelectedSubmissionIds((current) =>
       current.filter((id) => filteredRows.some((row) => row.submission.id === id)),
     );
@@ -1017,28 +1012,6 @@ export function MonitorIndicatorPanel({
     openDetails(nextRow);
   };
 
-  const autoFocusNextQueueRow = (completedSubmissionId: string) => {
-    const rows = filteredRowsRef.current;
-    if (rows.length === 0) {
-      setDetailSubmissionId(null);
-      return;
-    }
-
-    const currentIndex = rows.findIndex((row) => row.submission.id === completedSubmissionId);
-    if (currentIndex === -1) {
-      openDetails(rows[0]);
-      return;
-    }
-
-    const candidate = rows[currentIndex + 1] ?? rows[currentIndex - 1] ?? null;
-    if (candidate) {
-      openDetails(candidate);
-      return;
-    }
-
-    setDetailSubmissionId(null);
-  };
-
   const clearFilters = () => {
     setSearch("");
     setStatusFilter("all");
@@ -1152,24 +1125,6 @@ export function MonitorIndicatorPanel({
       setActionMessage(successMessage);
       onToast?.(successMessage, backendDecision === "validated" ? "success" : "warning");
 
-      if (onSendReminder) {
-        const schoolKey = normalizeSchoolKey(submission.school?.schoolCode ?? null, submission.school?.name ?? null);
-        const schoolName = submission.school?.name ?? "Selected school";
-
-        if (schoolKey !== "unknown") {
-          const reminderReason = payloadNotes ? ` Reason: ${payloadNotes}` : "";
-          const reminderNote = `Review update (${readableActionLabel(action)}) for package #${submission.id}.${reminderReason}`;
-
-          try {
-            await onSendReminder(schoolKey, schoolName, reminderNote);
-            onToast?.(`School head notified for ${schoolName}.`, "info");
-          } catch (err) {
-            const notifyError = err instanceof Error ? err.message : "Unable to send auto-notification.";
-            onToast?.(notifyError, "warning");
-          }
-        }
-      }
-
       setReviewAction(null);
       setReviewActionNotes("");
       setReviewActionError("");
@@ -1185,9 +1140,6 @@ export function MonitorIndicatorPanel({
             submissionId: submission.id,
           });
         }
-        window.setTimeout(() => {
-          autoFocusNextQueueRow(submission.id);
-        }, 120);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : "Unable to complete review action.";
