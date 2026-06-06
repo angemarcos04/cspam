@@ -281,6 +281,7 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByText("Packages exist, but none contain indicator rows for history rendering.")).toBeNull();
     expect(screen.queryByText("History Source")).toBeNull();
     expect(screen.queryByText(/Matrix source year:/)).toBeNull();
+    expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Package" })).toBeNull();
 
     const toggle = screen.getByRole("button", { name: "Show package details" });
@@ -288,9 +289,11 @@ describe("MonitorSchoolDrawer", () => {
     fireEvent.click(toggle);
 
     expect(screen.getByRole("button", { name: "Hide package details" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText(/Matrix source year:/)).toBeTruthy();
+    expect(screen.getByText(/Latest package year:/)).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "Reviewed" })).toBeNull();
+    expect(screen.queryByText(/Matrix source year:/)).toBeNull();
+    expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
   });
 
   it("renders report-style tables in indicator history and keeps the matrix collapsed", () => {
@@ -370,7 +373,19 @@ describe("MonitorSchoolDrawer", () => {
             historyFallbackReason: null,
           },
           schoolDrawerCriticalAlerts: [],
-          schoolIndicatorPackageRows: [],
+          schoolIndicatorPackageRows: [
+            {
+              id: "sub-2025",
+              schoolYear: "2025-2026",
+              reportingPeriod: "ANNUAL",
+              status: "submitted",
+              submittedAt: "2026-06-04T11:11:00.000Z",
+              reviewedAt: null,
+              updatedAt: "2026-06-04T11:11:00.000Z",
+              complianceRatePercent: null,
+              reviewedBy: "",
+            },
+          ],
           latestSchoolPackage: null,
           schoolIndicatorMatrix: {
             years: ["2025-2026"],
@@ -403,10 +418,10 @@ describe("MonitorSchoolDrawer", () => {
               ],
             },
           ],
-          missingDrawerIndicatorKeys: [],
-          returnedDrawerIndicatorKeys: [],
-          missingDrawerIndicatorKeySet: new Set(),
-          returnedDrawerIndicatorKeySet: new Set(),
+          missingDrawerIndicatorKeys: ["NER"],
+          returnedDrawerIndicatorKeys: ["NER"],
+          missingDrawerIndicatorKeySet: new Set(["NER"]),
+          returnedDrawerIndicatorKeySet: new Set(["NER"]),
         }}
         actions={{
           setActiveSchoolDrawerTab: vi.fn(),
@@ -430,9 +445,14 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByText("Jane Doe")).toBeTruthy();
     expect(screen.getByText("98.00%")).toBeTruthy();
     expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Jump to Missing/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Jump to Returned/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Show package details" }));
-    expect(screen.getByText("Historical Indicator Matrix")).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
+    expect(screen.getByText(/Latest package year:/)).toBeTruthy();
+    expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
+    expect(screen.queryByText("Matrix source")).toBeNull();
   });
 
   it("keeps the rendered checklist and report tied to the selected year context", () => {

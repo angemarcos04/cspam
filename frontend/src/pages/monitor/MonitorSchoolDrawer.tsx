@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { useState } from "react";
 import { CheckCircle2, RotateCcw, X } from "lucide-react";
 import { useIndicatorData } from "@/context/IndicatorData";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
@@ -73,20 +73,6 @@ interface MonitorSchoolDrawerProps {
   formatting: MonitorSchoolDrawerFormatting;
 }
 
-function truncateIndicatorDescription(value: string, maxLength = 48): string {
-  const normalized = value.trim();
-  if (normalized.length <= maxLength) {
-    return normalized;
-  }
-
-  return `${normalized.slice(0, Math.max(12, maxLength - 3)).trimEnd()}...`;
-}
-
-function sanitizeAnchorToken(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return normalized || "row";
-}
-
 function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
 }
@@ -143,8 +129,6 @@ export function MonitorSchoolDrawer({
     activeTopNavigator,
     activeSchoolDrawerTab,
     selectedSchoolDrawerYear,
-    highlightedDrawerIndicatorKey,
-    expandedDrawerIndicatorRows,
   } = viewState;
   const {
     isSchoolDrawerSubmissionsLoading,
@@ -158,22 +142,12 @@ export function MonitorSchoolDrawer({
     schoolDrawerCriticalAlerts,
     schoolIndicatorPackageRows,
     latestSchoolPackage,
-    schoolIndicatorMatrix,
-    latestSchoolIndicatorYear,
     schoolDrawerIndicatorSubmissions,
-    schoolIndicatorRowsByCategory,
-    missingDrawerIndicatorKeys,
-    returnedDrawerIndicatorKeys,
-    missingDrawerIndicatorKeySet,
-    returnedDrawerIndicatorKeySet,
   } = data;
   const {
     setActiveSchoolDrawerTab,
     setSelectedSchoolDrawerYear,
     closeSchoolDrawer,
-    handleJumpToMissingIndicators,
-    handleJumpToReturnedIndicators,
-    toggleDrawerIndicatorLabel,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
 
@@ -319,28 +293,6 @@ export function MonitorSchoolDrawer({
                       </select>
                     </label>
                   </div>
-                  {(missingDrawerIndicatorKeys.length > 0 || returnedDrawerIndicatorKeys.length > 0) && (
-                    <div className="flex flex-wrap gap-1.5">
-                      {missingDrawerIndicatorKeys.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleJumpToMissingIndicators}
-                          className="inline-flex items-center rounded-sm border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 transition hover:bg-amber-100"
-                        >
-                          Jump to Missing ({missingDrawerIndicatorKeys.length})
-                        </button>
-                      )}
-                      {returnedDrawerIndicatorKeys.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleJumpToReturnedIndicators}
-                          className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-100"
-                        >
-                          Jump to Returned ({returnedDrawerIndicatorKeys.length})
-                        </button>
-                      )}
-                    </div>
-                  )}
                 </div>
                 <p className="mt-2 text-[11px] text-slate-600">
                   {schoolDetail.schoolCode} | {schoolDetail.level} | {schoolDetail.type}
@@ -686,7 +638,7 @@ export function MonitorSchoolDrawer({
                             Latest package: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}</span>
                           </p>
                           <p>
-                            Matrix source year: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestRenderableSchoolYear ?? (latestSchoolIndicatorYear || "N/A")}</span>
+                            Latest package year: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistorySchoolYear ?? "N/A"}</span>
                           </p>
                         </div>
                         {schoolIndicatorPackageRows.length === 0 ? (
@@ -712,7 +664,7 @@ export function MonitorSchoolDrawer({
                                   const hasIndicatorRows = Array.isArray(matchingSubmission?.indicators) && matchingSubmission.indicators.length > 0;
                                   const historyRole =
                                     schoolDrawerHistorySummary?.latestRenderableSubmissionId === row.id
-                                      ? "Matrix source"
+                                      ? "History source"
                                       : latestSchoolPackage?.id === row.id
                                         ? "Latest activity"
                                         : "Historical only";
@@ -744,124 +696,6 @@ export function MonitorSchoolDrawer({
                     )}
                   </div>
 
-                  {isHistoryDetailsOpen && schoolIndicatorMatrix.rows.length > 0 ? (
-                    <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Historical Indicator Matrix</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            Currently representing package {schoolDrawerHistorySummary?.latestRenderableSubmissionId ? `#${schoolDrawerHistorySummary.latestRenderableSubmissionId}` : "history source unavailable"} for {schoolDrawerHistorySummary?.latestRenderableSchoolYear ?? (latestSchoolIndicatorYear || "N/A")}.
-                          </p>
-                        </div>
-                        <div className="text-right text-[11px] text-slate-600">
-                          <p>
-                            {schoolDrawerHistorySummary?.latestRenderableSubmissionId === schoolDrawerHistorySummary?.latestHistoryPackageId
-                              ? "Latest package includes renderable indicator rows."
-                              : "Matrix is using the most recent package with indicator rows."}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-3 overflow-x-auto rounded-sm border border-slate-200">
-                        <table className="min-w-[1080px] w-full border-collapse">
-                          <thead>
-                            <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                              <th rowSpan={2} className="sticky left-0 z-20 min-w-[270px] border border-slate-300 bg-slate-100 px-2 py-2 text-left">
-                              Indicators
-                            </th>
-                            {schoolIndicatorMatrix.years.map((year) => (
-                              <th key={`monitor-indicator-year-${year}`} colSpan={2} className="border border-slate-300 px-2 py-2 text-center">
-                                {year}
-                              </th>
-                            ))}
-                          </tr>
-                          <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                            {schoolIndicatorMatrix.years.map((year) => (
-                              <Fragment key={`monitor-indicator-year-columns-${year}`}>
-                                <th className="border border-slate-300 px-2 py-2 text-center">Target</th>
-                                <th className="border border-slate-300 px-2 py-2 text-center">Actual</th>
-                              </Fragment>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {schoolIndicatorRowsByCategory.map((group) => (
-                            <Fragment key={`monitor-indicator-category-${group.category}`}>
-                              <tr className="bg-primary-50/70">
-                                <td
-                                  colSpan={schoolIndicatorMatrix.years.length * 2 + 1}
-                                  className="border border-slate-300 px-3 py-2 text-xs font-bold uppercase tracking-wide text-primary-800"
-                                >
-                                  {group.category}
-                                </td>
-                              </tr>
-                              {group.rows.map((row) => {
-                                const rowId = `school-drawer-indicator-${sanitizeAnchorToken(row.key)}`;
-                                const isExpanded = Boolean(expandedDrawerIndicatorRows[row.key]);
-                                const shortLabel = truncateIndicatorDescription(row.label, 46);
-                                const isHighlighted = highlightedDrawerIndicatorKey === row.key;
-                                const isMissing = missingDrawerIndicatorKeySet.has(row.key);
-                                const isReturned = returnedDrawerIndicatorKeySet.has(row.key);
-
-                                return (
-                                  <tr
-                                    id={rowId}
-                                    key={`monitor-indicator-row-${row.key}`}
-                                    className={isHighlighted ? "bg-amber-50 transition-colors" : "bg-white"}
-                                  >
-                                    <td className="sticky left-0 z-10 min-w-[270px] border border-slate-300 bg-white px-2 py-2 align-top">
-                                      <div className="flex flex-wrap items-center gap-1.5">
-                                        <button
-                                          type="button"
-                                          title={row.label}
-                                          onClick={() => toggleDrawerIndicatorLabel(row.key)}
-                                          className="text-left text-[12px] font-semibold leading-4 text-slate-900 hover:text-primary-700"
-                                        >
-                                          {isExpanded ? row.label : shortLabel}
-                                        </button>
-                                        {isMissing && (
-                                          <span className="inline-flex rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
-                                            Missing
-                                          </span>
-                                        )}
-                                        {isReturned && (
-                                          <span className="inline-flex rounded-full border border-primary-300 bg-primary-50 px-1.5 py-0.5 text-[10px] font-semibold text-primary-700">
-                                            Returned
-                                          </span>
-                                        )}
-                                        <button
-                                          type="button"
-                                          onClick={() => toggleDrawerIndicatorLabel(row.key)}
-                                          className="rounded-sm border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 transition hover:bg-slate-100"
-                                        >
-                                          {isExpanded ? "Less" : "More"}
-                                        </button>
-                                      </div>
-                                      <p className="mt-0.5 text-[10px] text-slate-500">{row.code}</p>
-                                    </td>
-                                    {schoolIndicatorMatrix.years.map((year) => {
-                                      const values = row.valuesByYear[year] ?? { target: "", actual: "" };
-
-                                      return (
-                                        <Fragment key={`monitor-indicator-cell-${row.key}-${year}`}>
-                                          <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
-                                            {values.target || "-"}
-                                          </td>
-                                          <td className="border border-slate-300 bg-slate-50/40 px-2 py-2 text-center text-xs text-slate-700">
-                                            {values.actual || "-"}
-                                          </td>
-                                        </Fragment>
-                                      );
-                                    })}
-                                  </tr>
-                                );
-                              })}
-                            </Fragment>
-                          ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  ) : null}
                 </article>
               )}
             </div>
