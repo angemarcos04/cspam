@@ -679,7 +679,7 @@ describe("AuthProvider logout", () => {
     expect(result.current.apiToken).toBe("reset-token");
   });
 
-  it("verifies bearer-token usability before completing MFA reset sign-in", async () => {
+  it("verifies bearer-token usability before completing MFA recovery sign-in", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.endsWith("/api/auth/mfa/reset/complete")) {

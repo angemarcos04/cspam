@@ -286,7 +286,7 @@ function describeAuthOperation(operationLabel: string): string {
     case "reset-required-password":
       return "password reset";
     case "mfa-reset-complete":
-      return "MFA reset";
+      return "MFA recovery";
     default:
       return "authentication";
   }
@@ -1050,7 +1050,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (!Number.isFinite(requestId) || requestId <= 0) {
-        throw new Error("Request ID is invalid. Submit a new MFA reset request.");
+        throw new Error("Request ID is invalid. Submit a new MFA recovery request.");
       }
 
       setIsAuthenticating(true);
@@ -1075,7 +1075,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         return {
           backupCodes: Array.isArray(payload.backupCodes) ? payload.backupCodes : [],
-          message: payload.message?.trim() || "MFA reset completed. Store your backup codes securely.",
+          message: payload.message?.trim() || "MFA recovery completed. Store your backup codes securely.",
         };
       } finally {
         setIsAuthenticating(false);

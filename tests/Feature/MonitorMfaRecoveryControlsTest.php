@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\MonitorMfaResetTicket;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Support\Auth\UserRoleResolver;
@@ -113,7 +114,9 @@ class MonitorMfaRecoveryControlsTest extends TestCase
 
         /** @var array<string, mixed> $approvePayload */
         $approvePayload = (array) $approve->json();
-        $this->assertArrayNotHasKey('approvalToken', $approvePayload);
+        $this->assertArrayHasKey('approvalToken', $approvePayload);
+        $approvalToken = (string) ($approvePayload['approvalToken'] ?? '');
+        $this->assertMatchesRegularExpression('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/', $approvalToken);
 
         /** @var User $targetUser */
         $targetUser = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
@@ -122,8 +125,12 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $sent = Notification::sent($targetUser, MonitorMfaResetApprovedNotification::class);
         /** @var MonitorMfaResetApprovedNotification|null $notification */
         $notification = $sent->last();
-        $approvalToken = (string) ($notification?->approvalToken() ?? '');
-        $this->assertNotSame('', $approvalToken);
+        $this->assertSame($approvalToken, (string) ($notification?->approvalToken() ?? ''));
+
+        /** @var MonitorMfaResetTicket $ticket */
+        $ticket = MonitorMfaResetTicket::query()->findOrFail($requestId);
+        $this->assertNotSame($approvalToken, (string) $ticket->approval_token_hash);
+        $this->assertTrue(Hash::check($approvalToken, (string) $ticket->approval_token_hash));
 
         $complete = $this->postJson('/api/auth/mfa/reset/complete', [
             'role' => 'monitor',
@@ -146,6 +153,12 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.requested']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.approved']);
         $this->assertDatabaseHas('audit_logs', ['action' => 'auth.mfa_reset.completed']);
+
+        $approvalAudit = AuditLog::query()
+            ->where('action', 'auth.mfa_reset.approved')
+            ->latest('id')
+            ->firstOrFail();
+        $this->assertStringNotContainsString($approvalToken, json_encode($approvalAudit->metadata));
     }
 
     public function test_monitor_cannot_self_approve_mfa_reset_request(): void
@@ -173,8 +186,104 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         $approve->assertStatus(Response::HTTP_FORBIDDEN)
             ->assertJsonPath(
                 'message',
-                'You cannot approve your own MFA reset request. Ask a different monitor to approve it.',
+                'You cannot approve your own MFA recovery request. Ask a different Division Monitor to approve it.',
             );
+    }
+
+    public function test_mfa_recovery_approval_returns_token_when_email_delivery_fails(): void
+    {
+        $this->seed();
+
+        $targetPassword = $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com');
+
+        /** @var User $admin */
+        $admin = User::query()->create([
+            'name' => 'Division Monitor Admin',
+            'email' => 'monitor.admin@cspams.local',
+            'password' => Hash::make('AdminPass@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+        ]);
+        $admin->assignRole(UserRoleResolver::MONITOR);
+
+        $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $targetPassword,
+            'reason' => 'No access to MFA code.',
+        ]);
+
+        $requestReset->assertStatus(Response::HTTP_ACCEPTED);
+        $requestId = (int) $requestReset->json('requestId');
+
+        $adminToken = $this->monitorTokenAfterMfa('monitor.admin@cspams.local', 'AdminPass@2026!');
+
+        Notification::shouldReceive('send')
+            ->once()
+            ->andThrow(new \RuntimeException('SMTP rejected recovery token.'));
+
+        $approve = $this->withToken($adminToken)->postJson("/api/auth/mfa/reset/requests/{$requestId}/approve", [
+            'notes' => 'Identity verified.',
+        ]);
+
+        $approve->assertOk()
+            ->assertJsonPath('status', MonitorMfaResetTicket::STATUS_APPROVED)
+            ->assertJsonPath('delivery', 'failed')
+            ->assertJsonPath('message', 'MFA recovery approved, but email delivery failed. Copy and share the recovery token securely.');
+
+        $approvalToken = (string) $approve->json('approvalToken');
+        $this->assertMatchesRegularExpression('/^[A-Z0-9]{4}-[A-Z0-9]{4}$/', $approvalToken);
+
+        $complete = $this->postJson('/api/auth/mfa/reset/complete', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $targetPassword,
+            'request_id' => $requestId,
+            'approval_token' => $approvalToken,
+        ]);
+
+        $complete->assertOk()
+            ->assertJsonPath('user.role', 'monitor')
+            ->assertJsonCount(4, 'backupCodes');
+    }
+
+    public function test_mfa_recovery_completion_rejects_six_digit_login_code(): void
+    {
+        Notification::fake();
+        $this->seed();
+
+        $targetPassword = $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com');
+
+        /** @var User $admin */
+        $admin = User::query()->create([
+            'name' => 'Division Monitor Admin',
+            'email' => 'monitor.admin@cspams.local',
+            'password' => Hash::make('AdminPass@2026!'),
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+        ]);
+        $admin->assignRole(UserRoleResolver::MONITOR);
+
+        $requestReset = $this->postJson('/api/auth/mfa/reset/request', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $targetPassword,
+        ]);
+
+        $requestId = (int) $requestReset->json('requestId');
+        $adminToken = $this->monitorTokenAfterMfa('monitor.admin@cspams.local', 'AdminPass@2026!');
+        $this->withToken($adminToken)->postJson("/api/auth/mfa/reset/requests/{$requestId}/approve")->assertOk();
+
+        $complete = $this->postJson('/api/auth/mfa/reset/complete', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $targetPassword,
+            'request_id' => $requestId,
+            'approval_token' => '123456',
+        ]);
+
+        $complete->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Recovery token format is invalid.');
     }
 
     public function test_mfa_reset_request_returns_service_unavailable_when_ticket_storage_is_missing(): void
@@ -191,7 +300,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $requestReset->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'MFA reset request storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.');
     }
 
     public function test_mfa_reset_approval_returns_service_unavailable_when_ticket_storage_is_missing(): void
@@ -210,7 +319,7 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $approve->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'MFA reset request storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.');
     }
 
     private function monitorTokenAfterMfa(string $email, string $password): string

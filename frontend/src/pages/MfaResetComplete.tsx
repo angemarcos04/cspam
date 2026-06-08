@@ -48,7 +48,7 @@ export function MfaResetComplete() {
     }
 
     if (!Number.isFinite(parsedRequestId) || parsedRequestId <= 0) {
-      setError("Request ID is invalid. Submit a new MFA reset request.");
+      setError("Request ID is invalid. Submit a new MFA recovery request.");
       return;
     }
 
@@ -58,7 +58,7 @@ export function MfaResetComplete() {
     }
 
     if (!isValidToken(normalizedApproval)) {
-      setError("Approval token must be in XXXX-XXXX format.");
+      setError("Recovery token must be in XXXX-XXXX format.");
       return;
     }
 
@@ -81,7 +81,7 @@ export function MfaResetComplete() {
       if (isApiError(err)) {
         setError(err.message);
       } else {
-        setError("Unable to complete MFA reset. Check your network and try again.");
+        setError("Unable to complete MFA recovery. Check your network and try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -122,10 +122,10 @@ export function MfaResetComplete() {
                     CSPAMS
                   </p>
                   <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">
-                    Complete MFA Reset
+                    Complete MFA Recovery
                   </h1>
                   <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90">
-                    Enter the approval token to generate new backup codes.
+                    Enter the recovery token to generate new backup codes.
                   </p>
                 </div>
               </div>
@@ -194,7 +194,7 @@ export function MfaResetComplete() {
 
               <div>
                 <label htmlFor="approval-token" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  Approval Token
+                  Recovery Token
                 </label>
                 <input
                   id="approval-token"
@@ -211,7 +211,7 @@ export function MfaResetComplete() {
                   className={formInputClass}
                 />
                 <p className="mt-1.5 text-xs text-slate-500">
-                  The approval token is sent by email after another monitor approves your request.
+                  Enter the XXXX-XXXX token shared by the approving Division Monitor. This is not the 6-digit login code.
                 </p>
               </div>
 
@@ -264,14 +264,14 @@ export function MfaResetComplete() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <ShieldCheck className="h-4 w-4" />
-                {isBusy ? "Completing reset..." : "Complete reset"}
+                {isBusy ? "Completing recovery..." : "Complete recovery"}
                 {!isBusy && <ArrowRight className="h-4 w-4" />}
               </button>
             </form>
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
               <Link to="/mfa-reset" className="font-semibold text-primary-700 hover:text-primary-800">
-                Back to request
+                Back to recovery request
               </Link>
               <button
                 type="button"

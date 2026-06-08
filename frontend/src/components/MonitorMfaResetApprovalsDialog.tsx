@@ -81,7 +81,7 @@ export function MonitorMfaResetApprovalsDialog({
       if (isApiError(err)) {
         setError(err.message);
       } else {
-        setError("Unable to load MFA reset requests. Check your network and try again.");
+        setError("Unable to load MFA recovery requests. Check your network and try again.");
       }
     } finally {
       setIsLoading(false);
@@ -111,13 +111,19 @@ export function MonitorMfaResetApprovalsDialog({
 
       const requesterEmail = ticket.requester.email ?? "Unknown requester";
       const approvalToken = typeof payload.approvalToken === "string" ? payload.approvalToken : null;
+      const deliveryMessage =
+        payload.delivery === "failed"
+          ? "Email failed. Copy and share this recovery token securely."
+          : typeof payload.deliveryMessage === "string"
+            ? payload.deliveryMessage
+            : null;
       setRecentApprovals((current) => [
         {
           requestId: Number(payload.requestId ?? ticket.id),
           requesterEmail,
           approvalToken,
           expiresAt: payload.approvalTokenExpiresAt,
-          deliveryMessage: typeof payload.deliveryMessage === "string" ? payload.deliveryMessage : null,
+          deliveryMessage,
           approvedAt: Date.now(),
         },
         ...current,
@@ -177,12 +183,12 @@ export function MonitorMfaResetApprovalsDialog({
         type="button"
         onClick={onClose}
         className="fixed inset-0 z-[96] bg-slate-900/40"
-        aria-label="Close MFA reset approvals dialog"
+        aria-label="Close MFA recovery approvals dialog"
       />
       <section
         role="dialog"
         aria-modal="true"
-        aria-label="MFA reset approvals"
+        aria-label="MFA recovery approvals"
         className="fixed z-[97] inset-x-4 bottom-4 max-h-[84vh] w-[calc(100vw-2rem)] overflow-y-auto rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-28 sm:w-[min(54rem,calc(100vw-2rem))] sm:-translate-x-1/2"
       >
         <div className="flex items-start justify-between gap-3">
@@ -191,9 +197,9 @@ export function MonitorMfaResetApprovalsDialog({
               <ShieldCheck className="h-4 w-4" />
               Security
             </p>
-            <h2 className="mt-1 text-base font-extrabold text-slate-900">MFA Reset Requests</h2>
+            <h2 className="mt-1 text-base font-extrabold text-slate-900">MFA Recovery Requests</h2>
             <p className="mt-1 text-xs text-slate-600">
-              Approve monitor MFA reset requests and share approval tokens securely when needed.
+              Approve monitor MFA recovery requests and share one-time recovery tokens securely.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -241,7 +247,7 @@ export function MonitorMfaResetApprovalsDialog({
                           {item.requesterEmail} • Request #{item.requestId}
                         </p>
                         <p className="mt-1 text-xs text-slate-600">
-                          Token expires: {new Date(item.expiresAt).toLocaleString()}
+                          Recovery token expires: {new Date(item.expiresAt).toLocaleString()}
                           {isFresh ? " • just approved" : ""}
                         </p>
                         {item.deliveryMessage && (
@@ -264,7 +270,7 @@ export function MonitorMfaResetApprovalsDialog({
                             </button>
                           </>
                         ) : (
-                          <p className="text-xs font-semibold text-slate-600">Approval token sent via email.</p>
+                          <p className="text-xs font-semibold text-slate-600">Recovery token sent via email.</p>
                         )}
                       </div>
                     </div>
@@ -279,7 +285,7 @@ export function MonitorMfaResetApprovalsDialog({
           {isLoading ? (
             <p className="text-xs text-slate-600">Loading requests...</p>
           ) : items.length === 0 ? (
-            <p className="text-xs text-slate-600">No pending MFA reset requests.</p>
+            <p className="text-xs text-slate-600">No pending MFA recovery requests.</p>
           ) : (
             <div className="space-y-2">
               {items.map((ticket) => {

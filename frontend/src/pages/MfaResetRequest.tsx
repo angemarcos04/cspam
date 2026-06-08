@@ -58,14 +58,14 @@ export function MfaResetRequest() {
         password,
         reason: reason.trim() ? reason : undefined,
       });
-      setSuccess(payload.message?.trim() || "MFA reset request submitted. Await approval before completion.");
+      setSuccess(payload.message?.trim() || "MFA recovery request submitted. Await approval before completion.");
       setRequestId(Number(payload.requestId));
       setExpiresAt(payload.expiresAt ?? null);
     } catch (err) {
       if (isApiError(err)) {
         setError(err.message);
       } else {
-        setError("Unable to submit the MFA reset request. Check your network and try again.");
+        setError("Unable to submit the MFA recovery request. Check your network and try again.");
       }
     } finally {
       setIsSubmitting(false);
@@ -99,10 +99,10 @@ export function MfaResetRequest() {
                     CSPAMS
                   </p>
                   <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">
-                    Request MFA Reset
+                    Request MFA Recovery
                   </h1>
                   <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90">
-                    If you can't access your verification code email, request approval.
+                    Use this only if you cannot complete MFA with your email code or backup code.
                   </p>
                 </div>
               </div>
@@ -186,8 +186,8 @@ export function MfaResetRequest() {
                     </p>
                   )}
                   <p className="mt-2 text-xs text-emerald-700">
-                    After approval, you'll receive an approval token (via email or secure sharing). Use it to complete
-                    the reset and generate new backup codes.
+                    Ask another Division Monitor to approve this request. They will share a one-time recovery token in
+                    XXXX-XXXX format. This is not the 6-digit login code.
                   </p>
                 </div>
               )}
@@ -198,21 +198,21 @@ export function MfaResetRequest() {
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <ShieldCheck className="h-4 w-4" />
-                {isBusy ? "Submitting request..." : "Submit request"}
+                {isBusy ? "Submitting request..." : "Submit recovery request"}
                 {!isBusy && <ArrowRight className="h-4 w-4" />}
               </button>
             </form>
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
               <Link to="/" className="font-semibold text-primary-700 hover:text-primary-800">
-                Back to sign in
+                Have a 6-digit code? Return to sign in
               </Link>
               <button
                 type="button"
                 onClick={() => navigate(completeHref)}
                 className="text-xs font-semibold text-slate-600 hover:text-slate-800"
               >
-                Already approved? Complete reset →
+                Already approved? Complete recovery -&gt;
               </button>
             </div>
           </section>

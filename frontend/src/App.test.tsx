@@ -21,11 +21,11 @@ vi.mock("@/pages/ForgotPassword", () => ({
 }));
 
 vi.mock("@/pages/MfaResetComplete", () => ({
-  MfaResetComplete: () => <div>MFA Reset Complete</div>,
+  MfaResetComplete: () => <div>MFA Recovery Complete</div>,
 }));
 
 vi.mock("@/pages/MfaResetRequest", () => ({
-  MfaResetRequest: () => <div>MFA Reset Request</div>,
+  MfaResetRequest: () => <div>MFA Recovery Request</div>,
 }));
 
 vi.mock("@/pages/ResetPassword", () => ({

@@ -145,20 +145,22 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
               </article>
 
               <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Can't access MFA email?</h3>
+                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Can't complete monitor MFA?</h3>
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
+                  <li>Use the 6-digit email code or a stored backup code on the sign-in MFA screen when available.</li>
                   <li>
-                    On the MFA code screen, click{" "}
-                    <span className="font-semibold text-slate-900">Can't access email? Request MFA reset</span>.
+                    If neither option works, click{" "}
+                    <span className="font-semibold text-slate-900">Can't complete MFA? Request recovery</span>.
                   </li>
                   <li>
-                    Submit the request, then ask another monitor to approve it via{" "}
-                    <span className="font-semibold text-slate-900">Schools → More → MFA Reset Requests</span>.
+                    Submit the request, then ask another Division Monitor to approve it via{" "}
+                    <span className="font-semibold text-slate-900">Schools → More → MFA Recovery Requests</span>.
                   </li>
                   <li>
-                    Complete the reset using the approval token, then store the new{" "}
+                    Complete recovery using the XXXX-XXXX recovery token, then store the new{" "}
                     <span className="font-semibold text-slate-900">backup codes</span> securely.
                   </li>
+                  <li>Production recovery requires at least two active Division Monitor accounts.</li>
                 </ul>
               </article>
             </>

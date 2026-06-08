@@ -46,7 +46,7 @@ class CompleteMonitorMfaResetRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'role.in' => 'MFA reset completion is only supported for division monitor accounts.',
+            'role.in' => 'MFA recovery completion is only supported for division monitor accounts.',
         ];
     }
 }

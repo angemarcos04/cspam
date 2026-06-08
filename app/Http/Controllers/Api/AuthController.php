@@ -1123,7 +1123,7 @@ class AuthController extends Controller
     {
         if (! $this->monitorMfaEnabled()) {
             return response()->json(
-                ['message' => 'MFA reset is not required for this environment.'],
+                ['message' => 'MFA recovery is not required for this environment.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1199,7 +1199,7 @@ class AuthController extends Controller
                 'status' => MonitorMfaResetTicket::STATUS_PENDING,
                 'requestId' => $ticket->id,
                 'expiresAt' => $expiresAt->toISOString(),
-                'message' => 'MFA reset request submitted. Await admin approval before completion.',
+                'message' => 'MFA recovery request submitted. Ask another Division Monitor to approve it before completion.',
             ],
             Response::HTTP_ACCEPTED,
         );
@@ -1214,7 +1214,7 @@ class AuthController extends Controller
 
         if (! UserRoleResolver::has($actor, UserRoleResolver::MONITOR)) {
             return response()->json(
-                ['message' => 'Only division monitor accounts can access MFA reset approvals.'],
+                ['message' => 'Only division monitor accounts can access MFA recovery approvals.'],
                 Response::HTTP_FORBIDDEN,
             );
         }
@@ -1263,7 +1263,7 @@ class AuthController extends Controller
         $ticketId = ctype_digit(trim($ticket)) ? (int) trim($ticket) : 0;
         if ($ticketId <= 0) {
             return response()->json(
-                ['message' => 'MFA reset request identifier is invalid.'],
+                ['message' => 'MFA recovery request identifier is invalid.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1285,7 +1285,7 @@ class AuthController extends Controller
         $ticketModel = MonitorMfaResetTicket::query()->find($ticketId);
         if (! $ticketModel) {
             return response()->json(
-                ['message' => 'MFA reset request was not found.'],
+                ['message' => 'MFA recovery request was not found.'],
                 Response::HTTP_NOT_FOUND,
             );
         }
@@ -1305,7 +1305,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Only division monitor accounts can approve MFA reset requests.'],
+                ['message' => 'Only division monitor accounts can approve MFA recovery requests.'],
                 Response::HTTP_FORBIDDEN,
             );
         }
@@ -1313,7 +1313,7 @@ class AuthController extends Controller
         $targetUser = $ticketModel->user()->first();
         if (! $targetUser || ! UserRoleResolver::has($targetUser, UserRoleResolver::MONITOR)) {
             return response()->json(
-                ['message' => 'MFA reset approval is only supported for division monitor accounts.'],
+                ['message' => 'MFA recovery approval is only supported for division monitor accounts.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1334,7 +1334,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'You cannot approve your own MFA reset request. Ask a different monitor to approve it.'],
+                ['message' => 'You cannot approve your own MFA recovery request. Ask a different Division Monitor to approve it.'],
                 Response::HTTP_FORBIDDEN,
             );
         }
@@ -1346,7 +1346,7 @@ class AuthController extends Controller
             $ticketModel->expires_at->lte($now)
         ) {
             return response()->json(
-                ['message' => 'MFA reset request is no longer pending approval.'],
+                ['message' => 'MFA recovery request is no longer pending approval.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1378,7 +1378,7 @@ class AuthController extends Controller
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryStatus = 'failed';
-            $deliveryMessage = 'Email delivery failed. Ask the requester to submit a new request or contact an administrator.';
+            $deliveryMessage = 'Email delivery failed. Copy and share this recovery token securely.';
         }
 
         AuthAuditLogger::record(
@@ -1399,12 +1399,13 @@ class AuthController extends Controller
         );
 
         $message = $deliveryStatus === 'failed'
-            ? 'MFA reset approved, but email delivery failed. Ask the requester to submit a new request or contact an administrator.'
-            : 'MFA reset approved. Approval token sent to the requester email.';
+            ? 'MFA recovery approved, but email delivery failed. Copy and share the recovery token securely.'
+            : 'MFA recovery approved. Share the recovery token securely with the requester.';
 
         return response()->json([
             'status' => MonitorMfaResetTicket::STATUS_APPROVED,
             'requestId' => $ticketModel->id,
+            'approvalToken' => $approvalToken,
             'approvalTokenExpiresAt' => $approvalExpiresAt->toISOString(),
             'delivery' => $deliveryStatus,
             'deliveryMessage' => $deliveryMessage,
@@ -1416,7 +1417,7 @@ class AuthController extends Controller
     {
         if (! $this->monitorMfaEnabled()) {
             return response()->json(
-                ['message' => 'MFA reset is not required for this environment.'],
+                ['message' => 'MFA recovery is not required for this environment.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1464,7 +1465,7 @@ class AuthController extends Controller
 
         if ($approvalToken === null) {
             return response()->json(
-                ['message' => 'Approval token format is invalid.'],
+                ['message' => 'Recovery token format is invalid.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1489,7 +1490,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'MFA reset request is not approved or no longer valid.'],
+                ['message' => 'MFA recovery request is not approved or no longer valid.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1521,7 +1522,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Approval token is invalid or expired. Submit a new MFA reset request.'],
+                ['message' => 'Recovery token is invalid or expired. Submit a new MFA recovery request.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1545,7 +1546,7 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Approval token is invalid.'],
+                ['message' => 'Recovery token is invalid.'],
                 Response::HTTP_UNPROCESSABLE_ENTITY,
             );
         }
@@ -1611,7 +1612,7 @@ class AuthController extends Controller
             return response()->json([
                 'user' => $this->serializeUser($user->fresh('school'), $role),
                 'backupCodes' => $backupCodes,
-                'message' => 'MFA reset completed. Store your backup codes securely.',
+                'message' => 'MFA recovery completed. Store your backup codes securely.',
             ]);
         }
 
@@ -1622,7 +1623,7 @@ class AuthController extends Controller
             'refreshAfter' => $tokenPayload['refreshAfter'],
             'user' => $this->serializeUser($user->fresh('school'), $role),
             'backupCodes' => $backupCodes,
-            'message' => 'MFA reset completed. Store your backup codes securely.',
+            'message' => 'MFA recovery completed. Store your backup codes securely.',
         ]);
     }
 
@@ -2971,7 +2972,7 @@ class AuthController extends Controller
         );
 
         return response()->json(
-            ['message' => 'MFA reset request storage is unavailable. Run database migrations first.'],
+            ['message' => 'MFA recovery request storage is unavailable. Run database migrations first.'],
             Response::HTTP_SERVICE_UNAVAILABLE,
         );
     }

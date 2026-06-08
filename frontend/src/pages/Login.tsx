@@ -482,7 +482,7 @@ export function Login() {
                       to={`/mfa-reset?email=${encodeURIComponent(pendingMfa.login)}`}
                       className="text-xs font-semibold text-primary-700 hover:text-primary-800"
                     >
-                      Can't access email? Request MFA reset
+                      Can't complete MFA? Request recovery
                     </Link>
                   </div>
                   {pendingMfa.delivery &&
