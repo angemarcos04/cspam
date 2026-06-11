@@ -944,6 +944,132 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(downloadSubmissionFile).toHaveBeenCalledWith("file-101", "bmef");
   });
 
+  it("renders private FM-QAD report cards from the selected package and downloads the exact file", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:fm-qad-preview"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      blob: vi.fn(async () => new Blob(["fm-qad"], { type: "application/pdf" })),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const downloadSubmissionFile = vi.fn();
+    const submitted = buildSubmission({
+      id: "private-file-101",
+      schoolType: "private",
+      school: {
+        id: "school-1",
+        schoolCode: "401777",
+        name: "AMA CC - Santiago City",
+        type: "private",
+      },
+      completion: {
+        hasImetaFormData: true,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: ["fm_qad_002"],
+      },
+      presentation: {
+        activeFileTypes: ["fm_qad_001", "fm_qad_002"],
+        activeReportFileTypes: ["fm_qad_001", "fm_qad_002"],
+        activeWorkspaceFileTypes: ["fm_qad_001", "fm_qad_002"],
+        secondaryHistoricalFileTypes: [],
+      },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-06-06T01:00:00.000Z",
+          downloadUrl: "/api/submissions/private-file-101/download/fm_qad_001",
+          viewUrl: "/api/submissions/private-file-101/view/fm_qad_001",
+        },
+        fm_qad_002: {
+          type: "fm_qad_002",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile,
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    const viewFmQadOne = await screen.findByRole("button", { name: /View FM-QAD-001 Report/i });
+    expect((screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText("BMEF Report")).toBeNull();
+    expect(screen.queryByText("SMEA Report")).toBeNull();
+
+    fireEvent.click(viewFmQadOne);
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    const [fetchInput, requestInit] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    expect(String(fetchInput)).toContain("/api/submissions/private-file-101/view/fm_qad_001");
+    expect((requestInit.headers as Headers).get("Authorization")).toBe("Bearer token");
+
+    fireEvent.click(await screen.findByRole("button", { name: /Download/i }));
+    expect(downloadSubmissionFile).toHaveBeenCalledWith("private-file-101", "fm_qad_001");
+  });
+
   it("uses Ctrl+R to refresh School Head dashboard data instead of forcing a browser reload", async () => {
     const submitted = buildSubmission({
       id: "refresh-101",

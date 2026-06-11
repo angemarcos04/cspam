@@ -1683,6 +1683,21 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                     is_array($row) && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
             ),
         );
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitorShow = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShow->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.smea.uploaded', true)
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
+            ->assertJsonPath('data.files.smea.viewUrl', "/api/submissions/{$submissionId}/view/smea");
+
+        $monitorCodes = collect($monitorShow->json('data.indicators', []))
+            ->map(static fn (array $row): string => (string) data_get($row, 'metric.code'))
+            ->all();
+        $this->assertContains('IMETA_HEAD_NAME', $monitorCodes);
+        $this->assertContains('NER', $monitorCodes);
     }
 
     public function test_view_file_endpoint_returns_inline_response(): void
@@ -2035,6 +2050,65 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->assertContains('IMETA_HEAD_NAME', $monitorCodes);
         $this->assertNotContains('NER', $monitorCodes);
+    }
+
+    public function test_monitor_submission_resource_exposes_only_sent_kpi_scope(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+                [
+                    'metric_code' => 'NER',
+                    'target' => ['values' => [$year => 100]],
+                    'actual' => ['values' => [$year => 95]],
+                ],
+            ],
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowBeforeSend->assertOk()
+            ->assertJsonPath('data.summary.totalIndicators', 0)
+            ->assertJsonCount(0, 'data.indicators');
+
+        FormSubmissionHistory::query()->create([
+            'form_type' => IndicatorSubmission::FORM_TYPE,
+            'submission_id' => (int) $submissionId,
+            'school_id' => (int) $schoolHead->school_id,
+            'academic_year_id' => $academicYearId,
+            'action' => 'scope_submitted',
+            'from_status' => 'draft',
+            'to_status' => 'draft',
+            'actor_id' => $schoolHead->id,
+            'metadata' => ['targets' => [GroupBWorkspaceDefinition::KEY_PERFORMANCE]],
+            'created_at' => now(),
+        ]);
+
+        $monitorShowAfterSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterSend->assertOk();
+        $monitorCodes = collect($monitorShowAfterSend->json('data.indicators', []))
+            ->map(static fn (array $row): string => (string) data_get($row, 'metric.code'))
+            ->all();
+
+        $this->assertContains('NER', $monitorCodes);
+        $this->assertNotContains('IMETA_HEAD_NAME', $monitorCodes);
     }
 
     public function test_monitor_submission_resource_redacts_unsent_draft_file_urls_until_file_scope_is_sent(): void
