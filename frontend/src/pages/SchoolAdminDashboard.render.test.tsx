@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import type { IndicatorSubmission } from "@/types";
@@ -10,6 +10,10 @@ const useIndicatorDataMock = vi.fn();
 let refreshRecordsMock = vi.fn();
 let refreshSubmissionsMock = vi.fn();
 let refreshAllSubmissionsMock = vi.fn();
+let schoolIndicatorPanelPropsMock: {
+  selectedAcademicYearId?: string;
+  onWorkspaceSubmissionHydrated?: (submission: IndicatorSubmission) => void;
+} | null = null;
 
 vi.mock("@/context/Auth", () => ({
   useAuth: () => useAuthMock(),
@@ -32,9 +36,13 @@ vi.mock("@/components/DashboardHelpDialog", () => ({
 }));
 
 vi.mock("@/components/indicators/SchoolIndicatorPanel", () => ({
-  SchoolIndicatorPanel: ({ selectedAcademicYearId }: { selectedAcademicYearId?: string }) => (
-    <div data-testid="workspace-panel" data-selected-academic-year-id={selectedAcademicYearId ?? ""} />
-  ),
+  SchoolIndicatorPanel: (props: {
+    selectedAcademicYearId?: string;
+    onWorkspaceSubmissionHydrated?: (submission: IndicatorSubmission) => void;
+  }) => {
+    schoolIndicatorPanelPropsMock = props;
+    return <div data-testid="workspace-panel" data-selected-academic-year-id={props.selectedAcademicYearId ?? ""} />;
+  },
 }));
 
 function buildSubmission(overrides: Partial<IndicatorSubmission>): IndicatorSubmission {
@@ -175,6 +183,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     refreshRecordsMock = vi.fn().mockResolvedValue(undefined);
     refreshSubmissionsMock = vi.fn().mockResolvedValue(undefined);
     refreshAllSubmissionsMock = vi.fn().mockResolvedValue(undefined);
+    schoolIndicatorPanelPropsMock = null;
   });
 
   afterEach(() => {
@@ -357,6 +366,91 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
     expect(screen.queryByText("Source package: #finalized-101 (Submitted).")).toBeNull();
     expect(screen.queryByText("1,515")).toBeNull();
+  });
+
+  it("updates TARGETS-MET immediately from a freshly hydrated workspace save", async () => {
+    const draft = buildSubmission({
+      id: "draft-sync-101",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+    const hydratedDraft = buildSubmission({
+      id: "draft-sync-101",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [
+        buildEnrollmentIndicator(2024),
+        buildKpiIndicator({ targetValue: 97, actualValue: 96, complianceStatus: "met" }),
+      ],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:05:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [draft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => draft),
+      loadSubmissionsForYear: vi.fn(async () => [draft]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #draft-sync-101 (Draft).")).not.toBeNull();
+    });
+    expect(screen.queryByText("2,024")).toBeNull();
+    expect(screen.queryByText("97")).toBeNull();
+    expect(screen.queryByText("96")).toBeNull();
+
+    act(() => {
+      schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(hydratedDraft);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("2,024")).not.toBeNull();
+    });
+    expect(screen.getByText("97")).not.toBeNull();
+    expect(screen.getByText("96")).not.toBeNull();
   });
 
   it("selects the latest saved draft academic year on fresh login and aligns the workspace", async () => {

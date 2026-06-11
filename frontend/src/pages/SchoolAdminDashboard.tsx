@@ -1232,6 +1232,44 @@ export function SchoolAdminDashboard() {
       });
   }, [dashboardViewAcademicYearId, indicatorLastSyncedAt, loadSubmissionsForYear, selectedSchoolId]);
 
+  const handleWorkspaceSubmissionHydrated = useCallback((submission: IndicatorSubmission) => {
+    const submissionSchoolId = resolveSubmissionSchoolId(submission);
+    const submissionAcademicYearId = String(submission.academicYear?.id ?? "").trim();
+
+    if (!selectedSchoolId || submissionSchoolId !== selectedSchoolId || !submissionAcademicYearId) {
+      return;
+    }
+
+    if (effectiveAcademicYearId && submissionAcademicYearId !== effectiveAcademicYearId) {
+      return;
+    }
+
+    if (!effectiveAcademicYearId) {
+      setDashboardViewAcademicYearId(submissionAcademicYearId);
+    }
+
+    setHydratedSubmittedReportSubmission((current) => resolveHydratedCurrentReportSubmissionCandidate(
+      current,
+      submission,
+      {
+        selectedSchoolId,
+        selectedAcademicYearId: submissionAcademicYearId,
+      },
+    ));
+    setDashboardViewSubmissions((current) => {
+      const submissionId = String(submission.id ?? "").trim();
+      const existing = current.find((entry) => String(entry.id ?? "").trim() === submissionId);
+      const nextSubmission = existing
+        ? preferFresherCurrentReportCandidate(existing, submission)
+        : submission;
+
+      return [
+        ...current.filter((entry) => String(entry.id ?? "").trim() !== submissionId),
+        nextSubmission,
+      ].sort(compareSelectedYearSchoolHeadCurrentReportSubmissions);
+    });
+  }, [effectiveAcademicYearId, selectedSchoolId]);
+
   useEffect(() => {
     clearActiveReportPreview();
     setActiveReportModalType(null);
@@ -1752,6 +1790,7 @@ export function SchoolAdminDashboard() {
           initialAcademicYearId={currentAcademicYearOption?.id ?? ""}
           selectedAcademicYearId={effectiveAcademicYearId}
           onAcademicYearChange={handleDashboardViewAcademicYearChange}
+          onWorkspaceSubmissionHydrated={handleWorkspaceSubmissionHydrated}
         />
       </section>
       </div>

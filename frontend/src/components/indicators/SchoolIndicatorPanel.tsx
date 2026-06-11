@@ -75,6 +75,7 @@ interface SchoolIndicatorPanelProps {
   initialAcademicYearId?: string;
   selectedAcademicYearId?: string;
   onAcademicYearChange?: (academicYearId: string) => void | Promise<void>;
+  onWorkspaceSubmissionHydrated?: (submission: IndicatorSubmission) => void;
 }
 
 const WORKSPACE_YEAR_STORAGE_KEY_PREFIX = "cspams:school-indicator-panel:workspace-year";
@@ -1501,6 +1502,7 @@ function SchoolIndicatorPanelComponent({
   initialAcademicYearId,
   selectedAcademicYearId,
   onAcademicYearChange,
+  onWorkspaceSubmissionHydrated,
 }: SchoolIndicatorPanelProps) {
   const { user, apiToken } = useAuth();
   const {
@@ -4663,6 +4665,7 @@ function SchoolIndicatorPanelComponent({
             setActiveWorkspaceSubmission(freshSaved);
             setEditingSubmissionId(freshSaved.id);
             rehydrateWorkspaceFromSubmission(freshSaved);
+            onWorkspaceSubmissionHydrated?.(freshSaved);
             setPendingLocalDraft(null);
             setAutosaveError("");
             const savedAt = new Date().toISOString();
@@ -5209,6 +5212,7 @@ function SchoolIndicatorPanelComponent({
             markRecentlyMaterializedWorkspaceSubmission(freshUpdated);
             setActiveWorkspaceSubmission(freshUpdated);
             setEditingSubmissionId(freshUpdated.id);
+            onWorkspaceSubmissionHydrated?.(freshUpdated);
             setPendingLocalDraft(null);
             setAutosaveError("");
             setServerAutosaveAt(freshUpdated.updatedAt ?? new Date().toISOString());
@@ -5233,7 +5237,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
+  }, [ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
