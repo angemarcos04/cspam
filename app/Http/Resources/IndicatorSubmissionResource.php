@@ -3,10 +3,14 @@
 namespace App\Http\Resources;
 
 use App\Models\IndicatorSubmission;
+use App\Support\Auth\ApiUserResolver;
+use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
+use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
+use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
@@ -19,14 +23,6 @@ class IndicatorSubmissionResource extends JsonResource
     public function toArray(Request $request): array
     {
         $itemCollection = $this->relationLoaded('items') ? $this->items : collect();
-        $totalIndicators = $itemCollection->count();
-        $metIndicators = $itemCollection->where('compliance_status', 'met')->count();
-        $belowTargetIndicators = $itemCollection->where('compliance_status', 'below_target')->count();
-        $recordedIndicators = $itemCollection->where('compliance_status', 'recorded')->count();
-        $comparableIndicators = $metIndicators + $belowTargetIndicators;
-        $complianceRate = $comparableIndicators > 0
-            ? round(($metIndicators / $comparableIndicators) * 100, 2)
-            : 0.0;
         /** @var SubmissionFileRequirementResolver $requirementResolver */
         $requirementResolver = app(SubmissionFileRequirementResolver::class);
         $hasImeta = $this->hasImetaFormData();
@@ -39,6 +35,17 @@ class IndicatorSubmissionResource extends JsonResource
         /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
         $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
         $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($this->resource);
+        $viewer = ApiUserResolver::fromRequest($request);
+        $redactUnsentMonitorData = $this->shouldRedactUnsentMonitorData(UserRoleResolver::has($viewer, UserRoleResolver::MONITOR));
+        $visibleItemCollection = $this->visibleItemsForViewer($itemCollection, $scopeProgress, $redactUnsentMonitorData);
+        $totalIndicators = $visibleItemCollection->count();
+        $metIndicators = $visibleItemCollection->where('compliance_status', 'met')->count();
+        $belowTargetIndicators = $visibleItemCollection->where('compliance_status', 'below_target')->count();
+        $recordedIndicators = $visibleItemCollection->where('compliance_status', 'recorded')->count();
+        $comparableIndicators = $metIndicators + $belowTargetIndicators;
+        $complianceRate = $comparableIndicators > 0
+            ? round(($metIndicators / $comparableIndicators) * 100, 2)
+            : 0.0;
 
         return [
             'id' => (string) $this->id,
@@ -74,7 +81,7 @@ class IndicatorSubmissionResource extends JsonResource
                 'recordedIndicators' => $recordedIndicators,
                 'complianceRatePercent' => $complianceRate,
             ],
-            'files' => $this->buildSubmissionFiles(),
+            'files' => $this->buildSubmissionFiles($scopeProgress, $redactUnsentMonitorData),
             // Legacy completion flags remain for compatibility. School Head package
             // presentation should prefer the normalized presentation.* contract below.
             'completion' => [
@@ -114,7 +121,7 @@ class IndicatorSubmissionResource extends JsonResource
                     'updatedAt' => optional($review->updated_at)->toISOString(),
                 ])->values()->all(),
             ),
-            'indicators' => IndicatorSubmissionItemResource::collection($itemCollection),
+            'indicators' => IndicatorSubmissionItemResource::collection($visibleItemCollection),
             'createdBy' => $this->when(
                 $this->relationLoaded('createdBy') && $this->createdBy,
                 fn (): array => [
@@ -168,24 +175,102 @@ class IndicatorSubmissionResource extends JsonResource
     /**
      * @return array<string, array<string, mixed>>
      */
-    private function buildSubmissionFiles(): array
+    private function buildSubmissionFiles(array $scopeProgress, bool $redactUnsentMonitorData): array
     {
         $files = [];
+        $monitorVisibleScopes = $this->monitorVisibleScopeSet($scopeProgress);
 
         foreach (SubmissionFileDefinition::types() as $type) {
             $uploaded = $this->hasSubmissionFileType($type);
+            $visible = ! $redactUnsentMonitorData || in_array($type, $monitorVisibleScopes, true);
+            $visibleUploaded = $uploaded && $visible;
             $files[$type] = [
                 'type' => $type,
-                'uploaded' => $uploaded,
-                'path' => $this->submissionFilePathForType($type),
-                'originalFilename' => $this->submissionFileOriginalNameForType($type),
-                'sizeBytes' => $this->submissionFileSizeForType($type),
-                'uploadedAt' => optional($this->submissionFileUploadedAtForType($type))->toISOString(),
-                'downloadUrl' => $uploaded ? "/api/submissions/{$this->id}/download/{$type}" : null,
-                'viewUrl' => $uploaded ? "/api/submissions/{$this->id}/view/{$type}" : null,
+                'uploaded' => $visibleUploaded,
+                'path' => $visibleUploaded ? $this->submissionFilePathForType($type) : null,
+                'originalFilename' => $visibleUploaded ? $this->submissionFileOriginalNameForType($type) : null,
+                'sizeBytes' => $visibleUploaded ? $this->submissionFileSizeForType($type) : null,
+                'uploadedAt' => $visibleUploaded ? optional($this->submissionFileUploadedAtForType($type))->toISOString() : null,
+                'downloadUrl' => $visibleUploaded ? "/api/submissions/{$this->id}/download/{$type}" : null,
+                'viewUrl' => $visibleUploaded ? "/api/submissions/{$this->id}/view/{$type}" : null,
             ];
         }
 
         return $files;
+    }
+
+    private function shouldRedactUnsentMonitorData(bool $isMonitorViewer): bool
+    {
+        if (! $isMonitorViewer) {
+            return false;
+        }
+
+        return in_array($this->statusValue($this->status), [
+            FormSubmissionStatus::DRAFT->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true);
+    }
+
+    /**
+     * @param Collection<int, mixed> $items
+     * @return Collection<int, mixed>
+     */
+    private function visibleItemsForViewer(Collection $items, array $scopeProgress, bool $redactUnsentMonitorData): Collection
+    {
+        if (! $redactUnsentMonitorData || $items->isEmpty()) {
+            return $items;
+        }
+
+        $visibleScopes = $this->monitorVisibleScopeSet($scopeProgress);
+        if ($visibleScopes === []) {
+            return $items->filter(static fn (): bool => false)->values();
+        }
+
+        $scopeByMetricCode = $this->scopeByMetricCode();
+
+        return $items
+            ->filter(static function ($item) use ($scopeByMetricCode, $visibleScopes): bool {
+                $metricCode = strtoupper(trim((string) ($item->metric?->code ?? '')));
+                if ($metricCode === '') {
+                    return false;
+                }
+
+                $scope = $scopeByMetricCode[$metricCode] ?? null;
+
+                return $scope !== null && in_array($scope, $visibleScopes, true);
+            })
+            ->values();
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function monitorVisibleScopeSet(array $scopeProgress): array
+    {
+        $submittedScopeIds = $scopeProgress['submittedScopeIds'] ?? [];
+        if (! is_array($submittedScopeIds)) {
+            return [];
+        }
+
+        return array_values(array_unique(array_filter(
+            array_map(static fn (mixed $scope): string => trim((string) $scope), $submittedScopeIds),
+            static fn (string $scope): bool => $scope !== '',
+        )));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function scopeByMetricCode(): array
+    {
+        $scopeByMetricCode = [];
+
+        foreach ([GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS, GroupBWorkspaceDefinition::KEY_PERFORMANCE] as $scope) {
+            foreach (GroupBWorkspaceDefinition::metricCodesFor($scope) as $metricCode) {
+                $scopeByMetricCode[strtoupper($metricCode)] = $scope;
+            }
+        }
+
+        return $scopeByMetricCode;
     }
 }

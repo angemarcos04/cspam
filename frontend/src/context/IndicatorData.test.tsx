@@ -285,6 +285,90 @@ describe("patchSubmissionWithLightweightPayload", () => {
     expect(patched.indicators).toHaveLength(1);
     expect(patched.indicators[0]?.metric?.code).toBe("IMETA_HEAD_NAME");
   });
+
+  it("preserves hydrated file metadata when lightweight payloads only report uploaded state", () => {
+    const current = {
+      id: "sub-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 1,
+      schoolId: "school-1",
+      schoolType: "public",
+      notes: null,
+      reviewNotes: null,
+      summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+      indicators: [],
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+        uploadedFileTypes: ["bmef"],
+        missingFileTypes: ["smea"],
+      },
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: "submissions/sub-1/bmef.pdf",
+          originalFilename: "signed-bmef.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-06-05T01:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+      },
+      submittedAt: null,
+      reviewedAt: null,
+      updatedAt: null,
+      createdAt: null,
+    } as never;
+
+    const patched = patchSubmissionWithLightweightPayload(current, {
+      id: "sub-1",
+      schoolId: "school-1",
+      schoolType: "public",
+      academicYearId: "ay-1",
+      reportingPeriod: "ANNUAL",
+      status: "draft",
+      version: 2,
+      notes: null,
+      submittedAt: null,
+      reviewedAt: null,
+      updatedAt: "2026-06-05T02:00:00.000Z",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+        uploadedFileTypes: ["bmef"],
+        missingFileTypes: ["smea"],
+      },
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    });
+
+    expect(patched.files?.bmef?.uploaded).toBe(true);
+    expect(patched.files?.bmef?.originalFilename).toBe("signed-bmef.pdf");
+    expect(patched.files?.bmef?.sizeBytes).toBe(4096);
+    expect(patched.files?.bmef?.uploadedAt).toBe("2026-06-05T01:00:00.000Z");
+    expect(patched.files?.bmef?.downloadUrl).toBe("/api/submissions/sub-1/download/bmef");
+    expect(patched.files?.bmef?.viewUrl).toBe("/api/submissions/sub-1/view/bmef");
+  });
 });
 
 describe("resolveIndicatorRealtimeSyncPlan", () => {

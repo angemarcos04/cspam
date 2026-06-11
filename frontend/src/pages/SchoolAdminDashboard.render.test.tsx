@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
 import type { IndicatorSubmission } from "@/types";
 
@@ -169,11 +169,16 @@ function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualVal
 describe("SchoolAdminDashboard submitted report view", () => {
   beforeEach(() => {
     cleanup();
+    vi.unstubAllGlobals();
     vi.clearAllMocks();
     window.sessionStorage.clear();
     refreshRecordsMock = vi.fn().mockResolvedValue(undefined);
     refreshSubmissionsMock = vi.fn().mockResolvedValue(undefined);
     refreshAllSubmissionsMock = vi.fn().mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it("keeps selected-year report truth stable even when broader cached submissions contain another finalized year", async () => {
@@ -823,6 +828,120 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Not met")).not.toBeNull();
     });
     expect(screen.queryByText("below_target")).toBeNull();
+  });
+
+  it("previews uploaded report files through authenticated fetch and downloads through the data helper", async () => {
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:report-preview"),
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn(),
+    });
+
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      blob: vi.fn(async () => new Blob(["report"], { type: "application/pdf" })),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const downloadSubmissionFile = vi.fn();
+    const submitted = buildSubmission({
+      id: "file-101",
+      schoolType: "public",
+      school: {
+        id: "school-1",
+        schoolCode: "401777",
+        name: "AMA CC - Santiago City",
+        type: "public",
+      },
+      completion: {
+        hasImetaFormData: true,
+        hasBmefFile: true,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["bmef", "smea"],
+        uploadedFileTypes: ["bmef"],
+        missingFileTypes: ["smea"],
+      },
+      presentation: {
+        activeFileTypes: ["bmef", "smea"],
+        activeReportFileTypes: ["bmef", "smea"],
+        activeWorkspaceFileTypes: ["bmef", "smea"],
+        secondaryHistoricalFileTypes: [],
+      },
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef-report.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-06-06T01:00:00.000Z",
+          downloadUrl: "/api/submissions/file-101/download/bmef",
+          viewUrl: "/api/submissions/file-101/view/bmef",
+        },
+      },
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "public",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile,
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /View BMEF Report/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalled();
+    });
+    const [fetchInput, requestInit] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    expect(String(fetchInput)).toContain("/api/submissions/file-101/view/bmef");
+    expect((requestInit.headers as Headers).get("Authorization")).toBe("Bearer token");
+
+    const preview = await screen.findByTitle("BMEF PDF preview");
+    expect(preview.getAttribute("src")).toBe("blob:report-preview");
+
+    fireEvent.click(screen.getByRole("button", { name: /Download/i }));
+    expect(downloadSubmissionFile).toHaveBeenCalledWith("file-101", "bmef");
   });
 
   it("uses Ctrl+R to refresh School Head dashboard data instead of forcing a browser reload", async () => {

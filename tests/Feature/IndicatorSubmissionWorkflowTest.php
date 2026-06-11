@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\AcademicYear;
+use App\Models\FormSubmissionHistory;
+use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
 use App\Models\Student;
@@ -1899,6 +1901,116 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ),
             'Final submitted package did not appear in the monitor submitted review list.',
         );
+    }
+
+    public function test_monitor_submission_resource_redacts_unsent_draft_values_until_scope_is_sent(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+                [
+                    'metric_code' => 'NER',
+                    'target' => ['values' => [$year => 100]],
+                    'actual' => ['values' => [$year => 95]],
+                ],
+            ],
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $schoolHeadShow = $this->withToken($schoolHeadToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $schoolHeadShow->assertOk();
+        $this->assertTrue(
+            collect($schoolHeadShow->json('data.indicators', []))->contains(
+                static fn (array $row): bool => data_get($row, 'metric.code') === 'IMETA_HEAD_NAME'
+                    && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
+            ),
+            'School Head show response did not include their own saved draft value.',
+        );
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowBeforeSend->assertOk()
+            ->assertJsonPath('data.summary.totalIndicators', 0)
+            ->assertJsonCount(0, 'data.indicators');
+
+        FormSubmissionHistory::query()->create([
+            'form_type' => IndicatorSubmission::FORM_TYPE,
+            'submission_id' => (int) $submissionId,
+            'school_id' => (int) $schoolHead->school_id,
+            'academic_year_id' => $academicYearId,
+            'action' => 'scope_submitted',
+            'from_status' => 'draft',
+            'to_status' => 'draft',
+            'actor_id' => $schoolHead->id,
+            'metadata' => ['targets' => [GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS]],
+            'created_at' => now(),
+        ]);
+
+        $monitorShowAfterSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterSend->assertOk();
+        $monitorCodes = collect($monitorShowAfterSend->json('data.indicators', []))
+            ->map(static fn (array $row): string => (string) data_get($row, 'metric.code'))
+            ->all();
+
+        $this->assertContains('IMETA_HEAD_NAME', $monitorCodes);
+        $this->assertNotContains('NER', $monitorCodes);
+    }
+
+    public function test_monitor_submission_resource_redacts_unsent_draft_file_urls_until_file_scope_is_sent(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf')
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true);
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowBeforeSend->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.bmef.originalFilename', null)
+            ->assertJsonPath('data.files.bmef.viewUrl', null)
+            ->assertJsonPath('data.files.bmef.downloadUrl', null);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $monitorShowAfterSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterSend->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-report.pdf')
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
+            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

@@ -731,6 +731,16 @@ function isSubItemMetric(label: string): boolean {
   return /^[a-e]\.\s/i.test(label);
 }
 
+function buildAuthenticatedReportPreviewEndpoint(relativeUrl: string): string {
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (/^https?:\/\//i.test(apiBaseUrl)) {
+    return new URL(relativeUrl, apiBaseUrl).toString();
+  }
+
+  return relativeUrl;
+}
+
 /* ── Component ── */
 export function SchoolAdminDashboard() {
   const { user, apiToken } = useAuth();
@@ -754,6 +764,8 @@ export function SchoolAdminDashboard() {
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
+  const [activeReportPreviewUrl, setActiveReportPreviewUrl] = useState<string | null>(null);
+  const [activeReportPreviewError, setActiveReportPreviewError] = useState("");
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
   const [hydratedSubmittedReportSubmission, setHydratedSubmittedReportSubmission] = useState<IndicatorSubmission | null>(null);
   const [isHydratingReportSubmission, setIsHydratingReportSubmission] = useState(false);
@@ -765,6 +777,28 @@ export function SchoolAdminDashboard() {
   const finalizedSubmissionRefreshRef = useRef("");
   const lastLoadedYearKeyRef = useRef("");
   const previousDashboardContextKeyRef = useRef("");
+  const activeReportPreviewUrlRef = useRef<string | null>(null);
+
+  const clearActiveReportPreview = useCallback(() => {
+    if (activeReportPreviewUrlRef.current) {
+      URL.revokeObjectURL(activeReportPreviewUrlRef.current);
+      activeReportPreviewUrlRef.current = null;
+    }
+
+    setActiveReportPreviewUrl(null);
+    setActiveReportPreviewError("");
+  }, []);
+
+  const setActiveReportPreviewObjectUrl = useCallback((url: string) => {
+    if (activeReportPreviewUrlRef.current) {
+      URL.revokeObjectURL(activeReportPreviewUrlRef.current);
+    }
+
+    activeReportPreviewUrlRef.current = url;
+    setActiveReportPreviewUrl(url);
+  }, []);
+
+  useEffect(() => () => clearActiveReportPreview(), [clearActiveReportPreview]);
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -844,8 +878,9 @@ export function SchoolAdminDashboard() {
     setHydratedSubmittedReportSubmission(null);
     setIsHydratingReportSubmission(false);
     setIsDashboardYearSwitching(false);
+    clearActiveReportPreview();
     setActiveReportModalType(null);
-  }, [dashboardContextKey]);
+  }, [clearActiveReportPreview, dashboardContextKey]);
 
   useEffect(() => {
     if (!groupAReportSourceSubmission?.id) {
@@ -1048,11 +1083,6 @@ export function SchoolAdminDashboard() {
     () => buildSchoolHeadCurrentReportSourceContext(groupAReportView.submission, selectedReportYearLabel),
     [groupAReportView.submission, selectedReportYearLabel],
   );
-  const submittedIndicatorRows = useMemo(
-    () => groupAReportView.indicators,
-    [groupAReportView],
-  );
-
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
     async () => runRefreshBatches(
@@ -1193,8 +1223,9 @@ export function SchoolAdminDashboard() {
   }, [dashboardViewAcademicYearId, indicatorLastSyncedAt, loadSubmissionsForYear, selectedSchoolId]);
 
   useEffect(() => {
+    clearActiveReportPreview();
     setActiveReportModalType(null);
-  }, [effectiveAcademicYearId, groupAReportSourceSubmission?.id]);
+  }, [clearActiveReportPreview, effectiveAcademicYearId, groupAReportSourceSubmission?.id]);
 
 
   /* ── Quick-jump scroll ── */
@@ -1219,8 +1250,9 @@ export function SchoolAdminDashboard() {
       const fileEntry = submission?.files?.[type] ?? null;
       if (!submission || !fileEntry?.uploaded) return;
 
-      const previewWindow = window.open("", "_blank", "noopener,noreferrer");
-      if (!previewWindow) return;
+      clearActiveReportPreview();
+      setActiveReportModalType(type);
+      setReportZoomLevel(1);
 
       try {
         const relativeUrl = fileEntry.viewUrl ?? fileEntry.downloadUrl;
@@ -1228,7 +1260,7 @@ export function SchoolAdminDashboard() {
           throw new Error("Preview URL is unavailable for this report.");
         }
 
-        const endpoint = new URL(relativeUrl, getApiBaseUrl()).toString();
+        const endpoint = buildAuthenticatedReportPreviewEndpoint(relativeUrl);
         const headers = new Headers({ Accept: "*/*" });
         if (apiToken !== COOKIE_SESSION_TOKEN) {
           headers.set("Authorization", `Bearer ${apiToken}`);
@@ -1246,41 +1278,25 @@ export function SchoolAdminDashboard() {
 
         const blob = await response.blob();
         const objectUrl = URL.createObjectURL(blob);
-        previewWindow.location.href = objectUrl;
-        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+        setActiveReportPreviewObjectUrl(objectUrl);
       } catch {
-        previewWindow.close();
-        await downloadSubmissionFile(submission.id, type);
+        setActiveReportPreviewError("Preview could not be loaded. Use Download to open the uploaded file.");
       }
     },
-    [apiToken, downloadSubmissionFile, groupAReportView],
+    [apiToken, clearActiveReportPreview, groupAReportView, setActiveReportPreviewObjectUrl],
   );
 
   const closeReportModal = useCallback(() => {
+    clearActiveReportPreview();
     setActiveReportModalType(null);
     setReportZoomLevel(1);
-  }, []);
+  }, [clearActiveReportPreview]);
 
   const handleDownloadActiveReport = useCallback(async () => {
     if (!activeReportModalType || !groupAReportView.submission) return;
-    const activeFile = activeReportFileEntry;
-
-    if (activeFile?.downloadUrl) {
-      const anchor = document.createElement("a");
-      anchor.href = activeFile.downloadUrl;
-      if (activeFile.originalFilename) {
-        anchor.download = activeFile.originalFilename;
-      }
-      anchor.target = "_blank";
-      anchor.rel = "noopener noreferrer";
-      document.body.appendChild(anchor);
-      anchor.click();
-      document.body.removeChild(anchor);
-      return;
-    }
 
     await downloadSubmissionFile(groupAReportView.submission.id, activeReportModalType);
-  }, [activeReportFileEntry, activeReportModalType, downloadSubmissionFile, groupAReportView]);
+  }, [activeReportModalType, downloadSubmissionFile, groupAReportView]);
 
   useEffect(() => {
     if (!activeReportModalType || typeof window === "undefined") return;
@@ -1676,54 +1692,39 @@ export function SchoolAdminDashboard() {
             </header>
 
             <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
-              {activeReportExtension === "pdf" && activeReportFileEntry.downloadUrl ? (
+              {activeReportPreviewError ? (
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                  {activeReportPreviewError}
+                </div>
+              ) : !activeReportPreviewUrl ? (
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                  Loading report preview...
+                </div>
+              ) : activeReportExtension === "pdf" ? (
                 <iframe
                   title={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} PDF preview`}
-                  src={activeReportFileEntry.downloadUrl}
+                  src={activeReportPreviewUrl}
                   className="h-full w-full rounded-sm border border-slate-300 bg-white"
                 />
               ) : activeReportExtension === "png" || activeReportExtension === "jpg" || activeReportExtension === "jpeg" || activeReportExtension === "webp" || activeReportExtension === "gif" ? (
                 <div className="h-full overflow-auto rounded-sm border border-slate-300 bg-white p-4">
                   <img
-                    src={activeReportFileEntry.downloadUrl ?? ""}
+                    src={activeReportPreviewUrl}
                     alt={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} report`}
                     className="max-w-none origin-top-left"
                     style={{ transform: `scale(${reportZoomLevel})` }}
                   />
                 </div>
               ) : activeReportExtension === "xlsx" || activeReportExtension === "xls" || activeReportExtension === "csv" ? (
-                <div className="h-full overflow-auto rounded-sm border border-slate-300 bg-white">
-                  <table className="min-w-full">
-                    <thead className="sticky top-0 z-10 bg-slate-50">
-                      <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                        <th className="px-3 py-2 text-left">Indicator</th>
-                        <th className="px-3 py-2 text-right">Target</th>
-                        <th className="px-3 py-2 text-right">Actual</th>
-                        <th className="px-3 py-2 text-center">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {submittedIndicatorRows.map((item) => (
-                        <tr key={`modal-${item.id}`} className="border-b border-slate-100 text-sm text-slate-800">
-                          <td className="px-3 py-2">{item.metric?.name ?? "Untitled indicator"}</td>
-                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "target", selectedReportYearLabel)}</td>
-                          <td className="px-3 py-2 text-right">{resolveIndicatorValue(item, "actual", selectedReportYearLabel)}</td>
-                          <td className="px-3 py-2 text-center">{formatComplianceStatusLabel(item.complianceStatus)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                  Spreadsheet preview is not available in the browser. Use Download to open the uploaded file.
                 </div>
-              ) : activeReportFileEntry.downloadUrl ? (
+              ) : (
                 <iframe
                   title={`${activeReportDefinition?.shortLabel ?? activeReportModalType.toUpperCase()} report preview`}
-                  src={activeReportFileEntry.downloadUrl}
+                  src={activeReportPreviewUrl}
                   className="h-full w-full rounded-sm border border-slate-300 bg-white"
                 />
-              ) : (
-                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white text-sm font-semibold text-slate-600">
-                  Preview unavailable for this file.
-                </div>
               )}
             </div>
           </section>

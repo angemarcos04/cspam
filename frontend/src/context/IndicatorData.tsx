@@ -20,6 +20,7 @@ import type {
   GroupBWorkspaceResetTarget,
   IndicatorMetric,
   IndicatorSubmission,
+  IndicatorSubmissionFileEntry,
   IndicatorSubmissionFiles,
   IndicatorSubmissionFileType,
   IndicatorSubmissionScopeReview,
@@ -408,6 +409,68 @@ function hasSubmissionRows(submission: IndicatorSubmission | null | undefined): 
     : Array.isArray(submission?.indicators) && submission.indicators.length > 0;
 }
 
+function mergeSubmissionFileEntryPreservingDetails(
+  existing: IndicatorSubmissionFileEntry | undefined,
+  incoming: IndicatorSubmissionFileEntry,
+  submissionId: string,
+  type: IndicatorSubmissionFileType,
+): IndicatorSubmissionFileEntry {
+  if (!incoming.uploaded) {
+    return {
+      ...incoming,
+      type,
+      uploaded: false,
+      path: null,
+      originalFilename: null,
+      sizeBytes: null,
+      uploadedAt: null,
+      downloadUrl: null,
+      viewUrl: null,
+    };
+  }
+
+  return {
+    ...existing,
+    ...incoming,
+    type,
+    uploaded: true,
+    path: incoming.path ?? existing?.path ?? null,
+    originalFilename: incoming.originalFilename ?? existing?.originalFilename ?? null,
+    sizeBytes: incoming.sizeBytes ?? existing?.sizeBytes ?? null,
+    uploadedAt: incoming.uploadedAt ?? existing?.uploadedAt ?? null,
+    downloadUrl: incoming.downloadUrl ?? existing?.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`,
+    viewUrl: incoming.viewUrl ?? existing?.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`,
+  };
+}
+
+function mergeSubmissionFilesPreservingDetails(
+  existing: IndicatorSubmissionFiles | undefined,
+  incoming: IndicatorSubmissionFiles | undefined,
+  submissionId: string,
+): IndicatorSubmissionFiles | undefined {
+  if (!existing && !incoming) {
+    return undefined;
+  }
+
+  const merged: IndicatorSubmissionFiles = { ...(existing ?? {}) };
+
+  for (const type of SUBMISSION_FILE_TYPES) {
+    if (!incoming || !Object.prototype.hasOwnProperty.call(incoming, type)) {
+      continue;
+    }
+
+    const incomingEntry = incoming[type];
+    if (!incomingEntry) {
+      delete merged[type];
+      continue;
+    }
+
+    merged[type] = mergeSubmissionFileEntryPreservingDetails(existing?.[type], incomingEntry, submissionId, type);
+  }
+
+  return merged;
+}
+
 function deriveUploadedFileTypeSet(completion: {
   hasBmefFile: boolean;
   hasSmeaFile: boolean;
@@ -468,15 +531,21 @@ export function mergeSubmissionPreservingDetails(
     return incoming;
   }
 
+  const files = mergeSubmissionFilesPreservingDetails(existing.files, incoming.files, incoming.id);
+
   if (!hasSubmissionRows(incoming) && hasSubmissionRows(existing)) {
     return {
       ...incoming,
       indicators: existing.indicators,
       items: existing.items ?? existing.indicators,
+      files,
     };
   }
 
-  return incoming;
+  return {
+    ...incoming,
+    files,
+  };
 }
 
 export function patchSubmissionWithLightweightPayload(
@@ -507,7 +576,7 @@ export function patchSubmissionWithLightweightPayload(
       }
     : existingCompletion;
   const nextFiles: IndicatorSubmission["files"] = patch.files
-    ? patch.files
+    ? mergeSubmissionFilesPreservingDetails(current.files, patch.files, patch.id)
     : (nextCompletion && current.files)
       ? SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
           const currentEntry = current.files?.[type];
