@@ -404,9 +404,10 @@ function isLightweightSubmission(
 }
 
 function hasSubmissionRows(submission: IndicatorSubmission | null | undefined): boolean {
-  return Array.isArray(submission?.items)
-    ? submission.items.length > 0
-    : Array.isArray(submission?.indicators) && submission.indicators.length > 0;
+  return (
+    (Array.isArray(submission?.items) && submission.items.length > 0)
+    || (Array.isArray(submission?.indicators) && submission.indicators.length > 0)
+  );
 }
 
 function mergeSubmissionFileEntryPreservingDetails(
@@ -534,10 +535,13 @@ export function mergeSubmissionPreservingDetails(
   const files = mergeSubmissionFilesPreservingDetails(existing.files, incoming.files, incoming.id);
 
   if (!hasSubmissionRows(incoming) && hasSubmissionRows(existing)) {
+    const preservedRows = Array.isArray(existing.items) && existing.items.length > 0
+      ? existing.items
+      : existing.indicators;
     return {
       ...incoming,
-      indicators: existing.indicators,
-      items: existing.items ?? existing.indicators,
+      indicators: preservedRows,
+      items: preservedRows,
       files,
     };
   }
@@ -1129,7 +1133,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         throwIfAborted(signal);
 
         if (buildAllSubmissionsVersionKey() === requestVersionKey) {
-          setAllSubmissions(rows);
+          setAllSubmissions((current) => mergeSubmissionsPreservingFreshest(current, rows));
         }
       } finally {
         allSubmissionsLoadingCountRef.current = Math.max(0, allSubmissionsLoadingCountRef.current - 1);

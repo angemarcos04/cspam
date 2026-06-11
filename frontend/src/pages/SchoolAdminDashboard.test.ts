@@ -10,6 +10,7 @@ import {
   resolveSelectedYearCurrentReportContextSubmissions,
   resolveSchoolAdminHeaderContext,
 } from "@/pages/SchoolAdminDashboard";
+import { mergeSubmissionPreservingDetails } from "@/context/IndicatorData";
 import {
   buildSchoolHeadCurrentReportBlankStateLines,
   buildSchoolHeadCurrentReportSourceContext,
@@ -309,6 +310,85 @@ describe("resolveSelectedYearCurrentReportContextSubmissions", () => {
     );
 
     expect(result.map((entry) => entry.id)).toEqual(["draft-2", "draft-1"]);
+  });
+});
+
+describe("mergeSubmissionPreservingDetails", () => {
+  it("keeps hydrated saved indicator rows when a lightweight refresh row arrives", () => {
+    const hydratedDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      updatedAt: "2026-05-02T00:00:00.000Z",
+      indicators: [
+        {
+          id: "item-1",
+          metric: {
+            id: "metric-1",
+            code: "IMETA_ENROLL_TOTAL",
+            name: "TOTAL NUMBER OF ENROLMENT",
+            category: "school_achievements_learning_outcomes",
+            framework: "imeta",
+            dataType: "yearly_matrix",
+          },
+          actualValue: 2024,
+          complianceStatus: "recorded",
+        },
+      ] as IndicatorSubmissionItem[],
+      items: [],
+    });
+    const lightweightDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      version: 2,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+      indicators: [],
+      items: [],
+    });
+
+    const result = mergeSubmissionPreservingDetails(hydratedDraft, lightweightDraft);
+
+    expect(result.version).toBe(2);
+    expect(result.indicators?.[0]?.actualValue).toBe(2024);
+    expect(result.items?.[0]?.actualValue).toBe(2024);
+  });
+
+  it("keeps hydrated file metadata when a lightweight refresh row has no file details", () => {
+    const hydratedDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: null,
+          originalFilename: "bmef.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-02T00:00:00.000Z",
+          downloadUrl: "/api/submissions/draft-1/download/bmef",
+          viewUrl: "/api/submissions/draft-1/view/bmef",
+        },
+      },
+    });
+    const lightweightDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      version: 2,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+      files: undefined,
+      indicators: [],
+      items: [],
+    });
+
+    const result = mergeSubmissionPreservingDetails(hydratedDraft, lightweightDraft);
+
+    expect(result.version).toBe(2);
+    expect(result.files?.bmef?.uploaded).toBe(true);
+    expect(result.files?.bmef?.originalFilename).toBe("bmef.pdf");
+    expect(result.files?.bmef?.viewUrl).toBe("/api/submissions/draft-1/view/bmef");
   });
 });
 
