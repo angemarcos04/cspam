@@ -1563,7 +1563,7 @@ export function SchoolAdminDashboard() {
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
               <div className="flex flex-col gap-1">
                 <span className="inline-block border-l-[3px] border-primary-600 pl-3">
-                  {groupAReportView.sourceMode === "workspace_preview" ? "Saved Workspace Preview" : "Submitted Report Package"}
+                  {groupAReportView.sourceMode === "workspace_preview" ? "TARGETS-MET" : "Submitted Report Package"}
                 </span>
                 {groupAReportView.submission && groupAReportView.totalIndicators > 0 && (
                   <span className="pl-3 text-xs font-medium text-slate-500">

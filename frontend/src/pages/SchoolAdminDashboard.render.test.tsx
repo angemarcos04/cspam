@@ -348,7 +348,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Saved Workspace Preview")).not.toBeNull();
+      expect(screen.getByText("TARGETS-MET")).not.toBeNull();
     });
     expect(screen.getByText("Source package: #draft-101 (Draft).")).not.toBeNull();
     expect(screen.getByText("Saved locally for this school account. Not sent to the monitor until final submit.")).not.toBeNull();
@@ -441,7 +441,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("Source package: #draft-202 (Draft).")).not.toBeNull();
     });
-    expect(screen.getByText("Saved Workspace Preview")).not.toBeNull();
+    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
     expect(screen.getByText("9,999")).not.toBeNull();
     expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
     expect(loadSubmissionsForYear).toHaveBeenCalledWith("school-1", "year-2");
