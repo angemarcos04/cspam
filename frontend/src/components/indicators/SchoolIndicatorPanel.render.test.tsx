@@ -717,6 +717,125 @@ describe("SchoolIndicatorPanel batch submit", () => {
     });
     expect(screen.queryByText("Unable to save indicator package.")).toBeNull();
   }, 10_000);
+
+  it("hydrates the full workspace package after uploading a report file", async () => {
+    const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
+    const uploadSubmissionFile = vi.fn().mockResolvedValue({
+      ...buildHydratedSubmission("submission-1"),
+      updatedAt: "2026-05-22T10:00:00.000Z",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: true,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    });
+    const fetchSubmission = vi.fn().mockResolvedValue({
+      ...buildHydratedSubmission("submission-1"),
+      updatedAt: "2026-05-22T10:00:00.000Z",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: true,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "hydrated-fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-22T10:00:00.000Z",
+          downloadUrl: "/api/submissions/submission-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/submission-1/view/fm_qad_001",
+        },
+      },
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [{
+        ...buildHydratedSubmission("submission-1"),
+        completion: {
+          hasImetaFormData: false,
+          hasBmefFile: false,
+          hasSmeaFile: false,
+          isComplete: false,
+          requiredFileTypes: ["fm_qad_001"],
+          uploadedFileTypes: [],
+          missingFileTypes: ["fm_qad_001"],
+        },
+        scopeProgress: {
+          requiredScopeIds: ["fm_qad_001"],
+          submittedScopeIds: [],
+          pendingScopeIds: ["fm_qad_001"],
+          submittedRequiredScopeCount: 0,
+          totalRequiredScopeCount: 1,
+        },
+      }],
+      allSubmissions: [],
+      metrics: [],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions,
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
+      fetchSubmission,
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile,
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
+      loadHistory: vi.fn(),
+    });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    fireEvent.click(await within(view.container).findByRole("button", { name: /FM-QAD-001/i }));
+    fireEvent.click(await within(view.container).findByRole("button", { name: /Upload FM-QAD-001/i }));
+
+    const fileInput = view.container.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error("Expected the hidden file input to be rendered.");
+    }
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["report"], "fm-qad-001.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    await waitFor(() => {
+      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File));
+    });
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("submission-1");
+    });
+    expect(await screen.findByText(/hydrated-fm-qad-001\.pdf/i)).not.toBeNull();
+    expect(refreshSubmissions).not.toHaveBeenCalled();
+  }, 10_000);
 });
 
 describe("SchoolIndicatorPanel reset", () => {

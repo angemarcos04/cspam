@@ -5197,20 +5197,21 @@ function SchoolIndicatorPanelComponent({
             }
             return updated;
           },
-          onSuccess: (updated) => {
-            if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== updated.id) {
+          onSuccess: async (updated) => {
+            const freshUpdated = await fetchFreshWorkspaceSubmission(updated);
+            if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== freshUpdated.id) {
               throw new Error("The workspace changed before this file action completed. No stale changes were applied. Re-select the academic year and try again.");
             }
             preserveLocalWorkspaceAfterMutationRef.current = {
               academicYearId: activeAcademicYearIdRef.current,
-              submissionId: updated.id,
+              submissionId: freshUpdated.id,
             };
-            markRecentlyMaterializedWorkspaceSubmission(updated);
-            setActiveWorkspaceSubmission(updated);
-            setEditingSubmissionId(updated.id);
+            markRecentlyMaterializedWorkspaceSubmission(freshUpdated);
+            setActiveWorkspaceSubmission(freshUpdated);
+            setEditingSubmissionId(freshUpdated.id);
             setPendingLocalDraft(null);
             setAutosaveError("");
-            setServerAutosaveAt(updated.updatedAt ?? new Date().toISOString());
+            setServerAutosaveAt(freshUpdated.updatedAt ?? new Date().toISOString());
             setUploadingFileType(null);
             setUploadErrorByType((current) => ({ ...current, [type]: "" }));
           },
@@ -5232,7 +5233,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [ensureWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
+  }, [ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, runCriticalWorkspaceMutation, runGroupBAction, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {

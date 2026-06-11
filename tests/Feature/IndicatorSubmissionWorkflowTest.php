@@ -1522,6 +1522,13 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
             ->assertOk();
 
+        $monitorShowReturnedEdit = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowReturnedEdit->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.bmef.originalFilename', null)
+            ->assertJsonPath('data.files.bmef.viewUrl', null)
+            ->assertJsonPath('data.files.bmef.downloadUrl', null);
+
         $unsentReturnedEdit = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
             'scopeId' => 'bmef',
             'decision' => 'verified',
@@ -1534,6 +1541,13 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'targets' => ['bmef'],
         ])->assertOk()
             ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
+
+        $monitorShowResentEdit = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowResentEdit->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf')
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
+            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
 
         $resentReview = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
             'scopeId' => 'bmef',
