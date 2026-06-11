@@ -37,7 +37,9 @@ import {
   schoolHeadCurrentReportRecencyScore,
   resolveStableSchoolHeadCurrentReportViewSubmission,
   resolveSchoolHeadCurrentReportSubmissionForView,
+  submissionFilesHaveRenderableReportDetails,
   submissionHasRenderableIndicatorDetails,
+  submissionHasRenderableReportDetails,
   submissionRows,
 } from "@/pages/schoolAdminSubmittedReportView";
 import {
@@ -280,19 +282,27 @@ function mergeCurrentReportCandidateDetails(
     return preferred;
   }
 
-  if (
-    submissionHasRenderableIndicatorDetails(preferred)
-    || !submissionHasRenderableIndicatorDetails(alternate)
-  ) {
-    return preferred;
-  }
+  const preferredHasRows = submissionHasRenderableIndicatorDetails(preferred);
+  const alternateHasRows = submissionHasRenderableIndicatorDetails(alternate);
+  const preferredHasFiles = submissionFilesHaveRenderableReportDetails(preferred.files);
+  const alternateHasFiles = submissionFilesHaveRenderableReportDetails(alternate.files);
+  const preferredScore = schoolHeadCurrentReportRecencyScore(preferred);
+  const alternateScore = schoolHeadCurrentReportRecencyScore(alternate);
+
+  const rowsSource = preferredHasRows || !alternateHasRows ? preferred : alternate;
+  const filesSource = preferredHasFiles || !alternateHasFiles || preferredScore > alternateScore
+    ? preferred
+    : alternate;
 
   return {
     ...preferred,
-    indicators: alternate.indicators,
-    items: Array.isArray(alternate.items) && alternate.items.length > 0
-      ? alternate.items
-      : alternate.indicators,
+    indicators: rowsSource.indicators,
+    items: Array.isArray(rowsSource.items) && rowsSource.items.length > 0
+      ? rowsSource.items
+      : rowsSource.indicators,
+    files: filesSource.files ?? preferred.files,
+    completion: filesSource.completion ?? preferred.completion,
+    presentation: filesSource.presentation ?? preferred.presentation,
   };
 }
 
@@ -312,8 +322,8 @@ function preferFresherCurrentReportCandidate(
     return mergeCurrentReportCandidateDetails(existing, incoming);
   }
 
-  const existingHasDetails = submissionHasRenderableIndicatorDetails(existing);
-  const incomingHasDetails = submissionHasRenderableIndicatorDetails(incoming);
+  const existingHasDetails = submissionHasRenderableReportDetails(existing);
+  const incomingHasDetails = submissionHasRenderableReportDetails(incoming);
 
   if (incomingHasDetails && !existingHasDetails) {
     return incoming;
@@ -911,7 +921,7 @@ export function SchoolAdminDashboard() {
     }
 
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
-    setIsHydratingReportSubmission(!submissionHasRenderableIndicatorDetails(groupAReportSourceSubmission));
+    setIsHydratingReportSubmission(!submissionHasRenderableReportDetails(groupAReportSourceSubmission));
     void fetchSubmission(submissionId)
       .then((submission) => {
         if (!cancelled && submission.id === submissionId) {
@@ -1027,7 +1037,7 @@ export function SchoolAdminDashboard() {
   const isCurrentReportHydratingDetails = Boolean(
     groupAReportSourceSubmission
     && isHydratingReportSubmission
-    && !submissionHasRenderableIndicatorDetails(groupAReportView.submission),
+    && !submissionHasRenderableReportDetails(groupAReportView.submission),
   );
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({

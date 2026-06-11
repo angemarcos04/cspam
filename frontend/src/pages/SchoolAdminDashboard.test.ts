@@ -565,6 +565,68 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
     expect(result?.id).toBe("submitted-2");
     expect(result?.indicators?.[0]?.actualValue).toBe(2024);
   });
+
+  it("preserves hydrated file metadata when same-submission lightweight rows have no indicators", () => {
+    const hydratedFileSubmission = submission({
+      id: "draft-file-1",
+      status: "draft",
+      statusLabel: "Draft",
+      academicYear: { id: "year-1", name: "2025-2026" },
+      updatedAt: "2026-05-02T00:00:00.000Z",
+      indicators: [],
+      items: [],
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-05-02T00:00:00.000Z",
+          downloadUrl: "/api/submissions/draft-file-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/draft-file-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      presentation: {
+        activeFileTypes: ["fm_qad_001"],
+        activeReportFileTypes: ["fm_qad_001"],
+        activeWorkspaceFileTypes: ["fm_qad_001"],
+        secondaryHistoricalFileTypes: [],
+      },
+    });
+    const lightweightRefreshRow = submission({
+      id: "draft-file-1",
+      status: "draft",
+      statusLabel: "Draft",
+      academicYear: { id: "year-1", name: "2025-2026" },
+      updatedAt: "2026-05-02T00:00:00.000Z",
+      indicators: [],
+      items: [],
+      files: undefined,
+    });
+
+    const result = resolveHydratedCurrentReportSubmissionCandidate(
+      hydratedFileSubmission,
+      lightweightRefreshRow,
+      {
+        selectedSchoolId: "",
+        selectedAcademicYearId: "year-1",
+      },
+    );
+
+    expect(result?.id).toBe("draft-file-1");
+    expect(result?.files?.fm_qad_001?.uploaded).toBe(true);
+    expect(result?.files?.fm_qad_001?.originalFilename).toBe("fm-qad-001.pdf");
+  });
 });
 
 describe("buildSchoolAdminRefreshBatches", () => {
@@ -1019,6 +1081,46 @@ describe("resolveStableSchoolHeadCurrentReportViewSubmission", () => {
         },
       ],
       items: [],
+    });
+
+    const result = resolveStableSchoolHeadCurrentReportViewSubmission(selected, hydrated, {
+      selectedSchoolId: "school-1",
+      selectedAcademicYearId: "year-1",
+    });
+
+    expect(result).toBe(hydrated);
+  });
+
+  it("hydrates a file-only draft into the School Head workspace preview", () => {
+    const selected = submission({
+      id: "submission-file-1",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [],
+      items: [],
+      schoolId: "school-1",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const hydrated = submission({
+      id: "submission-file-1",
+      status: "draft",
+      statusLabel: "Draft",
+      schoolId: "school-1",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+      indicators: [],
+      items: [],
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-05-01T00:00:00.000Z",
+          downloadUrl: "/api/submissions/submission-file-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/submission-file-1/view/fm_qad_001",
+        },
+      },
     });
 
     const result = resolveStableSchoolHeadCurrentReportViewSubmission(selected, hydrated, {

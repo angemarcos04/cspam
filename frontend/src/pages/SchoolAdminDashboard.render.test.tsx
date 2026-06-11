@@ -1070,6 +1070,142 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(downloadSubmissionFile).toHaveBeenCalledWith("private-file-101", "fm_qad_001");
   });
 
+  it("hydrates file-only private FM-QAD report metadata before rendering preview cards", async () => {
+    const lightweightDraft = buildSubmission({
+      id: "private-file-only-101",
+      status: "draft",
+      statusLabel: "Draft",
+      schoolType: "private",
+      indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-06-06T01:00:00.000Z",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+        uploadedFileTypes: [],
+        missingFileTypes: ["fm_qad_001", "fm_qad_002"],
+      },
+      presentation: {
+        activeFileTypes: ["fm_qad_001", "fm_qad_002"],
+        activeReportFileTypes: ["fm_qad_001", "fm_qad_002"],
+        activeWorkspaceFileTypes: ["fm_qad_001", "fm_qad_002"],
+        secondaryHistoricalFileTypes: [],
+      },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+        fm_qad_002: {
+          type: "fm_qad_002",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    });
+    const hydratedDraft = buildSubmission({
+      ...lightweightDraft,
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001", "fm_qad_002"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: ["fm_qad_002"],
+      },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-06-06T01:00:00.000Z",
+          downloadUrl: "/api/submissions/private-file-only-101/download/fm_qad_001",
+          viewUrl: "/api/submissions/private-file-only-101/view/fm_qad_001",
+        },
+        fm_qad_002: {
+          type: "fm_qad_002",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    });
+    const fetchSubmission = vi.fn(async () => hydratedDraft);
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [lightweightDraft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission,
+      loadSubmissionsForYear: vi.fn(async () => [lightweightDraft]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("private-file-only-101");
+    });
+    expect(await screen.findByText("fm-qad-001.pdf")).not.toBeNull();
+    expect((screen.getByRole("button", { name: /View FM-QAD-001 Report/i }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("uses Ctrl+R to refresh School Head dashboard data instead of forcing a browser reload", async () => {
     const submitted = buildSubmission({
       id: "refresh-101",

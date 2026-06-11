@@ -2154,6 +2154,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.bmef.viewUrl', null)
             ->assertJsonPath('data.files.bmef.downloadUrl', null);
 
+        $this->withToken($monitorToken)
+            ->get("/api/submissions/{$submissionId}/view/bmef")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
+        $this->withToken($monitorToken)
+            ->get("/api/submissions/{$submissionId}/download/bmef")
+            ->assertStatus(Response::HTTP_FORBIDDEN);
+
         $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
         ])->assertOk();
@@ -2164,6 +2172,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-report.pdf')
             ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
             ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
+
+        $this->withToken($monitorToken)
+            ->get("/api/submissions/{$submissionId}/view/bmef")
+            ->assertOk();
+
+        $this->withToken($monitorToken)
+            ->get("/api/submissions/{$submissionId}/download/bmef")
+            ->assertOk();
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

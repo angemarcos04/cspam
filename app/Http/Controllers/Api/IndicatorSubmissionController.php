@@ -585,7 +585,6 @@ class IndicatorSubmissionController extends Controller
     public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)
     {
         $user = $this->requireUser($request);
-        $this->assertCanView($user, $submission->school_id);
 
         $fileType = strtolower(trim($type));
         if (! SubmissionFileDefinition::isValidType($fileType)) {
@@ -593,6 +592,7 @@ class IndicatorSubmissionController extends Controller
                 'type' => 'Download type is invalid.',
             ]);
         }
+        $this->assertCanViewFile($user, $submission, $fileType);
 
         $path = $this->filePathForType($submission, $fileType);
         $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
@@ -611,7 +611,6 @@ class IndicatorSubmissionController extends Controller
     public function viewFile(Request $request, IndicatorSubmission $submission, string $type)
     {
         $user = $this->requireUser($request);
-        $this->assertCanView($user, $submission->school_id);
 
         $fileType = strtolower(trim($type));
         if (! SubmissionFileDefinition::isValidType($fileType)) {
@@ -619,6 +618,7 @@ class IndicatorSubmissionController extends Controller
                 'type' => 'View type is invalid.',
             ]);
         }
+        $this->assertCanViewFile($user, $submission, $fileType);
 
         $path = $this->filePathForType($submission, $fileType);
         $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
@@ -1322,6 +1322,36 @@ class IndicatorSubmissionController extends Controller
         }
 
         abort(Response::HTTP_FORBIDDEN, 'You are not allowed to access this indicator submission.');
+    }
+
+    private function assertCanViewFile(User $user, IndicatorSubmission $submission, string $fileType): void
+    {
+        if ($this->isSchoolHead($user) && (int) $user->school_id === (int) $submission->school_id) {
+            return;
+        }
+
+        if (! $this->isMonitor($user)) {
+            abort(Response::HTTP_FORBIDDEN, 'You are not allowed to access this indicator submission file.');
+        }
+
+        $status = $this->statusValue($submission->status);
+        if (in_array($status, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+        ], true)) {
+            return;
+        }
+
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+        $submittedScopeIds = $scopeProgress['submittedScopeIds'] ?? [];
+
+        if (is_array($submittedScopeIds) && in_array($fileType, $submittedScopeIds, true)) {
+            return;
+        }
+
+        abort(Response::HTTP_FORBIDDEN, 'This file is not visible to monitors until it is sent or submitted.');
     }
 
     private function assertCanSubmit(User $user, int $schoolId): void

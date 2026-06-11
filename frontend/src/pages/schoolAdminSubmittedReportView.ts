@@ -5,6 +5,7 @@ import {
 } from "@/utils/submissionRequirements";
 import type {
   IndicatorSubmission,
+  IndicatorSubmissionFiles,
   IndicatorSubmissionItem,
 } from "@/types";
 
@@ -226,6 +227,26 @@ export function submissionHasRenderableIndicatorDetails(submission: IndicatorSub
   });
 }
 
+export function submissionFilesHaveRenderableReportDetails(files: IndicatorSubmissionFiles | null | undefined): boolean {
+  return Object.values(files ?? {}).some((entry) => {
+    if (!entry) {
+      return false;
+    }
+
+    return Boolean(
+      entry.uploaded
+      || String(entry.originalFilename ?? "").trim()
+      || String(entry.viewUrl ?? "").trim()
+      || String(entry.downloadUrl ?? "").trim(),
+    );
+  });
+}
+
+export function submissionHasRenderableReportDetails(submission: IndicatorSubmission | null | undefined): boolean {
+  return submissionHasRenderableIndicatorDetails(submission)
+    || submissionFilesHaveRenderableReportDetails(submission?.files);
+}
+
 export function resolveStableSubmittedReportViewSubmission(
   selectedSubmission: IndicatorSubmission | null | undefined,
   hydratedSubmission: IndicatorSubmission | null | undefined,
@@ -245,7 +266,7 @@ export function resolveStableSubmittedReportViewSubmission(
     eligibleHydratedSubmission
     && preferredSubmission
     && eligibleHydratedSubmission.id === preferredSubmission.id
-    && submissionHasRenderableIndicatorDetails(eligibleHydratedSubmission)
+    && submissionHasRenderableReportDetails(eligibleHydratedSubmission)
   ) {
     return eligibleHydratedSubmission;
   }
@@ -272,7 +293,7 @@ export function resolveStableSchoolHeadCurrentReportViewSubmission(
     eligibleHydratedSubmission
     && preferredSubmission
     && eligibleHydratedSubmission.id === preferredSubmission.id
-    && submissionHasRenderableIndicatorDetails(eligibleHydratedSubmission)
+    && submissionHasRenderableReportDetails(eligibleHydratedSubmission)
   ) {
     return eligibleHydratedSubmission;
   }
