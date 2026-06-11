@@ -1214,6 +1214,23 @@ describe("resolveCurrentReportIndicatorByGroupAKey", () => {
     expect(result?.id).toBe("1");
   });
 
+  it("supports backend-approved legacy SALO rows for the school head name line", () => {
+    const result = resolveCurrentReportIndicatorByGroupAKey(
+      [
+        indicator({
+          id: "legacy-school-head",
+          metricCode: "SALO",
+          metricName: "School Achievement and Learning Outcomes",
+          actualTypedValue: { values: { "2025-2026": "Angelie D. Marcos" } },
+        }),
+      ],
+      "schoolAchievement",
+      "school_head_name",
+    );
+
+    expect(result?.id).toBe("legacy-school-head");
+  });
+
   it("falls back to the scoped Group A metric name aliases when the code-only match is unavailable", () => {
     const result = resolveCurrentReportIndicatorByGroupAKey(
       [

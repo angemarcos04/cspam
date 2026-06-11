@@ -610,6 +610,13 @@ const GROUP_A_METRIC_CODES = {
   },
 } as const;
 
+const GROUP_A_METRIC_CODE_ALIASES = {
+  schoolAchievement: {
+    school_head_name: ["SALO"],
+  },
+  kpi: {},
+} as const;
+
 const GROUP_A_NORMALIZED_METRIC_CODES = {
   schoolAchievement: Object.fromEntries(
     Object.entries(GROUP_A_METRIC_CODES.schoolAchievement).map(([key, code]) => [
@@ -704,9 +711,24 @@ export function resolveCurrentReportIndicatorByGroupAKey(
       : GROUP_A_NORMALIZED_METRIC_CODES.kpi;
   const expectedMetricCode = groupCodeMappings[key];
 
+  const groupAliasMappings: Record<string, readonly string[] | undefined> =
+    group === "schoolAchievement"
+      ? GROUP_A_METRIC_CODE_ALIASES.schoolAchievement
+      : GROUP_A_METRIC_CODE_ALIASES.kpi;
+  const expectedMetricCodes = new Set<string>();
   if (expectedMetricCode) {
+    expectedMetricCodes.add(expectedMetricCode);
+  }
+  for (const alias of groupAliasMappings[key] ?? []) {
+    const normalizedAlias = normalizeMetricLookupKey(alias);
+    if (normalizedAlias) {
+      expectedMetricCodes.add(normalizedAlias);
+    }
+  }
+
+  if (expectedMetricCodes.size > 0) {
     const exactCodeMatches = indicators.filter((indicator) => (
-      normalizeMetricLookupKey(indicator.metric?.code) === expectedMetricCode
+      expectedMetricCodes.has(normalizeMetricLookupKey(indicator.metric?.code))
     ));
 
     if (exactCodeMatches.length === 1) {

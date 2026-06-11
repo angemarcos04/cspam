@@ -156,6 +156,9 @@ function buildEnrollmentIndicatorWithVariantYearLabel(value: number) {
 }
 
 function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualValue" | "complianceStatus", number | string | null>>) {
+  const targetValue = typeof overrides?.targetValue === "number" ? overrides.targetValue : 96;
+  const actualValue = typeof overrides?.actualValue === "number" ? overrides.actualValue : 94;
+
   return {
     id: "kpi-ner",
     metric: {
@@ -166,10 +169,51 @@ function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualVal
       framework: "targets_met",
       dataType: "yearly_matrix",
     },
-    targetValue: typeof overrides?.targetValue === "number" ? overrides.targetValue : 96,
-    actualValue: typeof overrides?.actualValue === "number" ? overrides.actualValue : 94,
+    targetValue,
+    actualValue,
+    targetTypedValue: {
+      values: {
+        "2025-2026": targetValue,
+        "2026-2027": 999,
+      },
+    },
+    actualTypedValue: {
+      values: {
+        "2025-2026": actualValue,
+        "2026-2027": 888,
+      },
+    },
     varianceValue: -2,
     complianceStatus: typeof overrides?.complianceStatus === "string" ? overrides.complianceStatus : "below_target",
+    remarks: null,
+  };
+}
+
+function buildLegacySaloIndicator(value: string) {
+  return {
+    id: "legacy-salo",
+    metric: {
+      id: "SALO",
+      code: "SALO",
+      name: "School Achievement and Learning Outcomes",
+      category: "school_achievements_learning_outcomes",
+      framework: "imeta",
+      dataType: "yearly_matrix",
+      inputSchema: {
+        valueType: "text",
+        years: ["2025-2026"],
+      },
+    },
+    targetValue: null,
+    actualValue: null,
+    varianceValue: null,
+    actualTypedValue: {
+      values: {
+        "2025-2026": value,
+      },
+    },
+    actualDisplay: `2025-2026: ${value}`,
+    complianceStatus: "recorded",
     remarks: null,
   };
 }
@@ -859,6 +903,68 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("2,024")).not.toBeNull();
     });
+  });
+
+  it("renders backend-approved legacy SALO values in TARGETS-MET school achievement rows", async () => {
+    const currentSubmission = buildSubmission({
+      id: "legacy-salo-101",
+      academicYear: { id: "year-1", name: "2025-2026" },
+      indicators: [buildLegacySaloIndicator("Angelie D. Marcos")],
+      items: [],
+      submittedAt: null,
+      status: "draft",
+      statusLabel: "Draft",
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [currentSubmission],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => currentSubmission),
+      loadSubmissionsForYear: vi.fn(async () => [currentSubmission]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Angelie D. Marcos")).not.toBeNull();
+    });
+    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
   });
 
   it("renders production KPI compliance labels instead of raw backend enums", async () => {
