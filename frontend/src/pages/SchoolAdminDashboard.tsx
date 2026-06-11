@@ -121,23 +121,19 @@ export function resolveInitialSchoolHeadReportAcademicYearId(
   years: Array<{ id: string; isCurrent?: boolean }>,
   storedAcademicYearId: string | null | undefined,
   preferredSavedAcademicYearId: string | null | undefined,
-  hasManualStoredSelection: boolean,
+  _hasManualStoredSelection: boolean,
 ): string {
   const normalizedStoredAcademicYearId = String(storedAcademicYearId ?? "").trim();
-  if (
-    hasManualStoredSelection
-    && normalizedStoredAcademicYearId
-    && years.some((year) => year.id === normalizedStoredAcademicYearId)
-  ) {
-    return normalizedStoredAcademicYearId;
-  }
-
   const normalizedPreferredSavedAcademicYearId = String(preferredSavedAcademicYearId ?? "").trim();
   if (
     normalizedPreferredSavedAcademicYearId
     && years.some((year) => year.id === normalizedPreferredSavedAcademicYearId)
   ) {
     return normalizedPreferredSavedAcademicYearId;
+  }
+
+  if (normalizedStoredAcademicYearId && years.some((year) => year.id === normalizedStoredAcademicYearId)) {
+    return normalizedStoredAcademicYearId;
   }
 
   return resolveInitialSubmittedReportAcademicYearId(years, "");
@@ -290,9 +286,7 @@ function mergeCurrentReportCandidateDetails(
   const alternateScore = schoolHeadCurrentReportRecencyScore(alternate);
 
   const rowsSource = preferredHasRows || !alternateHasRows ? preferred : alternate;
-  const filesSource = preferredHasFiles || !alternateHasFiles || preferredScore > alternateScore
-    ? preferred
-    : alternate;
+  const filesSource = preferredHasFiles || !alternateHasFiles ? preferred : alternate;
 
   return {
     ...preferred,
@@ -912,7 +906,15 @@ export function SchoolAdminDashboard() {
     setIsDashboardYearSwitching(false);
     clearActiveReportPreview();
     setActiveReportModalType(null);
-  }, [clearActiveReportPreview, dashboardContextKey]);
+    if (typeof window !== "undefined") {
+      if (dashboardYearSelectionStorageKey) {
+        window.sessionStorage.removeItem(dashboardYearSelectionStorageKey);
+      }
+      if (dashboardYearManualStorageKey) {
+        window.sessionStorage.removeItem(dashboardYearManualStorageKey);
+      }
+    }
+  }, [clearActiveReportPreview, dashboardContextKey, dashboardYearManualStorageKey, dashboardYearSelectionStorageKey]);
 
   useEffect(() => {
     if (!groupAReportSourceSubmission?.id) {
@@ -1263,7 +1265,11 @@ export function SchoolAdminDashboard() {
     }
 
     if (effectiveAcademicYearId && submissionAcademicYearId !== effectiveAcademicYearId) {
-      return;
+      if (hasManualDashboardYearSelectionRef.current) {
+        return;
+      }
+      setDashboardViewAcademicYearId(submissionAcademicYearId);
+      lastLoadedYearKeyRef.current = "";
     }
 
     if (!effectiveAcademicYearId) {

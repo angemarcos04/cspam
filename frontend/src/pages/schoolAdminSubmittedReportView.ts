@@ -247,6 +247,33 @@ export function submissionHasRenderableReportDetails(submission: IndicatorSubmis
     || submissionFilesHaveRenderableReportDetails(submission?.files);
 }
 
+function mergeHydratedReportDetailsForSameSubmission(
+  selectedSubmission: IndicatorSubmission,
+  hydratedSubmission: IndicatorSubmission,
+): IndicatorSubmission {
+  if (!submissionHasRenderableReportDetails(selectedSubmission)) {
+    return hydratedSubmission;
+  }
+
+  const selectedRows = submissionRows(selectedSubmission);
+  const hydratedRows = submissionRows(hydratedSubmission);
+  const rowsSource = hydratedRows.length > 0 ? hydratedSubmission : selectedSubmission;
+  const filesSource = submissionFilesHaveRenderableReportDetails(hydratedSubmission.files)
+    ? hydratedSubmission
+    : selectedSubmission;
+
+  return {
+    ...selectedSubmission,
+    indicators: rowsSource.indicators,
+    items: Array.isArray(rowsSource.items) && rowsSource.items.length > 0
+      ? rowsSource.items
+      : rowsSource.indicators,
+    files: filesSource.files ?? selectedSubmission.files,
+    completion: filesSource.completion ?? selectedSubmission.completion,
+    presentation: filesSource.presentation ?? selectedSubmission.presentation,
+  };
+}
+
 export function resolveStableSubmittedReportViewSubmission(
   selectedSubmission: IndicatorSubmission | null | undefined,
   hydratedSubmission: IndicatorSubmission | null | undefined,
@@ -257,6 +284,15 @@ export function resolveStableSubmittedReportViewSubmission(
 ): IndicatorSubmission | null {
   const eligibleSelectedSubmission = resolveSubmittedReportSubmissionForView(selectedSubmission, options);
   const eligibleHydratedSubmission = resolveSubmittedReportSubmissionForView(hydratedSubmission, options);
+
+  if (
+    eligibleSelectedSubmission
+    && eligibleHydratedSubmission
+    && String(eligibleSelectedSubmission.id ?? "").trim() === String(eligibleHydratedSubmission.id ?? "").trim()
+    && submissionHasRenderableReportDetails(eligibleHydratedSubmission)
+  ) {
+    return mergeHydratedReportDetailsForSameSubmission(eligibleSelectedSubmission, eligibleHydratedSubmission);
+  }
 
   const preferredSubmission = resolveSelectedYearReportSubmission(
     [eligibleSelectedSubmission, eligibleHydratedSubmission].filter((entry): entry is IndicatorSubmission => Boolean(entry)),
@@ -284,6 +320,15 @@ export function resolveStableSchoolHeadCurrentReportViewSubmission(
 ): IndicatorSubmission | null {
   const eligibleSelectedSubmission = resolveSchoolHeadCurrentReportSubmissionForView(selectedSubmission, options);
   const eligibleHydratedSubmission = resolveSchoolHeadCurrentReportSubmissionForView(hydratedSubmission, options);
+
+  if (
+    eligibleSelectedSubmission
+    && eligibleHydratedSubmission
+    && String(eligibleSelectedSubmission.id ?? "").trim() === String(eligibleHydratedSubmission.id ?? "").trim()
+    && submissionHasRenderableReportDetails(eligibleHydratedSubmission)
+  ) {
+    return mergeHydratedReportDetailsForSameSubmission(eligibleSelectedSubmission, eligibleHydratedSubmission);
+  }
 
   const preferredSubmission = resolveSelectedYearSchoolHeadCurrentReportSubmission(
     [eligibleSelectedSubmission, eligibleHydratedSubmission].filter((entry): entry is IndicatorSubmission => Boolean(entry)),

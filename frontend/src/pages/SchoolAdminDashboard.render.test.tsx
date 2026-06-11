@@ -234,7 +234,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps selected-year report truth stable even when broader cached submissions contain another finalized year", async () => {
+  it("ignores stale manual-year storage on fresh login and restores the latest saved package year", async () => {
     const yearOneSubmission = buildSubmission({
       id: "101",
       academicYear: { id: "year-1", name: "2025-2026" },
@@ -312,20 +312,20 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #101 (Submitted).")).not.toBeNull();
+      expect(screen.getByText("Source package: #202 (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("Submitted Report Package")).not.toBeNull();
-    expect(screen.getByText("1,515")).not.toBeNull();
-    expect(screen.queryByText("Source package: #202 (Submitted).")).toBeNull();
+    expect(screen.getByText("9,999")).not.toBeNull();
+    expect(screen.queryByText("Source package: #101 (Submitted).")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Academic year filter"), {
-      target: { value: "year-2" },
+      target: { value: "year-1" },
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #202 (Submitted).")).not.toBeNull();
+      expect(screen.getByText("Source package: #101 (Submitted).")).not.toBeNull();
     });
-    expect(screen.getByText("9,999")).not.toBeNull();
+    expect(screen.getByText("1,515")).not.toBeNull();
   });
 
   it("shows a newer saved draft in Report View as a workspace preview", async () => {

@@ -245,13 +245,13 @@ describe("resolveInitialSchoolHeadReportAcademicYearId", () => {
     expect(result).toBe("year-2");
   });
 
-  it("keeps a manually stored academic year when it is valid", () => {
+  it("prefers the latest saved package year over stale manual storage on fresh init", () => {
     const result = resolveInitialSchoolHeadReportAcademicYearId([
       { id: "year-1", isCurrent: true },
       { id: "year-2", isCurrent: false },
     ], "year-1", "year-2", true);
 
-    expect(result).toBe("year-1");
+    expect(result).toBe("year-2");
   });
 });
 
@@ -389,6 +389,53 @@ describe("mergeSubmissionPreservingDetails", () => {
     expect(result.files?.bmef?.uploaded).toBe(true);
     expect(result.files?.bmef?.originalFilename).toBe("bmef.pdf");
     expect(result.files?.bmef?.viewUrl).toBe("/api/submissions/draft-1/view/bmef");
+  });
+
+  it("keeps hydrated file metadata when a lightweight refresh row reports a blank file placeholder", () => {
+    const hydratedDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-05-02T00:00:00.000Z",
+          downloadUrl: "/api/submissions/draft-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/draft-1/view/fm_qad_001",
+        },
+      },
+    });
+    const lightweightDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      version: 2,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+      indicators: [],
+      items: [],
+    });
+
+    const result = mergeSubmissionPreservingDetails(hydratedDraft, lightweightDraft);
+
+    expect(result.version).toBe(2);
+    expect(result.files?.fm_qad_001?.uploaded).toBe(true);
+    expect(result.files?.fm_qad_001?.originalFilename).toBe("fm-qad-001.pdf");
   });
 });
 

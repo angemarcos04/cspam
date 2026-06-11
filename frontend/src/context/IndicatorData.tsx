@@ -417,6 +417,25 @@ function mergeSubmissionFileEntryPreservingDetails(
   type: IndicatorSubmissionFileType,
 ): IndicatorSubmissionFileEntry {
   if (!incoming.uploaded) {
+    const incomingHasFileDetails = Boolean(
+      incoming.path
+      || incoming.originalFilename
+      || incoming.sizeBytes
+      || incoming.uploadedAt
+      || incoming.downloadUrl
+      || incoming.viewUrl,
+    );
+
+    if (existing?.uploaded && !incomingHasFileDetails) {
+      return {
+        ...existing,
+        type,
+        uploaded: true,
+        downloadUrl: existing.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`,
+        viewUrl: existing.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`,
+      };
+    }
+
     return {
       ...incoming,
       type,
