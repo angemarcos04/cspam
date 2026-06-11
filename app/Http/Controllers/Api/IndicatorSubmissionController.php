@@ -864,12 +864,7 @@ class IndicatorSubmissionController extends Controller
         $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
             ? $scopeProgress['submittedScopeIds']
             : [];
-        $isSentDraftScope = $fromStatus === FormSubmissionStatus::DRAFT->value
-            && in_array($scopeId, $submittedScopeIds, true);
-        if (! $isSentDraftScope && ! in_array($fromStatus, [
-            FormSubmissionStatus::SUBMITTED->value,
-            FormSubmissionStatus::RETURNED->value,
-        ], true)) {
+        if (! in_array($scopeId, $submittedScopeIds, true)) {
             throw ValidationException::withMessages([
                 'submission' => 'Only sent indicator scopes can be reviewed.',
             ]);
