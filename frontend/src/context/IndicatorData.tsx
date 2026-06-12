@@ -23,6 +23,7 @@ import type {
   IndicatorSubmissionFileEntry,
   IndicatorSubmissionFiles,
   IndicatorSubmissionFileType,
+  IndicatorSubmissionItem,
   IndicatorSubmissionScopeReview,
   FormSubmissionHistoryEntry,
   IndicatorSubmissionPayload,
@@ -91,6 +92,7 @@ interface IndicatorHistoryResponse {
 
 interface SubmissionMutationOptions {
   backgroundSync?: boolean;
+  resetWorkspace?: GroupBWorkspaceResetTarget | null;
 }
 
 interface LightweightIndicatorSubmission {
@@ -410,11 +412,31 @@ function hasSubmissionRows(submission: IndicatorSubmission | null | undefined): 
   );
 }
 
+function isSubmissionFileType(value: string | null | undefined): value is IndicatorSubmissionFileType {
+  return Boolean(value && SUBMISSION_FILE_TYPES.includes(value as IndicatorSubmissionFileType));
+}
+
+function normalizeIndicatorCategory(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isIndicatorInResetWorkspace(
+  indicator: IndicatorSubmissionItem,
+  workspace: GroupBWorkspaceResetTarget | null | undefined,
+): boolean {
+  if (!workspace || isSubmissionFileType(workspace)) {
+    return false;
+  }
+
+  return normalizeIndicatorCategory(indicator.metric?.category) === workspace;
+}
+
 function mergeSubmissionFileEntryPreservingDetails(
   existing: IndicatorSubmissionFileEntry | undefined,
   incoming: IndicatorSubmissionFileEntry,
   submissionId: string,
   type: IndicatorSubmissionFileType,
+  resetWorkspace?: GroupBWorkspaceResetTarget | null,
 ): IndicatorSubmissionFileEntry {
   if (!incoming.uploaded) {
     const incomingHasFileDetails = Boolean(
@@ -426,7 +448,7 @@ function mergeSubmissionFileEntryPreservingDetails(
       || incoming.viewUrl,
     );
 
-    if (existing?.uploaded && !incomingHasFileDetails) {
+    if (existing?.uploaded && !incomingHasFileDetails && resetWorkspace !== type) {
       return {
         ...existing,
         type,
@@ -467,6 +489,7 @@ function mergeSubmissionFilesPreservingDetails(
   existing: IndicatorSubmissionFiles | undefined,
   incoming: IndicatorSubmissionFiles | undefined,
   submissionId: string,
+  resetWorkspace?: GroupBWorkspaceResetTarget | null,
 ): IndicatorSubmissionFiles | undefined {
   if (!existing && !incoming) {
     return undefined;
@@ -485,7 +508,7 @@ function mergeSubmissionFilesPreservingDetails(
       continue;
     }
 
-    merged[type] = mergeSubmissionFileEntryPreservingDetails(existing?.[type], incomingEntry, submissionId, type);
+    merged[type] = mergeSubmissionFileEntryPreservingDetails(existing?.[type], incomingEntry, submissionId, type, resetWorkspace);
   }
 
   return merged;
@@ -574,6 +597,7 @@ export function mergeSubmissionPreservingDetails(
 export function patchSubmissionWithLightweightPayload(
   current: IndicatorSubmission,
   patch: LightweightIndicatorSubmission,
+  options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
 ): IndicatorSubmission {
   const existingCompletion = current.completion;
   const schoolId = String(patch.schoolId ?? current.schoolId ?? current.school?.id ?? "").trim() || null;
@@ -599,7 +623,7 @@ export function patchSubmissionWithLightweightPayload(
       }
     : existingCompletion;
   const nextFiles: IndicatorSubmission["files"] = patch.files
-    ? mergeSubmissionFilesPreservingDetails(current.files, patch.files, patch.id)
+    ? mergeSubmissionFilesPreservingDetails(current.files, patch.files, patch.id, options.resetWorkspace)
     : (nextCompletion && current.files)
       ? SUBMISSION_FILE_TYPES.reduce<NonNullable<IndicatorSubmission["files"]>>((accumulator, type) => {
           const currentEntry = current.files?.[type];
@@ -624,6 +648,13 @@ export function patchSubmissionWithLightweightPayload(
         }, { ...current.files })
       : current.files;
 
+  const currentRows = Array.isArray(current.items) && current.items.length > 0
+    ? current.items
+    : current.indicators;
+  const nextRows = options.resetWorkspace && !isSubmissionFileType(options.resetWorkspace)
+    ? currentRows.filter((indicator) => !isIndicatorInResetWorkspace(indicator, options.resetWorkspace))
+    : currentRows;
+
   return {
     ...current,
     status: patch.status ?? current.status,
@@ -641,6 +672,8 @@ export function patchSubmissionWithLightweightPayload(
     scopeProgress: patch.scopeProgress ?? current.scopeProgress,
     scopeReviews: patch.scopeReviews ?? current.scopeReviews,
     files: nextFiles,
+    indicators: nextRows,
+    items: nextRows,
     academicYear: patch.academicYear?.id
       ? {
           id: patch.academicYear.id,
@@ -1200,7 +1233,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(new Date().toISOString());
   }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
 
-  const patchSubmissionLocally = useCallback((patch: LightweightIndicatorSubmission) => {
+  const patchSubmissionLocally = useCallback((
+    patch: LightweightIndicatorSubmission,
+    options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
+  ) => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
@@ -1215,7 +1251,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       if (!existing) {
         return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
       }
-      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch));
+      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch, options));
     });
 
     setAllSubmissions((current) => {
@@ -1228,7 +1264,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
       }
 
-      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch));
+      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch, options));
     });
 
     setLastSyncedAt(new Date().toISOString());
@@ -1408,7 +1444,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       try {
         const submission = await action();
         if (isLightweightSubmission(submission)) {
-          patchSubmissionLocally(submission);
+          patchSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
           const materialized = materializeSubmissionFromLightweightPayload(submission);
           if (shouldBackgroundSync) {
             void syncSubmissions(true);
@@ -1639,7 +1675,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           body: { workspace },
         });
         return response.data;
-      }, { backgroundSync: false });
+      }, { backgroundSync: false, resetWorkspace: workspace });
     },
     [runSubmissionMutation, token],
   );

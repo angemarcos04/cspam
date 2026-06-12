@@ -38,6 +38,18 @@ class IndicatorSubmissionResource extends JsonResource
         $viewer = ApiUserResolver::fromRequest($request);
         $redactUnsentMonitorData = $this->shouldRedactUnsentMonitorData(UserRoleResolver::has($viewer, UserRoleResolver::MONITOR));
         $visibleItemCollection = $this->visibleItemsForViewer($itemCollection, $scopeProgress, $redactUnsentMonitorData);
+        $completion = $this->buildCompletionPayload(
+            $hasImeta,
+            $hasBmef,
+            $hasSmea,
+            $requirementResolver->isSubmissionComplete($this->resource),
+            $requiredFileTypes,
+            $uploadedFileTypes,
+            $missingFileTypes,
+            $scopeProgress,
+            $visibleItemCollection,
+            $redactUnsentMonitorData,
+        );
         $totalIndicators = $visibleItemCollection->count();
         $metIndicators = $visibleItemCollection->where('compliance_status', 'met')->count();
         $belowTargetIndicators = $visibleItemCollection->where('compliance_status', 'below_target')->count();
@@ -84,15 +96,7 @@ class IndicatorSubmissionResource extends JsonResource
             'files' => $this->buildSubmissionFiles($scopeProgress, $redactUnsentMonitorData),
             // Legacy completion flags remain for compatibility. School Head package
             // presentation should prefer the normalized presentation.* contract below.
-            'completion' => [
-                'hasImetaFormData' => $hasImeta,
-                'hasBmefFile' => $hasBmef,
-                'hasSmeaFile' => $hasSmea,
-                'isComplete' => $requirementResolver->isSubmissionComplete($this->resource),
-                'requiredFileTypes' => $requiredFileTypes,
-                'uploadedFileTypes' => $uploadedFileTypes,
-                'missingFileTypes' => $missingFileTypes,
-            ],
+            'completion' => $completion,
             // Canonical School Head package meaning. Active/private-vs-public screens
             // should use these normalized fields instead of inferring from raw history.
             'presentation' => [
@@ -197,6 +201,55 @@ class IndicatorSubmissionResource extends JsonResource
         }
 
         return $files;
+    }
+
+    /**
+     * @param list<string> $requiredFileTypes
+     * @param list<string> $uploadedFileTypes
+     * @param list<string> $missingFileTypes
+     * @param Collection<int, mixed> $visibleItems
+     * @return array<string, mixed>
+     */
+    private function buildCompletionPayload(
+        bool $hasImeta,
+        bool $hasBmef,
+        bool $hasSmea,
+        bool $isComplete,
+        array $requiredFileTypes,
+        array $uploadedFileTypes,
+        array $missingFileTypes,
+        array $scopeProgress,
+        Collection $visibleItems,
+        bool $redactUnsentMonitorData,
+    ): array {
+        if (! $redactUnsentMonitorData) {
+            return [
+                'hasImetaFormData' => $hasImeta,
+                'hasBmefFile' => $hasBmef,
+                'hasSmeaFile' => $hasSmea,
+                'isComplete' => $isComplete,
+                'requiredFileTypes' => $requiredFileTypes,
+                'uploadedFileTypes' => $uploadedFileTypes,
+                'missingFileTypes' => $missingFileTypes,
+            ];
+        }
+
+        $visibleScopes = $this->monitorVisibleScopeSet($scopeProgress);
+        $visibleUploadedFileTypes = array_values(array_filter(
+            $uploadedFileTypes,
+            static fn (string $type): bool => in_array($type, $visibleScopes, true),
+        ));
+        $visibleMissingFileTypes = array_values(array_diff($requiredFileTypes, $visibleUploadedFileTypes));
+
+        return [
+            'hasImetaFormData' => $hasImeta && $visibleItems->isNotEmpty(),
+            'hasBmefFile' => $hasBmef && in_array('bmef', $visibleScopes, true),
+            'hasSmeaFile' => $hasSmea && in_array('smea', $visibleScopes, true),
+            'isComplete' => $visibleItems->isNotEmpty() && $visibleMissingFileTypes === [],
+            'requiredFileTypes' => $requiredFileTypes,
+            'uploadedFileTypes' => $visibleUploadedFileTypes,
+            'missingFileTypes' => $visibleMissingFileTypes,
+        ];
     }
 
     private function shouldRedactUnsentMonitorData(bool $isMonitorViewer): bool

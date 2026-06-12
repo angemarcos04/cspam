@@ -12,7 +12,10 @@ let refreshSubmissionsMock = vi.fn();
 let refreshAllSubmissionsMock = vi.fn();
 let schoolIndicatorPanelPropsMock: {
   selectedAcademicYearId?: string;
-  onWorkspaceSubmissionHydrated?: (submission: IndicatorSubmission) => void;
+  onWorkspaceSubmissionHydrated?: (
+    submission: IndicatorSubmission,
+    meta?: { source?: "optimistic" | "hydrated" },
+  ) => void;
 } | null = null;
 
 vi.mock("@/context/Auth", () => ({
@@ -38,7 +41,10 @@ vi.mock("@/components/DashboardHelpDialog", () => ({
 vi.mock("@/components/indicators/SchoolIndicatorPanel", () => ({
   SchoolIndicatorPanel: (props: {
     selectedAcademicYearId?: string;
-    onWorkspaceSubmissionHydrated?: (submission: IndicatorSubmission) => void;
+    onWorkspaceSubmissionHydrated?: (
+      submission: IndicatorSubmission,
+      meta?: { source?: "optimistic" | "hydrated" },
+    ) => void;
   }) => {
     schoolIndicatorPanelPropsMock = props;
     return <div data-testid="workspace-panel" data-selected-academic-year-id={props.selectedAcademicYearId ?? ""} />;

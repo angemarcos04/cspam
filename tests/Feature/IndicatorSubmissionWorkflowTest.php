@@ -2041,6 +2041,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowBeforeSend->assertOk()
             ->assertJsonPath('data.summary.totalIndicators', 0)
+            ->assertJsonPath('data.completion.hasImetaFormData', false)
             ->assertJsonCount(0, 'data.indicators');
 
         FormSubmissionHistory::query()->create([
@@ -2064,6 +2065,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->assertContains('IMETA_HEAD_NAME', $monitorCodes);
         $this->assertNotContains('NER', $monitorCodes);
+        $this->assertTrue((bool) $monitorShowAfterSend->json('data.completion.hasImetaFormData'));
     }
 
     public function test_monitor_submission_resource_exposes_only_sent_kpi_scope(): void
@@ -2100,6 +2102,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowBeforeSend->assertOk()
             ->assertJsonPath('data.summary.totalIndicators', 0)
+            ->assertJsonPath('data.completion.hasImetaFormData', false)
             ->assertJsonCount(0, 'data.indicators');
 
         FormSubmissionHistory::query()->create([
@@ -2123,6 +2126,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->assertContains('NER', $monitorCodes);
         $this->assertNotContains('IMETA_HEAD_NAME', $monitorCodes);
+        $this->assertTrue((bool) $monitorShowAfterSend->json('data.completion.hasImetaFormData'));
     }
 
     public function test_monitor_submission_resource_redacts_unsent_draft_file_urls_until_file_scope_is_sent(): void
@@ -2152,7 +2156,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.bmef.uploaded', false)
             ->assertJsonPath('data.files.bmef.originalFilename', null)
             ->assertJsonPath('data.files.bmef.viewUrl', null)
-            ->assertJsonPath('data.files.bmef.downloadUrl', null);
+            ->assertJsonPath('data.files.bmef.downloadUrl', null)
+            ->assertJsonPath('data.completion.hasBmefFile', false)
+            ->assertJsonPath('data.completion.uploadedFileTypes', []);
 
         $this->withToken($monitorToken)
             ->get("/api/submissions/{$submissionId}/view/bmef")
@@ -2171,7 +2177,9 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.bmef.uploaded', true)
             ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-report.pdf')
             ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
-            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
+            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef")
+            ->assertJsonPath('data.completion.hasBmefFile', true)
+            ->assertJsonPath('data.completion.uploadedFileTypes', ['bmef']);
 
         $this->withToken($monitorToken)
             ->get("/api/submissions/{$submissionId}/view/bmef")

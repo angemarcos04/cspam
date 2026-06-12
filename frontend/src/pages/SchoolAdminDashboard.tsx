@@ -1256,15 +1256,22 @@ export function SchoolAdminDashboard() {
       });
   }, [dashboardViewAcademicYearId, indicatorLastSyncedAt, loadSubmissionsForYear, selectedSchoolId]);
 
-  const handleWorkspaceSubmissionHydrated = useCallback((submission: IndicatorSubmission) => {
+  const handleWorkspaceSubmissionHydrated = useCallback((
+    submission: IndicatorSubmission,
+    meta?: { source?: "optimistic" | "hydrated" },
+  ) => {
     const submissionSchoolId = resolveSubmissionSchoolId(submission);
     const submissionAcademicYearId = String(submission.academicYear?.id ?? "").trim();
+    const source = meta?.source ?? "hydrated";
 
     if (!selectedSchoolId || submissionSchoolId !== selectedSchoolId || !submissionAcademicYearId) {
       return;
     }
 
     if (effectiveAcademicYearId && submissionAcademicYearId !== effectiveAcademicYearId) {
+      if (source === "optimistic") {
+        return;
+      }
       if (hasManualDashboardYearSelectionRef.current) {
         return;
       }
@@ -1272,7 +1279,7 @@ export function SchoolAdminDashboard() {
       lastLoadedYearKeyRef.current = "";
     }
 
-    if (!effectiveAcademicYearId) {
+    if (!effectiveAcademicYearId && source === "hydrated") {
       setDashboardViewAcademicYearId(submissionAcademicYearId);
     }
 

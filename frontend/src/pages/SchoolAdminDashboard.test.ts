@@ -10,7 +10,7 @@ import {
   resolveSelectedYearCurrentReportContextSubmissions,
   resolveSchoolAdminHeaderContext,
 } from "@/pages/SchoolAdminDashboard";
-import { mergeSubmissionPreservingDetails } from "@/context/IndicatorData";
+import { mergeSubmissionPreservingDetails, patchSubmissionWithLightweightPayload } from "@/context/IndicatorData";
 import {
   buildSchoolHeadCurrentReportBlankStateLines,
   buildSchoolHeadCurrentReportSourceContext,
@@ -436,6 +436,124 @@ describe("mergeSubmissionPreservingDetails", () => {
     expect(result.version).toBe(2);
     expect(result.files?.fm_qad_001?.uploaded).toBe(true);
     expect(result.files?.fm_qad_001?.originalFilename).toBe("fm-qad-001.pdf");
+  });
+
+  it("allows an explicit file reset to clear only the reset file metadata", () => {
+    const hydratedDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-05-02T00:00:00.000Z",
+          downloadUrl: "/api/submissions/draft-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/draft-1/view/fm_qad_001",
+        },
+        fm_qad_002: {
+          type: "fm_qad_002",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-002.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-05-02T00:00:00.000Z",
+          downloadUrl: "/api/submissions/draft-1/download/fm_qad_002",
+          viewUrl: "/api/submissions/draft-1/view/fm_qad_002",
+        },
+      },
+    });
+    const resetEcho: Parameters<typeof patchSubmissionWithLightweightPayload>[1] = {
+      id: "draft-1",
+      schoolId: "school-1",
+      academicYearId: "year-1",
+      reportingPeriod: "ANNUAL",
+      status: "draft",
+      version: 2,
+      notes: null,
+      submittedAt: null,
+      reviewedAt: null,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    };
+
+    const result = patchSubmissionWithLightweightPayload(hydratedDraft, resetEcho, { resetWorkspace: "fm_qad_001" });
+
+    expect(result.files?.fm_qad_001?.uploaded).toBe(false);
+    expect(result.files?.fm_qad_001?.originalFilename).toBeNull();
+    expect(result.files?.fm_qad_002?.uploaded).toBe(true);
+    expect(result.files?.fm_qad_002?.originalFilename).toBe("fm-qad-002.pdf");
+  });
+
+  it("allows an explicit section reset to clear only that section's rows", () => {
+    const hydratedDraft = submission({
+      id: "draft-1",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [
+        {
+          id: "achievement-row",
+          metric: {
+            id: "metric-1",
+            code: "IMETA_ENROLL_TOTAL",
+            name: "TOTAL NUMBER OF ENROLMENT",
+            category: "school_achievements_learning_outcomes",
+            framework: "imeta",
+            dataType: "yearly_matrix",
+          },
+          actualValue: 2024,
+          complianceStatus: "recorded",
+        },
+        {
+          id: "kpi-row",
+          metric: {
+            id: "metric-2",
+            code: "NER",
+            name: "Net Enrollment Rate",
+            category: "key_performance_indicators",
+            framework: "kpi",
+            dataType: "yearly_matrix",
+          },
+          targetValue: 100,
+          actualValue: 95,
+          complianceStatus: "recorded",
+        },
+      ] as IndicatorSubmissionItem[],
+      items: [],
+    });
+    const resetEcho: Parameters<typeof patchSubmissionWithLightweightPayload>[1] = {
+      id: "draft-1",
+      schoolId: "school-1",
+      academicYearId: "year-1",
+      reportingPeriod: "ANNUAL",
+      status: "draft",
+      version: 2,
+      notes: null,
+      submittedAt: null,
+      reviewedAt: null,
+      updatedAt: "2026-05-03T00:00:00.000Z",
+    };
+
+    const result = patchSubmissionWithLightweightPayload(hydratedDraft, resetEcho, {
+      resetWorkspace: "school_achievements_learning_outcomes",
+    });
+
+    expect(result.indicators?.map((row) => row.metric?.code)).toEqual(["NER"]);
+    expect(result.items?.map((row) => row.metric?.code)).toEqual(["NER"]);
   });
 });
 
