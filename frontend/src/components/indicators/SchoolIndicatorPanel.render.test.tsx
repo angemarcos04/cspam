@@ -718,6 +718,151 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(screen.queryByText("Unable to save indicator package.")).toBeNull();
   }, 10_000);
 
+  it("builds optimistic KPI target, actual, and status from the saved fillable values", async () => {
+    const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
+    const onWorkspaceSubmissionHydrated = vi.fn();
+    const updateSubmission = vi.fn().mockResolvedValue({
+      id: "submission-1",
+      schoolId: "1",
+      schoolType: "private",
+      academicYearId: "year-1",
+      reportingPeriod: "ANNUAL",
+      status: "draft",
+      version: 2,
+      notes: null,
+      submittedAt: null,
+      reviewedAt: null,
+      updatedAt: "2026-05-22T09:30:00.000Z",
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: [],
+        missingFileTypes: ["fm_qad_001"],
+      },
+      scopeProgress: {
+        requiredScopeIds: ["key_performance_indicators", "fm_qad_001"],
+        submittedScopeIds: [],
+        pendingScopeIds: ["key_performance_indicators", "fm_qad_001"],
+        submittedRequiredScopeCount: 0,
+        totalRequiredScopeCount: 2,
+      },
+      academicYear: {
+        id: "year-1",
+        name: "2025-2026",
+      },
+    });
+    const fetchSubmission = vi.fn().mockResolvedValue({
+      ...buildHydratedSubmission("submission-1"),
+      updatedAt: "2026-05-22T09:30:00.000Z",
+      indicators: [
+        {
+          id: "indicator-kpi-ner",
+          metric: {
+            id: "metric-kpi-ner",
+            code: "NER",
+            name: "Net Enrollment Rate (NER)",
+            category: "key_performance_indicators",
+            framework: "targets_met",
+            dataType: "yearly_matrix",
+            inputSchema: {
+              valueType: "percentage",
+              comparison: "greater_or_equal",
+              years: ["2025-2026"],
+            },
+          },
+          targetValue: 96,
+          actualValue: 94,
+          varianceValue: -2,
+          targetTypedValue: {
+            values: {
+              "2025-2026": 96,
+            },
+          },
+          actualTypedValue: {
+            values: {
+              "2025-2026": 94,
+            },
+          },
+          complianceStatus: "below_target",
+          remarks: null,
+        },
+      ],
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [buildHydratedSubmission("submission-1")],
+      allSubmissions: [],
+      metrics: [{
+        id: "metric-kpi-ner",
+        code: "NER",
+        name: "Net Enrollment Rate (NER)",
+        category: "key_performance_indicators",
+        framework: "targets_met",
+        dataType: "yearly_matrix",
+        inputSchema: {
+          valueType: "percentage",
+          comparison: "greater_or_equal",
+          years: ["2025-2026"],
+        },
+        sortOrder: 1,
+      }],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions,
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission,
+      fetchSubmission,
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
+      loadHistory: vi.fn(),
+    });
+
+    const view = render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-1"
+        onWorkspaceSubmissionHydrated={onWorkspaceSubmissionHydrated}
+      />,
+    );
+
+    fireEvent.click(await within(view.container).findByRole("button", { name: /Key Performance/i }));
+    const spinbuttons = await within(view.container).findAllByRole("spinbutton");
+    expect(spinbuttons.length).toBeGreaterThanOrEqual(2);
+    fireEvent.change(spinbuttons[0]!, { target: { value: "96" } });
+    fireEvent.change(spinbuttons[1]!, { target: { value: "94" } });
+    fireEvent.click(await within(view.container).findByRole("button", { name: "Save" }));
+
+    await waitFor(() => {
+      expect(updateSubmission).toHaveBeenCalled();
+    });
+    await waitFor(() => {
+      expect(onWorkspaceSubmissionHydrated).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: "submission-1",
+          indicators: expect.arrayContaining([
+            expect.objectContaining({
+              metric: expect.objectContaining({ code: "NER" }),
+              targetTypedValue: { values: { "2025-2026": "96" } },
+              actualTypedValue: { values: { "2025-2026": "94" } },
+              complianceStatus: "below_target",
+            }),
+          ]),
+        }),
+        { source: "optimistic" },
+      );
+    });
+  }, 10_000);
+
   it("hydrates the full workspace package after uploading a report file", async () => {
     const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
     const uploadSubmissionFile = vi.fn().mockResolvedValue({

@@ -1063,10 +1063,11 @@ export function SchoolAdminDashboard() {
       kpiRows,
     };
   }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupAReportSourceSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
+  const effectiveReportSourceSubmission = groupAReportView.submission;
   const isCurrentReportHydratingDetails = Boolean(
-    groupAReportSourceSubmission
+    effectiveReportSourceSubmission
     && isHydratingReportSubmission
-    && !submissionHasRenderableReportDetails(groupAReportView.submission),
+    && !submissionHasRenderableReportDetails(effectiveReportSourceSubmission),
   );
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
@@ -1326,7 +1327,7 @@ export function SchoolAdminDashboard() {
   useEffect(() => {
     clearActiveReportPreview();
     setActiveReportModalType(null);
-  }, [clearActiveReportPreview, effectiveAcademicYearId, groupAReportSourceSubmission?.id]);
+  }, [clearActiveReportPreview, effectiveAcademicYearId, effectiveReportSourceSubmission?.id]);
 
 
   /* ── Quick-jump scroll ── */
@@ -1543,7 +1544,7 @@ export function SchoolAdminDashboard() {
           {!isYearScopedLoading && isCurrentReportHydratingDetails && (
             <p className="mb-3 text-xs font-medium text-slate-500">Loading saved report details...</p>
           )}
-          {!isYearScopedLoading && !groupAReportSourceSubmission && (
+          {!isYearScopedLoading && !effectiveReportSourceSubmission && (
             <div className="mb-3 space-y-1">
               <p className="text-xs font-medium text-slate-500">
                 {buildSchoolHeadCurrentReportBlankStateLines()[0]}
@@ -1554,7 +1555,7 @@ export function SchoolAdminDashboard() {
             </div>
           )}
 
-          {groupAReportSourceSubmission && !isCurrentReportHydratingDetails && (
+          {effectiveReportSourceSubmission && !isCurrentReportHydratingDetails && (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visibleSubmittedReportFiles.map((definition) => {

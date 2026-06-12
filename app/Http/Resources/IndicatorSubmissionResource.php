@@ -58,6 +58,9 @@ class IndicatorSubmissionResource extends JsonResource
         $complianceRate = $comparableIndicators > 0
             ? round(($metIndicators / $comparableIndicators) * 100, 2)
             : 0.0;
+        $visibleSecondaryHistoricalFileTypes = $redactUnsentMonitorData
+            ? array_values(array_intersect($secondaryHistoricalFileTypes, $this->monitorVisibleScopeSet($scopeProgress)))
+            : $secondaryHistoricalFileTypes;
 
         return [
             'id' => (string) $this->id,
@@ -103,7 +106,7 @@ class IndicatorSubmissionResource extends JsonResource
                 'activeFileTypes' => $requiredFileTypes,
                 'activeReportFileTypes' => $requiredFileTypes,
                 'activeWorkspaceFileTypes' => $requiredFileTypes,
-                'secondaryHistoricalFileTypes' => $secondaryHistoricalFileTypes,
+                'secondaryHistoricalFileTypes' => $visibleSecondaryHistoricalFileTypes,
             ],
             'scopeProgress' => $scopeProgress,
             'scopeReviews' => $this->when(

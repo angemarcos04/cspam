@@ -503,6 +503,83 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("96")).not.toBeNull();
   });
 
+  it("renders TARGETS-MET from the effective saved source when selected-year rows are still empty", async () => {
+    const hydratedDraft = buildSubmission({
+      id: "draft-empty-source",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [
+        buildEnrollmentIndicator(3030),
+        buildKpiIndicator({ targetValue: 98, actualValue: 99, complianceStatus: "met" }),
+      ],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:05:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => hydratedDraft),
+      loadSubmissionsForYear: vi.fn(async () => []),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workspace-panel")).not.toBeNull();
+    });
+    expect(screen.queryByText("3,030")).toBeNull();
+
+    act(() => {
+      schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(hydratedDraft, { source: "hydrated" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #draft-empty-source (Draft).")).not.toBeNull();
+    });
+    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
+    expect(screen.getByText("3,030")).not.toBeNull();
+    expect(screen.getByText("98")).not.toBeNull();
+    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.queryByText("Submit your indicators to generate the report view.")).toBeNull();
+  });
+
   it("aligns TARGETS-MET immediately when a save callback belongs to a newer year and no manual year is selected", async () => {
     const finalized = buildSubmission({
       id: "finalized-old-year",

@@ -639,6 +639,20 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
             ->assertJsonPath('data.presentation.activeReportFileTypes', SubmissionFileDefinition::nonCoreTypes())
             ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', ['bmef']);
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('private-secondary-history-monitor', ['role:monitor'])->plainTextToken;
+        $monitorFetched = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+
+        $monitorFetched->assertOk()
+            ->assertJsonPath('data.presentation.activeWorkspaceFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.activeReportFileTypes', SubmissionFileDefinition::nonCoreTypes())
+            ->assertJsonPath('data.presentation.secondaryHistoricalFileTypes', [])
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', false);
     }
 
     public function test_updating_indicator_draft_returns_lightweight_submission_resource(): void

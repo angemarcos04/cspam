@@ -697,6 +697,115 @@ function formatReferenceCellValue(value: unknown): string {
   return formatDisplayValue(value);
 }
 
+function comparableScalarValue(value: unknown): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return null;
+    }
+    const numeric = Number(normalized);
+    return Number.isFinite(numeric) ? numeric : normalized;
+  }
+  return null;
+}
+
+function comparablePayloadValue(
+  payload: IndicatorTypedValuePayload | undefined,
+  fallback: unknown,
+): string | number | boolean | Record<string, string | number | boolean | null> | null {
+  if (payload && typeof payload === "object") {
+    const values = (payload as { values?: unknown }).values;
+    if (values && typeof values === "object" && !Array.isArray(values)) {
+      return Object.fromEntries(
+        Object.entries(values as Record<string, unknown>).map(([key, value]) => [key, comparableScalarValue(value)]),
+      );
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "amount")) {
+      return comparableScalarValue((payload as { amount?: unknown }).amount);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "value")) {
+      return comparableScalarValue((payload as { value?: unknown }).value);
+    }
+  }
+
+  return comparableScalarValue(fallback);
+}
+
+function optimisticValuesAreCompliant(
+  comparison: string,
+  target: string | number | boolean | Record<string, string | number | boolean | null> | null,
+  actual: string | number | boolean | Record<string, string | number | boolean | null> | null,
+): boolean {
+  if (comparison === "info_only") {
+    return target !== null && actual !== null;
+  }
+
+  if (
+    target
+    && actual
+    && typeof target === "object"
+    && typeof actual === "object"
+    && !Array.isArray(target)
+    && !Array.isArray(actual)
+  ) {
+    const keys = Array.from(new Set([...Object.keys(target), ...Object.keys(actual)]));
+    if (keys.length === 0) {
+      return false;
+    }
+    return keys.every((key) => (
+      Object.prototype.hasOwnProperty.call(target, key)
+      && Object.prototype.hasOwnProperty.call(actual, key)
+      && optimisticValuesAreCompliant(comparison, target[key] ?? null, actual[key] ?? null)
+    ));
+  }
+
+  if (target === null || actual === null) {
+    return false;
+  }
+
+  if (comparison === "equal") {
+    return String(actual) === String(target);
+  }
+
+  const targetNumber = Number(target);
+  const actualNumber = Number(actual);
+  if (!Number.isFinite(targetNumber) || !Number.isFinite(actualNumber)) {
+    return false;
+  }
+
+  return comparison === "less_or_equal"
+    ? actualNumber <= targetNumber
+    : actualNumber >= targetNumber;
+}
+
+function deriveOptimisticComplianceStatus(
+  metric: IndicatorMetric,
+  entry: IndicatorSubmissionPayload["indicators"][number],
+  previous: IndicatorSubmissionItem | null,
+): "met" | "below_target" | "recorded" | string {
+  const normalizedCode = normalizeMetricCode(metric.code);
+  if (!TARGET_ACTUAL_METRIC_CODES.has(normalizedCode)) {
+    return previous?.complianceStatus ?? "recorded";
+  }
+
+  const target = comparablePayloadValue(entry.target, entry.targetValue ?? previous?.targetValue ?? null);
+  const actual = comparablePayloadValue(entry.actual, entry.actualValue ?? previous?.actualValue ?? null);
+  const comparison = String(metric.inputSchema?.comparison ?? "greater_or_equal");
+
+  return optimisticValuesAreCompliant(comparison, target, actual) ? "met" : "below_target";
+}
+
 function isForceManualMetric(metric: IndicatorMetric): boolean {
   const normalizedCode = normalizeMetricCode(metric.code);
   return Array.from(FORCE_MANUAL_METRIC_CODES).some((manualCode) => (
@@ -2579,7 +2688,7 @@ function SchoolIndicatorPanelComponent({
         actualTypedValue: entry.actual ? { ...entry.actual } : previous?.actualTypedValue ?? null,
         targetDisplay: previous?.targetDisplay ?? null,
         actualDisplay: previous?.actualDisplay ?? null,
-        complianceStatus: previous?.complianceStatus ?? "recorded",
+        complianceStatus: deriveOptimisticComplianceStatus(metric, entry, previous),
         remarks: entry.remarks ?? previous?.remarks ?? null,
       }];
     });
