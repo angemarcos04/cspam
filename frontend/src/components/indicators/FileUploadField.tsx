@@ -1,4 +1,4 @@
-import { Download, Eye, Save, Upload, X } from "lucide-react";
+import { Download, Eye, Upload, X } from "lucide-react";
 
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
@@ -25,7 +25,6 @@ interface FileUploadFieldProps {
   isUploading: boolean;
   disabled: boolean;
   onUploadClick: () => void;
-  onSaveClick?: () => void;
   onCancelPendingClick?: () => void;
   onViewClick?: () => void;
   onDownloadClick: () => void;
@@ -50,7 +49,6 @@ export function FileUploadField({
   isUploading,
   disabled,
   onUploadClick,
-  onSaveClick,
   onCancelPendingClick,
   onViewClick,
   onDownloadClick,
@@ -128,15 +126,6 @@ export function FileUploadField({
             The Report View updates only after this file is saved.
           </p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={onSaveClick}
-              disabled={disabled || isUploading || !onSaveClick}
-              className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Save className="h-3.5 w-3.5" />
-              {isUploading ? "Saving..." : `Save ${conciseLabel}`}
-            </button>
             <button
               type="button"
               onClick={onUploadClick}

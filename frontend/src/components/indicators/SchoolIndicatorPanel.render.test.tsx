@@ -960,6 +960,13 @@ describe("SchoolIndicatorPanel batch submit", () => {
     const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     fireEvent.click(await within(view.container).findByRole("button", { name: /FM-QAD-001/i }));
+    const initialBottomSaveButtons = await within(view.container).findAllByRole("button", { name: "Save" });
+    const initialBottomFileSaveButton = initialBottomSaveButtons.find((button) => button.getAttribute("type") === "submit");
+    expect(initialBottomFileSaveButton).toBeDefined();
+    if (!initialBottomFileSaveButton) {
+      throw new Error("Expected bottom Save button for the active file tab.");
+    }
+    expect((initialBottomFileSaveButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(await within(view.container).findByRole("button", { name: /Choose FM-QAD-001/i }));
 
     const fileInput = view.container.querySelector('input[type="file"]');
@@ -975,8 +982,16 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(uploadSubmissionFile).not.toHaveBeenCalled();
     expect(await screen.findByText(/fm-qad-001\.pdf/i)).not.toBeNull();
     expect(screen.getByText(/The Report View updates only after this file is saved/i)).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Save FM-QAD-001/i })).toBeNull();
 
-    fireEvent.click(await within(view.container).findByRole("button", { name: /Save FM-QAD-001/i }));
+    const bottomSaveButtons = await within(view.container).findAllByRole("button", { name: "Save" });
+    const bottomFileSaveButton = bottomSaveButtons.find((button) => button.getAttribute("type") === "submit");
+    expect(bottomFileSaveButton).toBeDefined();
+    if (!bottomFileSaveButton) {
+      throw new Error("Expected bottom Save button for the active file tab.");
+    }
+    expect((bottomFileSaveButton as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(bottomFileSaveButton);
 
     await waitFor(() => {
       expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File));

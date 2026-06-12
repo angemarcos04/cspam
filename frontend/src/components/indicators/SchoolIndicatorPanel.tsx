@@ -3344,7 +3344,7 @@ function SchoolIndicatorPanelComponent({
     return "Draft";
   }, [workspaceMode]);
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
-  const canShowSectionSaveAction = canShowSaveAndSubmitActions && Boolean(activeCategory);
+  const canShowSectionSaveAction = canShowSaveAndSubmitActions && Boolean(activeCategory || activeUploadType);
   const canShowEditAction = workspaceMode === "submitted_locked";
   const canShowCancelEditAction = workspaceMode === "submitted_editing";
   const canShowResetAction = workspaceMode === "draft" || workspaceMode === "submitted_editing";
@@ -3356,6 +3356,8 @@ function SchoolIndicatorPanelComponent({
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit Package" : "Final Submit Package";
   const saveActionDisabledTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
+    : activeUploadType && !pendingUploadFileByType[activeUploadType]
+      ? "Choose a file before saving."
     : undefined;
   const submitActionTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
@@ -4967,6 +4969,11 @@ function SchoolIndicatorPanelComponent({
 
   const handleSaveActiveSection = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (activeUploadType) {
+      await handleSavePendingFile(activeUploadType);
+      return;
+    }
+
     await runGroupBAction("Save section", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
@@ -6286,7 +6293,6 @@ function SchoolIndicatorPanelComponent({
                       isUploading={isUploading}
                       disabled={uploadDisabled}
                       onUploadClick={() => handleRequestUpload(activeUploadType)}
-                      onSaveClick={() => void handleSavePendingFile(activeUploadType)}
                       onCancelPendingClick={() => handleCancelPendingFile(activeUploadType)}
                       onViewClick={() => void handleViewUploadedFile(activeUploadType)}
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
@@ -6804,12 +6810,18 @@ function SchoolIndicatorPanelComponent({
             <>
               <button
                 type="submit"
-                disabled={isManualActionBlocked || isSubmissionDataLoading || complianceMetrics.length === 0 || isWorkspaceReadOnly}
+                disabled={
+                  isManualActionBlocked
+                  || isSubmissionDataLoading
+                  || (activeCategory ? complianceMetrics.length === 0 : false)
+                  || Boolean(activeUploadType && !pendingUploadFileByType[activeUploadType])
+                  || isWorkspaceReadOnly
+                }
                 title={saveActionDisabledTitle}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <Target className="h-4 w-4" />
-                {savingSection === activeSaveSection || isSaving ? "Saving..." : saveActionLabel}
+                {savingSection === activeSaveSection || isSaving || (activeUploadType && uploadingFileType === activeUploadType) ? "Saving..." : saveActionLabel}
               </button>
             </>
           )}
