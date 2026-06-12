@@ -106,7 +106,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('school_id', (int) $schoolHead->school_id)
             ->where('academic_year_id', $academicYearId)
             ->count();
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-school-head')->plainTextToken;
         $enrollmentMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_ENROLL_TOTAL')->value('id');
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
@@ -166,7 +166,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('school_id', $schoolId)
             ->where('academic_year_id', $academicYearId)
             ->count();
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-school-head')->plainTextToken;
 
         $metricIds = PerformanceMetric::query()
             ->whereIn('code', ['IMETA_ENROLL_TOTAL', 'TEACHERS_TOTAL', 'TEACHERS_MALE', 'TEACHERS_FEMALE'])
@@ -265,7 +265,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submitted->assertOk()
             ->assertJsonPath('data.status', 'submitted');
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-monitor', ['role:monitor'])->plainTextToken;
 
         $reviewed = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'validated',
@@ -744,7 +748,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-school-head')->plainTextToken;
         /** @var PerformanceMetric $metric */
         $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
         $year = (string) collect($metric->input_schema['years'] ?? [])->first();
@@ -767,7 +771,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->postJson("/api/indicators/submissions/{$submissionId}/submit")
             ->assertOk();
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-monitor', ['role:monitor'])->plainTextToken;
 
         $missingNotes = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
             'decision' => 'returned',
@@ -798,7 +806,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-kpi-school-head')->plainTextToken;
 
         $headNameMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->value('id');
         $sbmMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_SBM_LEVEL')->value('id');
@@ -1698,7 +1706,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ),
         );
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-kpi-monitor', ['role:monitor'])->plainTextToken;
         $monitorShow = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShow->assertOk()
             ->assertJsonPath('data.status', 'submitted')
@@ -1968,7 +1980,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'submitted_at' => null,
         ]);
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-monitor', ['role:monitor'])->plainTextToken;
         $submittedBeforeFinalSubmit = $this->withToken($monitorToken)
             ->getJson('/api/indicators/submissions?status=submitted&per_page=100');
         $submittedBeforeFinalSubmit->assertOk();
@@ -2007,7 +2023,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var PerformanceMetric $metric */
         $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
         $year = (string) collect($metric->input_schema['years'] ?? [])->first();
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-kpi-school-head')->plainTextToken;
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
@@ -2037,7 +2053,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'School Head show response did not include their own saved draft value.',
         );
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-kpi-monitor', ['role:monitor'])->plainTextToken;
         $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowBeforeSend->assertOk()
             ->assertJsonPath('data.summary.totalIndicators', 0)
@@ -2078,7 +2098,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var PerformanceMetric $metric */
         $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
         $year = (string) collect($metric->input_schema['years'] ?? [])->first();
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-file-school-head')->plainTextToken;
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
@@ -2098,7 +2118,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertCreated();
         $submissionId = (string) $created->json('data.id');
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-file-monitor', ['role:monitor'])->plainTextToken;
         $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowBeforeSend->assertOk()
             ->assertJsonPath('data.summary.totalIndicators', 0)
@@ -2137,7 +2161,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
-        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $schoolHeadToken = $schoolHead->createToken('monitor-redaction-file-school-head')->plainTextToken;
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
             'academic_year_id' => $academicYearId,
@@ -2150,7 +2174,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.files.bmef.uploaded', true);
 
-        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('monitor-redaction-file-monitor', ['role:monitor'])->plainTextToken;
         $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowBeforeSend->assertOk()
             ->assertJsonPath('data.files.bmef.uploaded', false)
@@ -2321,15 +2349,28 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
     private function loginToken(string $role, string $login): string
     {
-        $loginResponse = $this->postJson('/api/auth/login', [
-            'role' => $role,
-            'login' => $login,
-            'password' => $this->demoPasswordForLogin($role, $login),
-        ]);
+        $normalizedRole = strtolower($role);
+        $userQuery = User::query();
 
-        $loginResponse->assertOk();
+        if ($normalizedRole === 'monitor') {
+            $userQuery
+                ->where('email', $login)
+                ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']));
+        } else {
+            $userQuery
+                ->where(function ($query) use ($login) {
+                    $query
+                        ->where('email', $login)
+                        ->orWhereHas('school', fn ($schoolQuery) => $schoolQuery->where('school_code', $login));
+                })
+                ->whereHas('roles', fn ($query) => $query->whereIn('name', ['school_head', 'School Head', 'school head']));
+        }
 
-        return (string) $loginResponse->json('token');
+        /** @var User $user */
+        $user = $userQuery->firstOrFail();
+        $ability = $normalizedRole === 'monitor' ? 'role:monitor' : 'role:school_head';
+
+        return $user->createToken("indicator-workflow-{$normalizedRole}", [$ability])->plainTextToken;
     }
 
     private function uploadRequiredSubmissionFiles(string $token, string $submissionId): void

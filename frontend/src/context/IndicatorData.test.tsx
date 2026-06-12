@@ -159,6 +159,168 @@ describe("mergeSubmissionPreservingDetails", () => {
     expect(merged.indicators).toHaveLength(1);
     expect(merged.indicators[0]?.metric?.code).toBe("IMETA_HEAD_NAME");
   });
+
+  it("clears canonical and legacy School Achievement rows for full-shaped section reset responses", () => {
+    const existing = {
+      id: "sub-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 1,
+      schoolId: "school-1",
+      notes: null,
+      reviewNotes: null,
+      summary: { totalIndicators: 3, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+      indicators: [
+        {
+          id: "legacy-salo",
+          metric: {
+            id: "legacy-salo",
+            code: "SALO",
+            name: "Legacy School Achievement",
+            category: "legacy",
+            framework: "imeta",
+            dataType: "yearly_matrix",
+          },
+          targetValue: null,
+          actualValue: null,
+          varianceValue: null,
+          targetTypedValue: null,
+          actualTypedValue: { values: { "2025-2026": "Maria Santos" } },
+          targetDisplay: "-",
+          actualDisplay: "2025-2026: Maria Santos",
+          complianceStatus: "recorded",
+          remarks: null,
+        },
+        {
+          id: "canonical-school-achievement",
+          metric: {
+            id: "metric-1",
+            code: "IMETA_ENROLL_TOTAL",
+            name: "TOTAL NUMBER OF ENROLMENT",
+            category: "other",
+            framework: "imeta",
+            dataType: "yearly_matrix",
+          },
+          targetValue: null,
+          actualValue: null,
+          varianceValue: null,
+          targetTypedValue: null,
+          actualTypedValue: { values: { "2025-2026": 123 } },
+          targetDisplay: "-",
+          actualDisplay: "2025-2026: 123",
+          complianceStatus: "recorded",
+          remarks: null,
+        },
+        {
+          id: "kpi-row",
+          metric: {
+            id: "metric-2",
+            code: "NER",
+            name: "Net Enrollment Rate",
+            category: "key_performance_indicators",
+            framework: "kpi",
+            dataType: "yearly_matrix",
+          },
+          targetValue: null,
+          actualValue: null,
+          varianceValue: null,
+          targetTypedValue: { values: { "2025-2026": 100 } },
+          actualTypedValue: { values: { "2025-2026": 95 } },
+          targetDisplay: "2025-2026: 100",
+          actualDisplay: "2025-2026: 95",
+          complianceStatus: "met",
+          remarks: null,
+        },
+      ],
+    } as never;
+
+    const incoming = {
+      id: "sub-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 2,
+      schoolId: "school-1",
+      notes: null,
+      reviewNotes: null,
+      summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+      indicators: [],
+      items: [],
+    } as never;
+
+    const merged = mergeSubmissionPreservingDetails(existing, incoming, {
+      resetWorkspace: "school_achievements_learning_outcomes",
+    });
+
+    expect(merged.version).toBe(2);
+    expect(merged.indicators.map((row) => row.metric?.code)).toEqual(["NER"]);
+    expect(merged.items?.map((row) => row.metric?.code)).toEqual(["NER"]);
+  });
+
+  it("clears stale file metadata for full-shaped file reset responses", () => {
+    const existing = {
+      id: "sub-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 1,
+      schoolId: "school-1",
+      schoolType: "public",
+      notes: null,
+      reviewNotes: null,
+      summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+      indicators: [],
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: true,
+          path: "submissions/sub-1/bmef.pdf",
+          originalFilename: "signed-bmef.pdf",
+          sizeBytes: 4096,
+          uploadedAt: "2026-06-05T01:00:00.000Z",
+          downloadUrl: "/api/submissions/sub-1/download/bmef",
+          viewUrl: "/api/submissions/sub-1/view/bmef",
+        },
+      },
+    } as never;
+
+    const incoming = {
+      id: "sub-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 2,
+      schoolId: "school-1",
+      schoolType: "public",
+      notes: null,
+      reviewNotes: null,
+      summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+      indicators: [],
+      files: {
+        bmef: {
+          type: "bmef",
+          uploaded: false,
+          path: null,
+          originalFilename: null,
+          sizeBytes: null,
+          uploadedAt: null,
+          downloadUrl: null,
+          viewUrl: null,
+        },
+      },
+    } as never;
+
+    const merged = mergeSubmissionPreservingDetails(existing, incoming, { resetWorkspace: "bmef" });
+
+    expect(merged.files?.bmef?.uploaded).toBe(false);
+    expect(merged.files?.bmef?.originalFilename).toBeNull();
+    expect(merged.files?.bmef?.viewUrl).toBeNull();
+  });
 });
 
 describe("patchSubmissionWithLightweightPayload", () => {

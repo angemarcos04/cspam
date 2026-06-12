@@ -420,12 +420,107 @@ function normalizeIndicatorCategory(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
 
+function normalizeMetricCode(value: string | null | undefined): string {
+  return String(value ?? "").trim().toUpperCase();
+}
+
+// Keep these aligned with backend GroupBWorkspaceDefinition::metricCodesFor.
+// They are used only for explicit reset clearing; category remains a fallback
+// for older rows that do not carry a reliable metric code.
+const SCHOOL_ACHIEVEMENT_WORKSPACE_METRIC_CODES = new Set<string>([
+  "IMETA_HEAD_NAME",
+  "SALO",
+  "IMETA_ENROLL_TOTAL",
+  "IMETA_SBM_LEVEL",
+  "PCR_K",
+  "PCR_G1_3",
+  "PCR_G4_6",
+  "PCR_G7_10",
+  "PCR_G11_12",
+  "WASH_RATIO",
+  "COMFORT_ROOMS",
+  "TOILET_BOWLS",
+  "URINALS",
+  "HANDWASH_FAC",
+  "LEARNING_MAT_RATIO",
+  "PSR_OVERALL",
+  "PSR_K",
+  "PSR_G1_6",
+  "PSR_G7_10",
+  "PSR_G11_12",
+  "ICT_RATIO",
+  "ICT_LAB",
+  "SCIENCE_LAB",
+  "INTERNET_ACCESS",
+  "ELECTRICITY",
+  "FENCE_STATUS",
+  "TEACHERS_TOTAL",
+  "TEACHERS_MALE",
+  "TEACHERS_FEMALE",
+  "TEACHERS_PWD_TOTAL",
+  "TEACHERS_PWD_MALE",
+  "TEACHERS_PWD_FEMALE",
+  "FUNCTIONAL_SGC",
+  "FEEDING_BENEFICIARIES",
+  "CANTEEN_INCOME",
+  "TEACHER_COOP_INCOME",
+  "SAFETY_PLAN",
+  "SAFETY_EARTHQUAKE",
+  "SAFETY_TYPHOON",
+  "SAFETY_COVID",
+  "SAFETY_POWER",
+  "SAFETY_IN_PERSON",
+  "TEACHERS_PFA",
+  "TEACHERS_OCC_FIRST_AID",
+]);
+
+const KEY_PERFORMANCE_WORKSPACE_METRIC_CODES = new Set<string>([
+  "NER",
+  "RR",
+  "DR",
+  "TR",
+  "NIR",
+  "PR",
+  "ALS_COMPLETER_PCT",
+  "GPI",
+  "IQR",
+  "CR",
+  "CSR",
+  "PLM_NEARLY_PROF",
+  "PLM_PROF",
+  "PLM_HIGH_PROF",
+  "AE_PASS_RATE",
+  "VIOLENCE_REPORT_RATE",
+  "LEARNER_SATISFACTION",
+  "RIGHTS_AWARENESS",
+  "RBE_MANIFEST",
+]);
+
+function metricCodeBelongsToResetWorkspace(
+  metricCode: string,
+  workspace: GroupBWorkspaceResetTarget,
+): boolean {
+  switch (workspace) {
+    case "school_achievements_learning_outcomes":
+      return SCHOOL_ACHIEVEMENT_WORKSPACE_METRIC_CODES.has(metricCode);
+    case "key_performance_indicators":
+      return KEY_PERFORMANCE_WORKSPACE_METRIC_CODES.has(metricCode);
+    default:
+      return false;
+  }
+}
+
 function isIndicatorInResetWorkspace(
   indicator: IndicatorSubmissionItem,
   workspace: GroupBWorkspaceResetTarget | null | undefined,
 ): boolean {
   if (!workspace || isSubmissionFileType(workspace)) {
     return false;
+  }
+
+  const metricCode = normalizeMetricCode(indicator.metric?.code);
+  if (metricCode && metricCodeBelongsToResetWorkspace(metricCode, workspace)) {
+    return true;
   }
 
   return normalizeIndicatorCategory(indicator.metric?.category) === workspace;
@@ -569,21 +664,27 @@ function deriveIsComplete(completion: {
 export function mergeSubmissionPreservingDetails(
   existing: IndicatorSubmission | undefined,
   incoming: IndicatorSubmission,
+  options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
 ): IndicatorSubmission {
   if (!existing) {
     return incoming;
   }
 
-  const files = mergeSubmissionFilesPreservingDetails(existing.files, incoming.files, incoming.id);
+  const resetWorkspace = options.resetWorkspace ?? null;
+  const files = mergeSubmissionFilesPreservingDetails(existing.files, incoming.files, incoming.id, resetWorkspace);
 
   if (!hasSubmissionRows(incoming) && hasSubmissionRows(existing)) {
     const preservedRows = Array.isArray(existing.items) && existing.items.length > 0
       ? existing.items
       : existing.indicators;
+    const nextRows = resetWorkspace && !isSubmissionFileType(resetWorkspace)
+      ? preservedRows.filter((indicator) => !isIndicatorInResetWorkspace(indicator, resetWorkspace))
+      : preservedRows;
+
     return {
       ...incoming,
-      indicators: preservedRows,
-      items: preservedRows,
+      indicators: nextRows,
+      items: nextRows,
       files,
     };
   }
@@ -798,14 +899,18 @@ export function materializeSubmissionFromLightweightPayload(
   };
 }
 
-function upsertSubmissionRow(rows: IndicatorSubmission[], submission: IndicatorSubmission): IndicatorSubmission[] {
+function upsertSubmissionRow(
+  rows: IndicatorSubmission[],
+  submission: IndicatorSubmission,
+  options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
+): IndicatorSubmission[] {
   const existing = rows.find((row) => row.id === submission.id);
   if (existing && isIncomingSubmissionStale(existing, submission)) {
     return rows;
   }
 
   const nextRows = rows.filter((row) => row.id !== submission.id);
-  nextRows.push(mergeSubmissionPreservingDetails(existing, submission));
+  nextRows.push(mergeSubmissionPreservingDetails(existing, submission, options));
   return sortSubmissionRows(nextRows);
 }
 
@@ -1214,7 +1319,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const upsertSubmissionLocally = useCallback((submission: IndicatorSubmission) => {
+  const upsertSubmissionLocally = useCallback((
+    submission: IndicatorSubmission,
+    options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
+  ) => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
@@ -1224,10 +1332,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     lastLocalMutationAtRef.current = Date.now();
     rememberLocalIndicatorMutationEcho(submission);
 
-    setSubmissions((current) => upsertSubmissionRow(current, submission));
+    setSubmissions((current) => upsertSubmissionRow(current, submission, options));
     setAllSubmissions((current) => (
       shouldRefreshAllSubmissionsState || current.length > 0
-        ? upsertSubmissionRow(current, submission)
+        ? upsertSubmissionRow(current, submission, options)
         : current
     ));
     setLastSyncedAt(new Date().toISOString());
@@ -1452,7 +1560,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           return materialized;
         }
 
-        upsertSubmissionLocally(submission);
+        upsertSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
         if (shouldBackgroundSync) {
           void syncSubmissions(true);
         }

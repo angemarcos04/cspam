@@ -2346,6 +2346,8 @@ function SchoolIndicatorPanelComponent({
   const submittedEditPreserveContextRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const preserveLocalWorkspaceAfterMutationRef = useRef<{ academicYearId: string | null; submissionId: string | null } | null>(null);
   const postRefreshMessageRef = useRef<string | null>(null);
+  const workspaceDetailHydrationTimeoutsRef = useRef<ReturnType<typeof globalThis.setTimeout>[]>([]);
+  const workspaceDetailHydrationGenerationRef = useRef(0);
   useEffect(() => {
     activeAcademicYearIdRef.current = activeAcademicYearId;
   }, [activeAcademicYearId]);
@@ -2420,6 +2422,17 @@ function SchoolIndicatorPanelComponent({
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
   }, []);
+  const clearWorkspaceDetailHydrationRetries = useCallback(() => {
+    workspaceDetailHydrationGenerationRef.current += 1;
+    for (const timeoutId of workspaceDetailHydrationTimeoutsRef.current) {
+      globalThis.clearTimeout(timeoutId);
+    }
+    workspaceDetailHydrationTimeoutsRef.current = [];
+  }, []);
+  useEffect(() => clearWorkspaceDetailHydrationRetries, [clearWorkspaceDetailHydrationRetries]);
+  useEffect(() => {
+    clearWorkspaceDetailHydrationRetries();
+  }, [activeAcademicYearId, clearWorkspaceDetailHydrationRetries, user?.id, user?.schoolId]);
   const invalidateAutosaveContext = useCallback((options: { resetFingerprint?: boolean } = {}) => {
     localAutosaveEpochRef.current += 1;
     autosaveInFlightRef.current = false;
@@ -2860,11 +2873,53 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
+    const contextKey = [
+      String(user?.id ?? "").trim(),
+      String(user?.schoolId ?? "").trim(),
+      submissionAcademicYearId || String(activeAcademicYearIdRef.current ?? "").trim(),
+      submissionId,
+    ].join(":");
+    clearWorkspaceDetailHydrationRetries();
+    const generation = workspaceDetailHydrationGenerationRef.current;
+
+    const isCurrentHydrationContext = (): boolean => {
+      const activeYearId = String(activeAcademicYearIdRef.current ?? "").trim();
+      const currentContextKey = [
+        String(user?.id ?? "").trim(),
+        String(user?.schoolId ?? "").trim(),
+        submissionAcademicYearId || activeYearId,
+        submissionId,
+      ].join(":");
+
+      return (
+        generation === workspaceDetailHydrationGenerationRef.current
+        && contextKey === currentContextKey
+        && (!activeYearId || !submissionAcademicYearId || activeYearId === submissionAcademicYearId)
+      );
+    };
+
+    const scheduleAttempt = (delayMs: number, run: () => void): void => {
+      const timeoutId = globalThis.setTimeout(() => {
+        workspaceDetailHydrationTimeoutsRef.current = workspaceDetailHydrationTimeoutsRef.current.filter((id) => id !== timeoutId);
+        if (!isCurrentHydrationContext()) {
+          return;
+        }
+        run();
+      }, delayMs);
+      workspaceDetailHydrationTimeoutsRef.current.push(timeoutId);
+    };
+
     let attempt = 0;
     const run = async () => {
+      if (!isCurrentHydrationContext()) {
+        return;
+      }
       attempt += 1;
       try {
         const fresh = await fetchSubmission(submissionId);
+        if (!isCurrentHydrationContext()) {
+          return;
+        }
         if (String(fresh.id ?? "").trim() !== submissionId) {
           return;
         }
@@ -2892,19 +2947,26 @@ function SchoolIndicatorPanelComponent({
         setAutosaveError("");
         setServerAutosaveAt(fresh.updatedAt ?? new Date().toISOString());
       } catch {
-        if (attempt < WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS) {
-          globalThis.setTimeout(run, WORKSPACE_DETAIL_BACKGROUND_RETRY_MS * attempt);
+        if (attempt < WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS && isCurrentHydrationContext()) {
+          scheduleAttempt(WORKSPACE_DETAIL_BACKGROUND_RETRY_MS * attempt, () => {
+            void run();
+          });
         }
       }
     };
 
-    globalThis.setTimeout(run, WORKSPACE_DETAIL_BACKGROUND_RETRY_MS);
+    scheduleAttempt(WORKSPACE_DETAIL_BACKGROUND_RETRY_MS, () => {
+      void run();
+    });
   }, [
+    clearWorkspaceDetailHydrationRetries,
     fetchSubmission,
     isSubmissionInAcademicYear,
     markRecentlyMaterializedWorkspaceSubmission,
     onWorkspaceSubmissionHydrated,
     rehydrateWorkspaceFromSubmission,
+    user?.id,
+    user?.schoolId,
   ]);
   const resetWorkspaceToBlankStateForSelectedYear = useCallback(() => {
     if (latestActiveWorkspaceSubmissionRef.current) {
