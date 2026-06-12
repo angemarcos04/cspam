@@ -1069,6 +1069,22 @@ export function SchoolAdminDashboard() {
     && isHydratingReportSubmission
     && !submissionHasRenderableReportDetails(effectiveReportSourceSubmission),
   );
+  const reportHasRenderableDetails = submissionHasRenderableReportDetails(effectiveReportSourceSubmission);
+  const reportHasSource = Boolean(effectiveReportSourceSubmission);
+  const reportViewRenderState: "loading" | "empty" | "ready" = (
+    (isYearScopedLoading && !reportHasRenderableDetails)
+    || (reportHasSource && !reportHasRenderableDetails)
+    || isCurrentReportHydratingDetails
+  )
+    ? "loading"
+    : reportHasSource
+      ? "ready"
+      : "empty";
+  const isReportViewReady = reportViewRenderState === "ready";
+  const canShowReportSourceContext = reportViewRenderState !== "empty" && reportHasSource;
+  const reportViewTitle = groupAReportView.sourceMode === "submitted"
+    ? "Submitted Report Package"
+    : "TARGETS-MET";
   const visibleSubmittedReportFiles = useMemo<SubmissionFileTabDefinition[]>(
     () => resolveSubmittedReportVisibleFileDefinitions({
       schoolType: resolveSubmissionPresentationSchoolType(groupAReportView.submission, user?.schoolType ?? null),
@@ -1521,7 +1537,7 @@ export function SchoolAdminDashboard() {
               <p className="mt-1 text-xs text-slate-500">
                 Saved workspace values appear here immediately. Final submitted packages are visible to the monitor.
               </p>
-              {!isYearScopedLoading && (
+              {canShowReportSourceContext && (
                 <div className="mt-2 space-y-1">
                   {submittedReportSourceContext.map((line) => (
                     <p key={line} className="text-xs text-slate-500">
@@ -1538,13 +1554,10 @@ export function SchoolAdminDashboard() {
             </div>
           </div>
 
-          {isYearScopedLoading && (
-            <p className="mb-3 text-xs font-medium text-slate-500">Loading selected academic year data...</p>
-          )}
-          {!isYearScopedLoading && isCurrentReportHydratingDetails && (
+          {reportViewRenderState === "loading" && (
             <p className="mb-3 text-xs font-medium text-slate-500">Loading saved report details...</p>
           )}
-          {!isYearScopedLoading && !effectiveReportSourceSubmission && (
+          {reportViewRenderState === "empty" && (
             <div className="mb-3 space-y-1">
               <p className="text-xs font-medium text-slate-500">
                 {buildSchoolHeadCurrentReportBlankStateLines()[0]}
@@ -1555,7 +1568,7 @@ export function SchoolAdminDashboard() {
             </div>
           )}
 
-          {effectiveReportSourceSubmission && !isCurrentReportHydratingDetails && (
+          {isReportViewReady && (
             <>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {visibleSubmittedReportFiles.map((definition) => {
@@ -1655,88 +1668,105 @@ export function SchoolAdminDashboard() {
             <h2 className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-900">
               <div className="flex flex-col gap-1">
                 <span className="inline-block border-l-[3px] border-primary-600 pl-3">
-                  {groupAReportView.sourceMode === "workspace_preview" ? "TARGETS-MET" : "Submitted Report Package"}
+                  {reportViewTitle}
                 </span>
-                {groupAReportView.submission && groupAReportView.totalIndicators > 0 && (
+                {isReportViewReady && groupAReportView.totalIndicators > 0 && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
                     {groupAReportView.sourceMode === "workspace_preview" ? "Saved workspace" : "Submitted package"} completion: {groupAReportView.completedIndicators}/{groupAReportView.totalIndicators} complete
                   </span>
                 )}
-                {!groupAReportView.submission && (
+                {reportViewRenderState === "loading" && (
+                  <span className="pl-3 text-xs font-medium text-slate-500">
+                    Loading saved report details before showing values.
+                  </span>
+                )}
+                {reportViewRenderState === "empty" && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
                     Reference table structure only. Saved values appear here after save or final submit.
                   </span>
                 )}
               </div>
             </h2>
-            <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-            {/* School's Achievement Table */}
-            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
-              </div>
-              <table className="w-full text-[13px] text-slate-900">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
-                    <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E7EB]">
-                  {groupAReportView.schoolAchievementRows.map((row) => (
-                    <tr key={row.key}>
-                      <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
-                        {row.label}
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.value}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            {reportViewRenderState === "loading" && (
+              <p className="p-4 text-xs font-medium text-slate-500">
+                Loading saved report details before showing TARGETS-MET values.
+              </p>
+            )}
+            {reportViewRenderState === "empty" && (
+              <p className="p-4 text-xs font-medium text-slate-500">
+                Saved TARGETS-MET values will appear here after a successful workspace save.
+              </p>
+            )}
+            {isReportViewReady && (
+              <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
+                {/* School's Achievement Table */}
+                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
+                  </div>
+                  <table className="w-full text-[13px] text-slate-900">
+                    <thead>
+                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
+                        <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E5E7EB]">
+                      {groupAReportView.schoolAchievementRows.map((row) => (
+                        <tr key={row.key}>
+                          <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
+                            {row.label}
+                          </td>
+                          <td className="px-4 py-2.5 text-right text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.value}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
 
-            {/* Key Performance Indicators Table */}
-            <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
-              <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+                {/* Key Performance Indicators Table */}
+                <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
+                    <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+                  </div>
+                  <table className="w-full text-[13px] text-slate-900">
+                    <thead>
+                      <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
+                        <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
+                        <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-[#E5E7EB]">
+                      {groupAReportView.kpiRows.map((row) => (
+                        <tr key={row.key}>
+                          <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.target}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            <span className="font-semibold text-slate-900">
+                              {row.actual}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2.5 text-center text-slate-900">
+                            {row.status}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <table className="w-full text-[13px] text-slate-900">
-                <thead>
-                  <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
-                    <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
-                    <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-[#E5E7EB]">
-                  {groupAReportView.kpiRows.map((row) => (
-                    <tr key={row.key}>
-                      <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.target}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        <span className="font-semibold text-slate-900">
-                          {row.actual}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-center text-slate-900">
-                        {row.status}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            )}
           </div>
-        </div>
         </div>
       </section>
 

@@ -580,6 +580,61 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.queryByText("Submit your indicators to generate the report view.")).toBeNull();
   });
 
+  it("does not render final TARGETS-MET blank rows while selected-year source data is loading", async () => {
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(),
+      loadSubmissionsForYear: vi.fn(() => new Promise<IndicatorSubmission[]>(() => undefined)),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Loading saved report details...")).not.toBeNull();
+    });
+    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
+    expect(screen.getByText("Loading saved report details before showing TARGETS-MET values.")).not.toBeNull();
+    expect(screen.queryByText("TOTAL NUMBER OF ENROLMENT")).toBeNull();
+    expect(screen.queryByText("Net Enrollment Rate (NER)")).toBeNull();
+    expect(screen.queryByText("Reference table structure only. Saved values appear here after save or final submit.")).toBeNull();
+  });
+
   it("aligns TARGETS-MET immediately when a save callback belongs to a newer year and no manual year is selected", async () => {
     const finalized = buildSubmission({
       id: "finalized-old-year",
