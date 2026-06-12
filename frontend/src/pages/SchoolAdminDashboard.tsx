@@ -919,7 +919,12 @@ export function SchoolAdminDashboard() {
   useEffect(() => {
     if (!groupAReportSourceSubmission?.id) {
       finalizedSubmissionRefreshRef.current = "";
-      setHydratedSubmittedReportSubmission(null);
+      setHydratedSubmittedReportSubmission((current) => (
+        resolveSchoolHeadCurrentReportSubmissionForView(current, {
+          selectedSchoolId,
+          selectedAcademicYearId: effectiveAcademicYearId,
+        }) ?? null
+      ));
       setIsHydratingReportSubmission(false);
       return;
     }
@@ -1181,9 +1186,7 @@ export function SchoolAdminDashboard() {
       hasManualDashboardYearSelectionRef.current,
     );
     if (!initialAcademicYearId) return;
-    if (dashboardViewAcademicYearId === initialAcademicYearId) return;
-
-    if (hasManualDashboardYearSelectionRef.current && dashboardViewAcademicYearId) {
+    if (dashboardViewAcademicYearId) {
       return;
     }
 
@@ -1269,9 +1272,6 @@ export function SchoolAdminDashboard() {
     }
 
     if (effectiveAcademicYearId && submissionAcademicYearId !== effectiveAcademicYearId) {
-      if (source === "optimistic") {
-        return;
-      }
       if (hasManualDashboardYearSelectionRef.current) {
         return;
       }
@@ -1279,23 +1279,41 @@ export function SchoolAdminDashboard() {
       lastLoadedYearKeyRef.current = "";
     }
 
-    if (!effectiveAcademicYearId && source === "hydrated") {
+    if (!effectiveAcademicYearId) {
       setDashboardViewAcademicYearId(submissionAcademicYearId);
+      lastLoadedYearKeyRef.current = "";
     }
 
-    setHydratedSubmittedReportSubmission((current) => resolveHydratedCurrentReportSubmissionCandidate(
-      current,
-      submission,
-      {
+    setHydratedSubmittedReportSubmission((current) => {
+      const candidateOptions = {
         selectedSchoolId,
         selectedAcademicYearId: submissionAcademicYearId,
-      },
-    ));
+      };
+      const existingSubmissionId = String(current?.id ?? "").trim();
+      const incomingSubmissionId = String(submission.id ?? "").trim();
+
+      if (source === "hydrated" && current && existingSubmissionId && existingSubmissionId === incomingSubmissionId) {
+        return resolveSchoolHeadCurrentReportSubmissionForView(
+          mergeCurrentReportCandidateDetails(submission, current),
+          candidateOptions,
+        );
+      }
+
+      return resolveHydratedCurrentReportSubmissionCandidate(
+        current,
+        submission,
+        candidateOptions,
+      );
+    });
     setDashboardViewSubmissions((current) => {
       const submissionId = String(submission.id ?? "").trim();
       const existing = current.find((entry) => String(entry.id ?? "").trim() === submissionId);
       const nextSubmission = existing
-        ? preferFresherCurrentReportCandidate(existing, submission)
+        ? (
+          source === "hydrated"
+            ? mergeCurrentReportCandidateDetails(submission, existing)
+            : preferFresherCurrentReportCandidate(existing, submission)
+        )
         : submission;
 
       return [

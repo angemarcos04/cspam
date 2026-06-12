@@ -503,6 +503,101 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("96")).not.toBeNull();
   });
 
+  it("aligns TARGETS-MET immediately when a save callback belongs to a newer year and no manual year is selected", async () => {
+    const finalized = buildSubmission({
+      id: "finalized-old-year",
+      academicYear: { id: "year-1", name: "2025-2026" },
+      status: "submitted",
+      statusLabel: "Submitted",
+      indicators: [buildEnrollmentIndicator(1010)],
+      items: [],
+      submittedAt: "2026-05-01T00:00:00.000Z",
+      updatedAt: "2026-05-01T00:00:00.000Z",
+    });
+    const yearTwoEnrollment = {
+      ...buildEnrollmentIndicator(3030),
+      id: "indicator-year-two-save",
+      actualValue: 3030,
+      actualTypedValue: {
+        values: {
+          "2026-2027": 3030,
+        },
+      },
+      actualDisplay: "2026-2027: 3030.00",
+    };
+    const optimisticDraft = buildSubmission({
+      id: "draft-new-year",
+      academicYear: { id: "year-2", name: "2026-2027" },
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [yearTwoEnrollment],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:05:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [finalized],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+        { id: "year-2", name: "2026-2027", isCurrent: false },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => finalized),
+      loadSubmissionsForYear: vi.fn(async () => [finalized]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #finalized-old-year (Submitted).")).not.toBeNull();
+    });
+    expect(screen.queryByText("3,030")).toBeNull();
+
+    act(() => {
+      schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(optimisticDraft, { source: "optimistic" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #draft-new-year (Draft).")).not.toBeNull();
+    });
+    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
+    expect(screen.getByText("3,030")).not.toBeNull();
+    expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
+  });
+
   it("selects the latest saved draft academic year on fresh login and aligns the workspace", async () => {
     const finalized = buildSubmission({
       id: "finalized-101",
