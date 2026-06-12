@@ -336,6 +336,26 @@ function preferFresherCurrentReportCandidate(
     : incoming;
 }
 
+function isSameSubmission(
+  left: IndicatorSubmission | null | undefined,
+  right: IndicatorSubmission | null | undefined,
+): boolean {
+  const leftId = String(left?.id ?? "").trim();
+  const rightId = String(right?.id ?? "").trim();
+  return leftId !== "" && leftId === rightId;
+}
+
+function isHydratedReportSourceFreshForSelectedSource(
+  selectedSubmission: IndicatorSubmission | null | undefined,
+  hydratedSubmission: IndicatorSubmission | null | undefined,
+): boolean {
+  if (!selectedSubmission || !hydratedSubmission || !isSameSubmission(selectedSubmission, hydratedSubmission)) {
+    return false;
+  }
+
+  return schoolHeadCurrentReportRecencyScore(hydratedSubmission) >= schoolHeadCurrentReportRecencyScore(selectedSubmission);
+}
+
 export function resolveHydratedCurrentReportSubmissionCandidate(
   currentHydratedSubmission: IndicatorSubmission | null | undefined,
   incomingSubmission: IndicatorSubmission | null | undefined,
@@ -356,6 +376,30 @@ export function resolveHydratedCurrentReportSubmissionCandidate(
   }
 
   return preferFresherCurrentReportCandidate(eligibleCurrentSubmission, eligibleIncomingSubmission);
+}
+
+function resolveTrustedHydratedReportSource(
+  selectedSubmission: IndicatorSubmission | null | undefined,
+  hydratedSubmission: IndicatorSubmission | null | undefined,
+  options: {
+    selectedSchoolId: string | null | undefined;
+    selectedAcademicYearId: string | null | undefined;
+  },
+): IndicatorSubmission | null {
+  const eligibleSelectedSubmission = resolveSchoolHeadCurrentReportSubmissionForView(selectedSubmission, options);
+  const eligibleHydratedSubmission = resolveSchoolHeadCurrentReportSubmissionForView(hydratedSubmission, options);
+
+  if (!eligibleHydratedSubmission) {
+    return null;
+  }
+
+  if (!eligibleSelectedSubmission) {
+    return eligibleHydratedSubmission;
+  }
+
+  return isHydratedReportSourceFreshForSelectedSource(eligibleSelectedSubmission, eligibleHydratedSubmission)
+    ? eligibleHydratedSubmission
+    : null;
 }
 
 export function resolveSelectedYearCurrentReportContextSubmissions(
@@ -868,10 +912,16 @@ export function SchoolAdminDashboard() {
     ),
     [indicatorSubmissions, selectedSchoolId],
   );
-  const preferredSavedAcademicYearId = useMemo(
-    () => resolvePreferredSchoolHeadCurrentReportAcademicYearId(schoolScopedSubmissions, selectedSchoolId),
-    [schoolScopedSubmissions, selectedSchoolId],
-  );
+  const preferredSavedAcademicYearId = useMemo(() => {
+    const hydratedSchoolId = resolveSubmissionSchoolId(hydratedSubmittedReportSubmission);
+    const preferredCandidates = (
+      selectedSchoolId && hydratedSubmittedReportSubmission && hydratedSchoolId === selectedSchoolId
+        ? [...schoolScopedSubmissions, hydratedSubmittedReportSubmission]
+        : schoolScopedSubmissions
+    );
+
+    return resolvePreferredSchoolHeadCurrentReportAcademicYearId(preferredCandidates, selectedSchoolId);
+  }, [hydratedSubmittedReportSubmission, schoolScopedSubmissions, selectedSchoolId]);
   const submissionsForSelectedContext = useMemo(() => {
     if (!effectiveAcademicYearId) {
       return [];
@@ -886,6 +936,17 @@ export function SchoolAdminDashboard() {
   const groupAReportSourceSubmission = useMemo(
     () => resolveSelectedYearSchoolHeadCurrentReportSubmission(submissionsForSelectedContext),
     [submissionsForSelectedContext],
+  );
+  const trustedHydratedReportSubmission = useMemo(
+    () => resolveTrustedHydratedReportSource(
+      groupAReportSourceSubmission,
+      hydratedSubmittedReportSubmission,
+      {
+        selectedSchoolId,
+        selectedAcademicYearId: effectiveAcademicYearId,
+      },
+    ),
+    [effectiveAcademicYearId, groupAReportSourceSubmission, hydratedSubmittedReportSubmission, selectedSchoolId],
   );
   const isYearScopedLoading = isDashboardYearSwitching;
 
@@ -929,28 +990,31 @@ export function SchoolAdminDashboard() {
       return;
     }
 
-    setHydratedSubmittedReportSubmission((current) => resolveHydratedCurrentReportSubmissionCandidate(
-      current,
-      groupAReportSourceSubmission,
-      {
-        selectedSchoolId,
-        selectedAcademicYearId: effectiveAcademicYearId,
-      },
-    ));
-
     const refreshFingerprint = buildSubmissionRefreshFingerprint(groupAReportSourceSubmission);
     let cancelled = false;
     const submissionId = groupAReportSourceSubmission.id;
+    const hasTrustedHydratedDetail = Boolean(
+      trustedHydratedReportSubmission
+      && isSameSubmission(groupAReportSourceSubmission, trustedHydratedReportSubmission),
+    );
 
-    if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
+    if (hasTrustedHydratedDetail) {
+      finalizedSubmissionRefreshRef.current = refreshFingerprint;
       setIsHydratingReportSubmission(false);
       return () => {
         cancelled = true;
       };
     }
 
+    if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
+      setIsHydratingReportSubmission(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
-    setIsHydratingReportSubmission(!submissionHasRenderableReportDetails(groupAReportSourceSubmission));
+    setIsHydratingReportSubmission(true);
     void fetchSubmission(submissionId)
       .then((submission) => {
         if (!cancelled && submission.id === submissionId) {
@@ -974,7 +1038,7 @@ export function SchoolAdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveAcademicYearId, fetchSubmission, groupAReportSourceSubmission, selectedSchoolId]);
+  }, [effectiveAcademicYearId, fetchSubmission, groupAReportSourceSubmission, selectedSchoolId, trustedHydratedReportSubmission]);
   const groupAReportView = useMemo(() => {
     const reportYearLabel = selectedYearLabel(
       effectiveAcademicYearId,
@@ -987,7 +1051,7 @@ export function SchoolAdminDashboard() {
     });
     const submission = resolveStableSchoolHeadCurrentReportViewSubmission(
       selectedSubmission,
-      hydratedSubmittedReportSubmission,
+      trustedHydratedReportSubmission,
       {
         selectedSchoolId,
         selectedAcademicYearId: effectiveAcademicYearId,
@@ -1062,7 +1126,7 @@ export function SchoolAdminDashboard() {
       schoolAchievementRows,
       kpiRows,
     };
-  }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupAReportSourceSubmission, hydratedSubmittedReportSubmission, selectedSchoolId]);
+  }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupAReportSourceSubmission, selectedSchoolId, trustedHydratedReportSubmission]);
   const effectiveReportSourceSubmission = groupAReportView.submission;
   const isCurrentReportHydratingDetails = Boolean(
     effectiveReportSourceSubmission
@@ -1071,8 +1135,13 @@ export function SchoolAdminDashboard() {
   );
   const reportHasRenderableDetails = submissionHasRenderableReportDetails(effectiveReportSourceSubmission);
   const reportHasSource = Boolean(effectiveReportSourceSubmission);
+  const reportNeedsTrustedHydratedSource = Boolean(
+    groupAReportSourceSubmission
+    && !trustedHydratedReportSubmission,
+  );
   const reportViewRenderState: "loading" | "empty" | "ready" = (
     (isYearScopedLoading && !reportHasRenderableDetails)
+    || reportNeedsTrustedHydratedSource
     || (reportHasSource && !reportHasRenderableDetails)
     || isCurrentReportHydratingDetails
   )
@@ -1215,6 +1284,32 @@ export function SchoolAdminDashboard() {
     orderedAcademicYears,
     preferredSavedAcademicYearId,
   ]);
+
+  useEffect(() => {
+    if (!preferredSavedAcademicYearId || !dashboardViewAcademicYearId) {
+      return;
+    }
+    if (dashboardViewAcademicYearId === preferredSavedAcademicYearId) {
+      return;
+    }
+    if (hasManualDashboardYearSelectionRef.current) {
+      return;
+    }
+    if (!orderedAcademicYears.some((year) => year.id === preferredSavedAcademicYearId)) {
+      return;
+    }
+
+    setDashboardViewAcademicYearId(preferredSavedAcademicYearId);
+    lastLoadedYearKeyRef.current = "";
+    setDashboardViewSubmissions([]);
+    setHydratedSubmittedReportSubmission((current) => (
+      resolveSchoolHeadCurrentReportSubmissionForView(current, {
+        selectedSchoolId,
+        selectedAcademicYearId: preferredSavedAcademicYearId,
+      }) ?? null
+    ));
+    setIsDashboardYearSwitching(false);
+  }, [dashboardViewAcademicYearId, orderedAcademicYears, preferredSavedAcademicYearId, selectedSchoolId]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !dashboardYearSelectionStorageKey || !dashboardViewAcademicYearId) {

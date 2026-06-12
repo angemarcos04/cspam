@@ -334,6 +334,91 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("1,515")).not.toBeNull();
   });
 
+  it("hydrates the latest saved package on login before rendering stale TARGETS-MET list values", async () => {
+    const staleListDraft = buildSubmission({
+      id: "draft-repeat-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(1111)],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    const latestSavedDetail = buildSubmission({
+      id: "draft-repeat-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(2222)],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    let resolveFetchSubmission: ((submission: IndicatorSubmission) => void) | null = null;
+    const fetchSubmission = vi.fn(() => new Promise<IndicatorSubmission>((resolve) => {
+      resolveFetchSubmission = resolve;
+    }));
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [staleListDraft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission,
+      loadSubmissionsForYear: vi.fn(async () => [staleListDraft]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("Source package: #draft-repeat-login (Draft).")).not.toBeNull();
+    });
+    expect(fetchSubmission).toHaveBeenCalledWith("draft-repeat-login");
+    expect(screen.getByText("Loading saved report details before showing TARGETS-MET values.")).not.toBeNull();
+    expect(screen.queryByText("1,111")).toBeNull();
+
+    act(() => {
+      resolveFetchSubmission?.(latestSavedDetail);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("2,222")).not.toBeNull();
+    });
+    expect(screen.queryByText("1,111")).toBeNull();
+  });
+
   it("shows a newer saved draft in Report View as a workspace preview", async () => {
     const finalized = buildSubmission({
       id: "finalized-101",
