@@ -863,7 +863,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     });
   }, 10_000);
 
-  it("hydrates the full workspace package after uploading a report file", async () => {
+  it("stages a report file until Save and then hydrates the full workspace package", async () => {
     const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
     const uploadSubmissionFile = vi.fn().mockResolvedValue({
       ...buildHydratedSubmission("submission-1"),
@@ -960,7 +960,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     fireEvent.click(await within(view.container).findByRole("button", { name: /FM-QAD-001/i }));
-    fireEvent.click(await within(view.container).findByRole("button", { name: /Upload FM-QAD-001/i }));
+    fireEvent.click(await within(view.container).findByRole("button", { name: /Choose FM-QAD-001/i }));
 
     const fileInput = view.container.querySelector('input[type="file"]');
     if (!(fileInput instanceof HTMLInputElement)) {
@@ -971,6 +971,12 @@ describe("SchoolIndicatorPanel batch submit", () => {
         files: [new File(["report"], "fm-qad-001.pdf", { type: "application/pdf" })],
       },
     });
+
+    expect(uploadSubmissionFile).not.toHaveBeenCalled();
+    expect(await screen.findByText(/fm-qad-001\.pdf/i)).not.toBeNull();
+    expect(screen.getByText(/The Report View updates only after this file is saved/i)).not.toBeNull();
+
+    fireEvent.click(await within(view.container).findByRole("button", { name: /Save FM-QAD-001/i }));
 
     await waitFor(() => {
       expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File));

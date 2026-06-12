@@ -1,4 +1,4 @@
-import { Download, Eye, Upload } from "lucide-react";
+import { Download, Eye, Save, Upload, X } from "lucide-react";
 
 // NEW 2026 COMPLIANCE UI: BMEF tab replaces TARGETS-MET
 // 4-tab layout (School Achievements | Key Performance | BMEF | SMEA)
@@ -9,16 +9,24 @@ interface UploadFileMetadata {
   uploadedAt: string | null;
 }
 
+interface PendingUploadFileMetadata {
+  filename: string;
+  sizeBytes: number;
+}
+
 interface FileUploadFieldProps {
   label: string;
   actionLabel?: string;
   description: string;
   file: UploadFileMetadata | null;
+  pendingFile?: PendingUploadFileMetadata | null;
   submitted: boolean;
   canViewReport?: boolean;
   isUploading: boolean;
   disabled: boolean;
   onUploadClick: () => void;
+  onSaveClick?: () => void;
+  onCancelPendingClick?: () => void;
   onViewClick?: () => void;
   onDownloadClick: () => void;
   error?: string;
@@ -36,17 +44,21 @@ export function FileUploadField({
   actionLabel,
   description,
   file,
+  pendingFile = null,
   submitted,
   canViewReport = false,
   isUploading,
   disabled,
   onUploadClick,
+  onSaveClick,
+  onCancelPendingClick,
   onViewClick,
   onDownloadClick,
   error = "",
 }: FileUploadFieldProps) {
   const isDownloadDisabled = disabled || !submitted;
   const conciseLabel = actionLabel ?? label;
+  const hasPendingFile = Boolean(pendingFile);
 
   return (
     <article className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -62,7 +74,7 @@ export function FileUploadField({
               : "border border-amber-300 bg-amber-50 text-amber-700"
           }`}
         >
-          {submitted ? "Uploaded" : "Not Uploaded"}
+          {hasPendingFile ? "Ready to Save" : submitted ? "Uploaded" : "Not Uploaded"}
         </span>
       </div>
 
@@ -101,10 +113,54 @@ export function FileUploadField({
             </button>
           </div>
         </div>
-      ) : (
+      ) : null}
+
+      {hasPendingFile ? (
+        <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-6 text-center">
+          <p className="text-sm font-semibold text-slate-700">
+            {submitted ? "Replacement file selected. Click Save to update the saved report." : "File selected. Click Save to add it to this draft package."}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            {pendingFile?.filename}
+            {typeof pendingFile?.sizeBytes === "number" ? ` | ${(pendingFile.sizeBytes / 1024).toFixed(1)} KB` : ""}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            The Report View updates only after this file is saved.
+          </p>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+            <button
+              type="button"
+              onClick={onSaveClick}
+              disabled={disabled || isUploading || !onSaveClick}
+              className="inline-flex items-center gap-1.5 rounded-sm bg-primary px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Save className="h-3.5 w-3.5" />
+              {isUploading ? "Saving..." : `Save ${conciseLabel}`}
+            </button>
+            <button
+              type="button"
+              onClick={onUploadClick}
+              disabled={disabled || isUploading}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              Change file
+            </button>
+            <button
+              type="button"
+              onClick={onCancelPendingClick}
+              disabled={disabled || isUploading || !onCancelPendingClick}
+              className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              <X className="h-3.5 w-3.5" />
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : !submitted ? (
         <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
           <p className="text-sm font-semibold text-slate-700">{conciseLabel} not uploaded yet.</p>
-          <p className="mt-1 text-xs text-slate-500">Upload this file now. Final Submit sends the full package for review.</p>
+          <p className="mt-1 text-xs text-slate-500">Choose this file, then click Save. Final Submit sends the full package for review.</p>
           <button
             type="button"
             onClick={onUploadClick}
@@ -112,10 +168,10 @@ export function FileUploadField({
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Upload className="h-3.5 w-3.5" />
-            {isUploading ? "Uploading..." : `Upload ${conciseLabel}`}
+            {`Choose ${conciseLabel}`}
           </button>
         </div>
-      )}
+      ) : null}
 
       {error && (
         <p className="rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">

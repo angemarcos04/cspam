@@ -149,6 +149,13 @@ function createInitialUploadErrorState(): Record<IndicatorSubmissionFileType, st
   }, {} as Record<IndicatorSubmissionFileType, string>);
 }
 
+function createInitialPendingUploadFileState(): Record<IndicatorSubmissionFileType, File | null> {
+  return SUBMISSION_FILE_TYPES.reduce((accumulator, type) => {
+    accumulator[type] = null;
+    return accumulator;
+  }, {} as Record<IndicatorSubmissionFileType, File | null>);
+}
+
 function isSubmissionFileType(value: string | null | undefined): value is IndicatorSubmissionFileType {
   return Boolean(value && SUBMISSION_FILE_DEFINITION_BY_TYPE[value as IndicatorSubmissionFileType]);
 }
@@ -1683,6 +1690,9 @@ function SchoolIndicatorPanelComponent({
   const [optimisticSubmittedByType, setOptimisticSubmittedByType] = useState<Record<IndicatorSubmissionFileType, boolean>>(
     () => createInitialSubmittedByTypeState(),
   );
+  const [pendingUploadFileByType, setPendingUploadFileByType] = useState<Record<IndicatorSubmissionFileType, File | null>>(
+    () => createInitialPendingUploadFileState(),
+  );
   const [uploadErrorByType, setUploadErrorByType] = useState<Record<IndicatorSubmissionFileType, string>>(
     () => createInitialUploadErrorState(),
   );
@@ -1825,6 +1835,10 @@ function SchoolIndicatorPanelComponent({
   const activeAcademicYearId = yearWorkspaceState.workspaceAcademicYearId;
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
   const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
+  useEffect(() => {
+    setPendingUploadFileByType(createInitialPendingUploadFileState());
+    setUploadErrorByType(createInitialUploadErrorState());
+  }, [activeAcademicYearId, user?.id, user?.schoolId]);
   const requiredSchoolYears = useMemo(
     () => workspaceSchoolYears,
     [workspaceSchoolYears],
@@ -3219,6 +3233,12 @@ function SchoolIndicatorPanelComponent({
     }),
     [categoryProgressById, visibleCategoryMetrics, visibleFileDefinitions, submittedByFileType, submittedScopeIds],
   );
+  const pendingUploadFileTypes = useMemo(
+    () => visibleFileDefinitions
+      .map((definition) => definition.type)
+      .filter((type) => Boolean(pendingUploadFileByType[type])),
+    [pendingUploadFileByType, visibleFileDefinitions],
+  );
   const missingRequiredFileDefinitions = useMemo(
     () => visibleFileDefinitions.filter((definition) => !submittedByFileType[definition.type]),
     [submittedByFileType, visibleFileDefinitions],
@@ -3227,10 +3247,15 @@ function SchoolIndicatorPanelComponent({
     const reasons = [
       indicatorMissingReason,
       buildFileMissingReason(missingRequiredFileDefinitions.map((definition) => `${definition.shortLabel} file`)),
+      pendingUploadFileTypes.length > 0
+        ? `Save or cancel selected files before final submit: ${pendingUploadFileTypes
+          .map((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type]?.shortLabel ?? type.toUpperCase())
+          .join(", ")}.`
+        : "",
     ].filter((reason) => reason !== "");
 
     return reasons.join(" ");
-  }, [indicatorMissingReason, missingRequiredFileDefinitions]);
+  }, [indicatorMissingReason, missingRequiredFileDefinitions, pendingUploadFileTypes]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -3345,6 +3370,9 @@ function SchoolIndicatorPanelComponent({
   const activeScopeSubmitted = useMemo(() => (
     activeScopeId ? workspaceProgressSummary.submittedScopeIds.includes(activeScopeId) : false
   ), [activeScopeId, workspaceProgressSummary.submittedScopeIds]);
+  const activeScopeHasPendingUpload = Boolean(
+    activeUploadType && pendingUploadFileByType[activeUploadType],
+  );
   const activeScopeReview = useMemo(() => {
     if (!activeScopeId) {
       return null;
@@ -3368,8 +3396,10 @@ function SchoolIndicatorPanelComponent({
       : `${scopeLabel} was returned by the Division Monitor.`;
   }, [activeCategory, activeScopeId, activeScopeReview, activeTab]);
   const batchSelectableScopeIds = useMemo(
-    () => workspaceProgressSummary.readyUnsubmittedScopeIds,
-    [workspaceProgressSummary.readyUnsubmittedScopeIds],
+    () => workspaceProgressSummary.readyUnsubmittedScopeIds.filter((scopeId) => (
+      !isSubmissionFileType(scopeId) || !pendingUploadFileByType[scopeId]
+    )),
+    [pendingUploadFileByType, workspaceProgressSummary.readyUnsubmittedScopeIds],
   );
   const batchSelectableScopeLabels = useMemo(() => {
     const labels = new Map<string, string>();
@@ -3393,6 +3423,8 @@ function SchoolIndicatorPanelComponent({
     ? "This academic year is not open for encoding."
     : sendActionHasBatchSelection
       ? "Send the selected ready workspace items."
+      : activeScopeHasPendingUpload
+        ? "Save or cancel the selected file before sending it."
       : activeScopeReady
         ? "Send the current ready workspace item."
         : "Complete or upload this workspace item before sending it.";
@@ -3408,6 +3440,8 @@ function SchoolIndicatorPanelComponent({
   }, [activeCategory, activeScopeId, activeScopeSubmitted, activeTab]);
   const activeScopeSubmitTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
+    : activeScopeHasPendingUpload
+      ? "Save or cancel the selected file before sending it."
     : !activeScopeReady
       ? "Complete or upload this workspace item before sending it."
       : activeScopeSubmitted
@@ -4827,6 +4861,7 @@ function SchoolIndicatorPanelComponent({
         setAutosaveError("");
         setServerAutosaveAt(freshResult.updatedAt ?? new Date().toISOString());
         if (isSubmissionFileType(activeWorkspaceResetTarget)) {
+          setPendingUploadFileByType((current) => ({ ...current, [activeWorkspaceResetTarget]: null }));
           setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
         }
         setSubmitError("");
@@ -4849,6 +4884,7 @@ function SchoolIndicatorPanelComponent({
         setAutosaveError("");
         setServerAutosaveAt(freshResult.updatedAt ?? new Date().toISOString());
         if (isSubmissionFileType(activeWorkspaceResetTarget)) {
+          setPendingUploadFileByType((current) => ({ ...current, [activeWorkspaceResetTarget]: null }));
           setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
         }
         setSubmitError("");
@@ -4857,6 +4893,7 @@ function SchoolIndicatorPanelComponent({
       }
 
       if (isSubmissionFileType(activeWorkspaceResetTarget)) {
+        setPendingUploadFileByType((current) => ({ ...current, [activeWorkspaceResetTarget]: null }));
         setUploadErrorByType((current) => ({ ...current, [activeWorkspaceResetTarget]: "" }));
         setOptimisticSubmittedByType((current) => ({ ...current, [activeWorkspaceResetTarget]: false }));
         setSubmitError("");
@@ -5157,6 +5194,10 @@ function SchoolIndicatorPanelComponent({
       }
       if (!activeScopeReady) {
         setSubmitError("Complete or upload this workspace item before sending it.");
+        return;
+      }
+      if (activeScopeHasPendingUpload) {
+        setSubmitError("Save or cancel the selected file before sending it.");
         return;
       }
       if (activeTab?.kind === "upload" && hasUnsavedWorkspaceChanges) {
@@ -5500,9 +5541,9 @@ function SchoolIndicatorPanelComponent({
     }
   };
 
-  const handleFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
+  const handleSaveFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
-    await runGroupBAction("Upload", async () => {
+    await runGroupBAction("Save file", async () => {
       setSavingSection(type);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
@@ -5569,7 +5610,7 @@ function SchoolIndicatorPanelComponent({
               if (typeof window !== "undefined") {
                 localStorage.removeItem(autosaveKey);
               }
-              setAutosaveError("Uploaded. TARGETS-MET is using the saved file details while package details finish loading.");
+              setAutosaveError("Saved. TARGETS-MET is using the saved file details while package details finish loading.");
               scheduleWorkspaceDetailHydration(updated);
             }
             if (activeWorkspaceSubmissionIdRef.current !== null && activeWorkspaceSubmissionIdRef.current !== freshUpdated.id) {
@@ -5583,13 +5624,14 @@ function SchoolIndicatorPanelComponent({
             setActiveWorkspaceSubmission(freshUpdated);
             setEditingSubmissionId(freshUpdated.id);
             onWorkspaceSubmissionHydrated?.(freshUpdated, { source: "hydrated" });
+            setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
             setPendingLocalDraft(null);
             setAutosaveError("");
             setServerAutosaveAt(freshUpdated.updatedAt ?? new Date().toISOString());
             setUploadingFileType(null);
             setUploadErrorByType((current) => ({ ...current, [type]: "" }));
           },
-          getSuccessMessage: (updated) => `${type.toUpperCase()} file uploaded for package #${updated.id}.`,
+          getSuccessMessage: (updated) => `${fileDefinition.shortLabel} file saved for package #${updated.id}.`,
           skipResolvedWorkspaceRehydrate: true,
           onError: (err) => {
             console.error("[GroupB] API error:", err);
@@ -5610,17 +5652,56 @@ function SchoolIndicatorPanelComponent({
   }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
 
   const handleFileInputChange = useCallback(
-    async (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
+    (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
       const selectedFile = event.target.files?.[0];
       event.currentTarget.value = "";
       if (!selectedFile) {
         return;
       }
 
-      await handleFileUpload(type, selectedFile);
+      const normalizedName = selectedFile.name.toLowerCase();
+      const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
+      if (!validExtension) {
+        setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
+        setUploadErrorByType((current) => ({
+          ...current,
+          [type]: "Only PDF, DOCX, and XLSX files are allowed.",
+        }));
+        return;
+      }
+
+      if (selectedFile.size > 10 * 1024 * 1024) {
+        setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
+        setUploadErrorByType((current) => ({
+          ...current,
+          [type]: "File size must not exceed 10MB.",
+        }));
+        return;
+      }
+
+      setPendingUploadFileByType((current) => ({ ...current, [type]: selectedFile }));
+      setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+      setSaveMessage(`${SUBMISSION_FILE_DEFINITION_BY_TYPE[type].shortLabel} selected. Click Save to update the Report View.`);
     },
-    [handleFileUpload],
+    [],
   );
+  const handleCancelPendingFile = useCallback((type: IndicatorSubmissionFileType) => {
+    setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
+    setUploadErrorByType((current) => ({ ...current, [type]: "" }));
+    setSaveMessage("");
+  }, []);
+  const handleSavePendingFile = useCallback(async (type: IndicatorSubmissionFileType) => {
+    const pendingFile = pendingUploadFileByType[type];
+    if (!pendingFile) {
+      setUploadErrorByType((current) => ({
+        ...current,
+        [type]: "Choose a file before saving.",
+      }));
+      return;
+    }
+
+    await handleSaveFileUpload(type, pendingFile);
+  }, [handleSaveFileUpload, pendingUploadFileByType]);
   const handleAcademicYearChange = useCallback((nextAcademicYearId: string) => {
     void runGroupBAction("Switch academic year", async () => {
       if (nextAcademicYearId === activeAcademicYearId) {
@@ -6176,6 +6257,7 @@ function SchoolIndicatorPanelComponent({
                 const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[activeUploadType];
                 const fileEntry = fileEntryByType[activeUploadType];
                 const uploaded = submittedByFileType[activeUploadType];
+                const pendingFile = pendingUploadFileByType[activeUploadType];
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
                 const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions;
@@ -6193,11 +6275,19 @@ function SchoolIndicatorPanelComponent({
                           uploadedAt: fileEntry.uploadedAt,
                         }
                         : null}
+                      pendingFile={pendingFile
+                        ? {
+                          filename: pendingFile.name,
+                          sizeBytes: pendingFile.size,
+                        }
+                        : null}
                       submitted={uploaded}
                       canViewReport={uploaded}
                       isUploading={isUploading}
                       disabled={uploadDisabled}
                       onUploadClick={() => handleRequestUpload(activeUploadType)}
+                      onSaveClick={() => void handleSavePendingFile(activeUploadType)}
+                      onCancelPendingClick={() => handleCancelPendingFile(activeUploadType)}
                       onViewClick={() => void handleViewUploadedFile(activeUploadType)}
                       onDownloadClick={() => void handleDownloadUploadedFile(activeUploadType)}
                       error={uploadError}
@@ -6731,6 +6821,7 @@ function SchoolIndicatorPanelComponent({
                 isManualActionBlocked
                 || isSubmissionDataLoading
                 || (!sendActionHasBatchSelection && (!activeScopeId || !activeScopeReady))
+                || (!sendActionHasBatchSelection && activeScopeHasPendingUpload)
                 || isWorkspaceReadOnly
               }
               title={sendActionTitle}
