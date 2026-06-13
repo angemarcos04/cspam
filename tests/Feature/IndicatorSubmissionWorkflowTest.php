@@ -7,8 +7,6 @@ use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
-use App\Models\Student;
-use App\Models\Teacher;
 use App\Models\User;
 use App\Events\CspamsUpdateBroadcast;
 use App\Support\Domain\MetricCategory;
@@ -94,7 +92,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.1.id', $newerId);
     }
 
-    public function test_auto_calculated_school_achievement_count_overrides_manual_payload_values_when_provided(): void
+    public function test_school_achievement_enrollment_preserves_manual_payload_value(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -102,12 +100,16 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $currentSchoolYear = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
-        $expectedStudentTotal = Student::query()
-            ->where('school_id', (int) $schoolHead->school_id)
-            ->where('academic_year_id', $academicYearId)
-            ->count();
         $schoolHeadToken = $schoolHead->createToken('monitor-redaction-school-head')->plainTextToken;
         $enrollmentMetricId = (int) PerformanceMetric::query()->where('code', 'IMETA_ENROLL_TOTAL')->value('id');
+
+        $metrics = $this->withToken($schoolHeadToken)->getJson('/api/indicators/metrics');
+        $metrics->assertOk()
+            ->assertJsonPath('data', function (array $rows): bool {
+                $row = collect($rows)->firstWhere('code', 'IMETA_ENROLL_TOTAL');
+
+                return is_array($row) && ($row['isAutoCalculated'] ?? true) === false;
+            });
 
         $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
             'academic_year_id' => $academicYearId,
@@ -115,31 +117,32 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'indicators' => [
                 [
                     'metric_id' => $enrollmentMetricId,
-                    'target_value' => 999,
-                    'actual_value' => 1,
-                    'remarks' => 'Manual KPI values encoded by school head.',
+                    'actual' => ['values' => [$currentSchoolYear => 4321]],
+                    'remarks' => 'Manual School Achievement value encoded by school head.',
                 ],
             ],
         ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.summary.totalIndicators', 1);
+        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/' . $created->json('data.id'));
+        $show->assertOk();
 
         /** @var array<string, mixed>|null $metricRow */
-        $metricRow = collect($created->json('data.indicators', []))
+        $metricRow = collect($show->json('data.indicators', []))
             ->first(static fn (mixed $row): bool => is_array($row) && (($row['metric']['code'] ?? null) === 'IMETA_ENROLL_TOTAL'));
 
         $this->assertIsArray($metricRow);
         $this->assertSame(
-            (float) $expectedStudentTotal,
+            4321.0,
             (float) data_get($metricRow, "actualTypedValue.values.{$currentSchoolYear}"),
         );
         $this->assertNull(data_get($metricRow, 'targetTypedValue'));
         $this->assertSame('recorded', $metricRow['complianceStatus'] ?? null);
-        $this->assertSame('Manual KPI values encoded by school head.', $metricRow['remarks'] ?? null);
+        $this->assertSame('Manual School Achievement value encoded by school head.', $metricRow['remarks'] ?? null);
     }
 
-    public function test_school_achievement_counts_auto_sync_from_reports_and_teacher_records(): void
+    public function test_school_achievement_teacher_counts_preserve_manual_payload_values(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -148,24 +151,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $schoolId = (int) $schoolHead->school_id;
         $this->assertGreaterThan(0, $schoolId);
 
-        School::query()->whereKey($schoolId)->update([
-            'reported_student_count' => 1234,
-            'reported_teacher_count' => 57,
-        ]);
-
-        Teacher::query()->where('school_id', $schoolId)->forceDelete();
-        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 1', 'sex' => 'male']);
-        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 2', 'sex' => 'male']);
-        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Male 3', 'sex' => 'male']);
-        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Female 1', 'sex' => 'female']);
-        Teacher::query()->create(['school_id' => $schoolId, 'name' => 'Teacher Female 2', 'sex' => 'female']);
-
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $currentSchoolYear = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
-        $expectedStudentTotal = Student::query()
-            ->where('school_id', $schoolId)
-            ->where('academic_year_id', $academicYearId)
-            ->count();
         $schoolHeadToken = $schoolHead->createToken('monitor-redaction-school-head')->plainTextToken;
 
         $metricIds = PerformanceMetric::query()
@@ -176,33 +163,35 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'academic_year_id' => $academicYearId,
             'reporting_period' => 'ANNUAL',
             'indicators' => [
-                ['metric_id' => (int) $metricIds->get('IMETA_ENROLL_TOTAL'), 'target_value' => 1, 'actual_value' => 1],
-                ['metric_id' => (int) $metricIds->get('TEACHERS_TOTAL'), 'target_value' => 2, 'actual_value' => 2],
-                ['metric_id' => (int) $metricIds->get('TEACHERS_MALE'), 'target_value' => 3, 'actual_value' => 3],
-                ['metric_id' => (int) $metricIds->get('TEACHERS_FEMALE'), 'target_value' => 4, 'actual_value' => 4],
+                ['metric_id' => (int) $metricIds->get('IMETA_ENROLL_TOTAL'), 'actual' => ['values' => [$currentSchoolYear => 4321]]],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_TOTAL'), 'actual' => ['values' => [$currentSchoolYear => 101]]],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_MALE'), 'actual' => ['values' => [$currentSchoolYear => 12]]],
+                ['metric_id' => (int) $metricIds->get('TEACHERS_FEMALE'), 'actual' => ['values' => [$currentSchoolYear => 89]]],
             ],
         ]);
 
         $response->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.summary.totalIndicators', 4);
+        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/' . $response->json('data.id'));
+        $show->assertOk();
 
-        $rowsByCode = collect($response->json('data.indicators', []))
+        $rowsByCode = collect($show->json('data.indicators', []))
             ->keyBy(static fn (array $row): string => (string) data_get($row, 'metric.code', ''));
 
         $this->assertSame(
-            (float) $expectedStudentTotal,
+            4321.0,
             (float) data_get($rowsByCode->get('IMETA_ENROLL_TOTAL'), "actualTypedValue.values.{$currentSchoolYear}"),
         );
         $this->assertSame(
-            57.0,
+            101.0,
             (float) data_get($rowsByCode->get('TEACHERS_TOTAL'), "actualTypedValue.values.{$currentSchoolYear}"),
         );
         $this->assertSame(
-            3.0,
+            12.0,
             (float) data_get($rowsByCode->get('TEACHERS_MALE'), "actualTypedValue.values.{$currentSchoolYear}"),
         );
         $this->assertSame(
-            2.0,
+            89.0,
             (float) data_get($rowsByCode->get('TEACHERS_FEMALE'), "actualTypedValue.values.{$currentSchoolYear}"),
         );
     }

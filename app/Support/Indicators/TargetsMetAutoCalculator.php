@@ -39,10 +39,6 @@ class TargetsMetAutoCalculator
         'LEARNER_SATISFACTION',
         'RIGHTS_AWARENESS',
         'RBE_MANIFEST',
-        'IMETA_ENROLL_TOTAL',
-        'TEACHERS_TOTAL',
-        'TEACHERS_MALE',
-        'TEACHERS_FEMALE',
     ];
 
     /**
@@ -132,10 +128,6 @@ class TargetsMetAutoCalculator
             $series['LEARNER_SATISFACTION'][$year] = 0.0;
             $series['RIGHTS_AWARENESS'][$year] = 0.0;
             $series['RBE_MANIFEST'][$year] = $snapshot['rbeManifestPercent'] ?? null;
-            $series['IMETA_ENROLL_TOTAL'][$year] = $snapshot['reportedStudents'] ?? null;
-            $series['TEACHERS_TOTAL'][$year] = $snapshot['reportedTeachers'] ?? null;
-            $series['TEACHERS_MALE'][$year] = $snapshot['reportedTeachersMale'] ?? null;
-            $series['TEACHERS_FEMALE'][$year] = $snapshot['reportedTeachersFemale'] ?? null;
         }
 
         return $series;
