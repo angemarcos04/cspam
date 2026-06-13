@@ -16,6 +16,7 @@ describe("MonitorSchoolDrawer", () => {
   });
 
   it("keeps submissions as the main page and history as secondary reference", () => {
+    const setActiveSchoolDrawerTab = vi.fn();
     render(
       <MonitorSchoolDrawer
         viewState={{
@@ -78,7 +79,9 @@ describe("MonitorSchoolDrawer", () => {
                 detail: "Section values are available for this year.",
                 viewUrl: null,
                 downloadUrl: null,
-                actionLabel: null,
+                actionLabel: "View School Achievements",
+                actionTarget: "school_achievements",
+                canReview: true,
               },
               {
                 id: "fm_qad_001",
@@ -120,7 +123,7 @@ describe("MonitorSchoolDrawer", () => {
           returnedDrawerIndicatorKeySet: new Set(),
         }}
         actions={{
-          setActiveSchoolDrawerTab: vi.fn(),
+          setActiveSchoolDrawerTab,
           setSelectedSchoolDrawerYear: vi.fn(),
           closeSchoolDrawer: vi.fn(),
           handleJumpToMissingIndicators: vi.fn(),
@@ -140,6 +143,8 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByRole("button", { name: "Indicator History" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
     expect(screen.getByText("Submitted Packages")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "View School Achievements" }));
+    expect(setActiveSchoolDrawerTab).toHaveBeenCalledWith("history");
     expect(screen.getByRole("link", { name: "View FM-QAD-001" })).toBeTruthy();
     expect(screen.queryByText("Year Checklist")).toBeNull();
     expect(screen.queryByText("Submitted Report View")).toBeNull();

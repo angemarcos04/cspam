@@ -1,5 +1,5 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildSyncedCountsRefreshOutcome,
   buildSyncedCountsUnavailableMessage,
@@ -7,10 +7,16 @@ import {
   isFreshSchoolDetailCountsCacheEntry,
   isMissingSchoolRecordError,
   matchesDrawerSchool,
+  shouldForceSchoolSubmissionReload,
   useSchoolDrawer,
 } from "@/pages/monitor/useSchoolDrawer";
 
 describe("useSchoolDrawer", () => {
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
   it("matches monitor realtime updates by either strict school code or strict record id", () => {
     expect(matchesDrawerSchool("school-1", "401777", "school-1", "")).toBe(true);
     expect(matchesDrawerSchool("other-school", "401777", "school-1", "401777")).toBe(true);
@@ -68,6 +74,8 @@ describe("useSchoolDrawer", () => {
     const listSubmissionsForSchool = vi
       .fn()
       .mockRejectedValue(new Error("School record not found. It may have been archived or permanently deleted."));
+    const queryStudents = vi.fn();
+    const listTeachers = vi.fn();
 
     const { result } = renderHook(() =>
       useSchoolDrawer({
@@ -77,8 +85,8 @@ describe("useSchoolDrawer", () => {
         resolveRecordId: (schoolKey) => (schoolKey ? "school-record-1" : ""),
         resolveSchoolCode: () => "",
         listSubmissionsForSchool,
-        queryStudents: vi.fn(),
-        listTeachers: vi.fn(),
+        queryStudents,
+        listTeachers,
       }),
     );
 
@@ -99,7 +107,7 @@ describe("useSchoolDrawer", () => {
     );
   });
 
-  it("derives available drawer years in newest-first order", () => {
+  it("derives available drawer years from the monitor-visible year window", () => {
     expect(deriveAvailableSchoolDrawerYears([
       {
         id: "sub-1",
@@ -115,10 +123,14 @@ describe("useSchoolDrawer", () => {
         updatedAt: null,
         createdAt: null,
       },
-    ] as never)).toEqual(["2025-2026", "2024-2025"]);
+    ] as never)).toEqual(["2025-2026", "2026-2027", "2027-2028", "2028-2029", "2029-2030"]);
   });
 
   it("opens the drawer on the submissions tab by default", () => {
+    const listSubmissionsForSchool = vi.fn();
+    const queryStudents = vi.fn();
+    const listTeachers = vi.fn();
+
     const { result } = renderHook(() =>
       useSchoolDrawer({
         authSessionKey: "monitor:1",
@@ -126,9 +138,9 @@ describe("useSchoolDrawer", () => {
         latestRealtimeBatch: null,
         resolveRecordId: () => "",
         resolveSchoolCode: () => "",
-        listSubmissionsForSchool: vi.fn(),
-        queryStudents: vi.fn(),
-        listTeachers: vi.fn(),
+        listSubmissionsForSchool,
+        queryStudents,
+        listTeachers,
       }),
     );
 
@@ -137,5 +149,10 @@ describe("useSchoolDrawer", () => {
     });
 
     expect(result.current.activeSchoolDrawerTab).toBe("submissions");
+  });
+
+  it("forces school submission reloads after realtime refresh ticks", () => {
+    expect(shouldForceSchoolSubmissionReload(0)).toBe(false);
+    expect(shouldForceSchoolSubmissionReload(1)).toBe(true);
   });
 });

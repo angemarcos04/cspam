@@ -345,8 +345,15 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.kpiRows[0]?.actual).toBe("-");
     expect(detail?.checklistItems.find((item) => item.label === "School Achievements")?.statusLabel).toBe("For Review");
     expect(detail?.checklistItems.find((item) => item.label === "Key Performance")?.statusLabel).toBe("Complete");
-    expect(detail?.packageRows.find((row) => row.label === "School Achievements")?.canReview).toBe(true);
-    expect(detail?.packageRows.find((row) => row.label === "Key Performance")?.canReview).toBe(false);
+    const schoolAchievementsRow = detail?.packageRows.find((row) => row.label === "School Achievements");
+    const keyPerformanceRow = detail?.packageRows.find((row) => row.label === "Key Performance");
+    expect(schoolAchievementsRow?.statusLabel).toBe("For Review");
+    expect(schoolAchievementsRow?.canReview).toBe(true);
+    expect(schoolAchievementsRow?.actionLabel).toBe("View School Achievements");
+    expect(schoolAchievementsRow?.actionTarget).toBe("school_achievements");
+    expect(keyPerformanceRow?.canReview).toBe(false);
+    expect(keyPerformanceRow?.actionTarget).toBe("key_performance");
+    expect(detail?.selectedYearLatestStatus).toBe("submitted");
   });
 
   it("keeps the initial five-year academic-year FIFO window in ascending order", () => {

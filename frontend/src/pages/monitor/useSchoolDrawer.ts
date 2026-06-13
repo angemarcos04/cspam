@@ -131,6 +131,10 @@ export function buildSyncedCountsRefreshOutcome(
   };
 }
 
+export function shouldForceSchoolSubmissionReload(submissionRefreshTick: number): boolean {
+  return submissionRefreshTick > 0;
+}
+
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
@@ -276,6 +280,7 @@ export function useSchoolDrawer({
       try {
         const allRows = await listSubmissionsForSchool(schoolDrawerRecordId, {
           signal: abortController.signal,
+          force: shouldForceSchoolSubmissionReload(submissionRefreshTick),
         });
         if (!active) {
           return;

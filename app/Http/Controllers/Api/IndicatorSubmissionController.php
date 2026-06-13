@@ -149,6 +149,7 @@ class IndicatorSubmissionController extends Controller
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+                'scopeReviews.reviewedBy:id,name,email',
                 'createdBy:id,name,email',
                 'submittedBy:id,name,email',
                 'reviewedBy:id,name,email',

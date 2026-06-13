@@ -109,6 +109,16 @@ function errorMessageFromUnknown(error: unknown): string {
   return "Unable to save this review decision. Please try again.";
 }
 
+function reportSectionElementId(target: MonitorDrawerPackageRow["actionTarget"]): string | null {
+  if (target === "school_achievements") {
+    return "monitor-submitted-report-school-achievements";
+  }
+  if (target === "key_performance") {
+    return "monitor-submitted-report-key-performance";
+  }
+  return null;
+}
+
 export function MonitorSchoolDrawer({
   viewState,
   loadingState,
@@ -193,6 +203,18 @@ export function MonitorSchoolDrawer({
     }
 
     void saveScopeReview(returnReviewRow, "returned", notes);
+  };
+
+  const viewSectionReport = (row: MonitorDrawerPackageRow) => {
+    const sectionId = reportSectionElementId(row.actionTarget ?? null);
+    if (!sectionId || !row.canReview) {
+      return;
+    }
+
+    setActiveSchoolDrawerTab("history");
+    window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
   };
 
   return (
@@ -383,6 +405,14 @@ export function MonitorSchoolDrawer({
                                       >
                                         Download
                                       </a>
+                                    ) : row.actionTarget && row.canReview ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => viewSectionReport(row)}
+                                        className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
+                                      >
+                                        {row.actionLabel ?? `View ${row.label}`}
+                                      </button>
                                     ) : null}
                                     {!row.viewUrl && !row.downloadUrl && (
                                       <button
@@ -552,7 +582,7 @@ export function MonitorSchoolDrawer({
                     ) : schoolDrawerYearDetail
                       && (schoolDrawerYearDetail.schoolAchievementRows.length > 0 || schoolDrawerYearDetail.kpiRows.length > 0) ? (
                       <div className="grid grid-cols-1 gap-4 p-4 lg:grid-cols-2">
-                        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
+                        <div id="monitor-submitted-report-school-achievements" className="scroll-mt-24 overflow-hidden rounded-sm border border-slate-200 bg-white">
                           <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
                             <h3 className="text-sm font-semibold text-slate-800">
                               School&apos;s Achievement (SY {schoolDrawerYearDetail.selectedYearLabel ?? "N/A"})
@@ -578,7 +608,7 @@ export function MonitorSchoolDrawer({
                           </table>
                         </div>
 
-                        <div className="overflow-hidden rounded-sm border border-slate-200 bg-white">
+                        <div id="monitor-submitted-report-key-performance" className="scroll-mt-24 overflow-hidden rounded-sm border border-slate-200 bg-white">
                           <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
                             <h3 className="text-sm font-semibold text-slate-800">
                               Key Performance Indicators (SY {schoolDrawerYearDetail.selectedYearLabel ?? "N/A"})

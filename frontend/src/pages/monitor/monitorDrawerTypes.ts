@@ -49,6 +49,7 @@ export interface MonitorDrawerPackageRow {
   viewUrl: string | null;
   downloadUrl: string | null;
   actionLabel: string | null;
+  actionTarget?: "school_achievements" | "key_performance" | null;
   canReview?: boolean;
   reviewDecision?: "verified" | "returned" | null;
   reviewNotes?: string | null;

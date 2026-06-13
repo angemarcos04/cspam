@@ -30,6 +30,17 @@ const SCHOOL_YEAR_WINDOW_SIZE = 5;
 const SCHOOL_ACHIEVEMENTS_SCOPE_ID = "school_achievements_learning_outcomes";
 const KEY_PERFORMANCE_SCOPE_ID = "key_performance_indicators";
 
+function monitorSectionActionTarget(scopeId: string): MonitorDrawerPackageRow["actionTarget"] {
+  const normalized = normalizeScopeId(scopeId);
+  if (normalized === SCHOOL_ACHIEVEMENTS_SCOPE_ID) {
+    return "school_achievements";
+  }
+  if (normalized === KEY_PERFORMANCE_SCOPE_ID) {
+    return "key_performance";
+  }
+  return null;
+}
+
 function toSubmissionActivityTime(submission: IndicatorSubmission | null | undefined): number {
   return new Date(
     submission?.submittedAt
@@ -362,17 +373,19 @@ export function resolveMonitorSchoolDetailYearSelection(
 function buildMonitorPackageRows(
   checklistItems: MonitorDrawerChecklistItem[],
   latestYearSubmission: IndicatorSubmission | null,
+  monitorVisibleSubmission: IndicatorSubmission | null = latestYearSubmission,
 ): MonitorDrawerPackageRow[] {
-  const hasSubmission = Boolean(latestYearSubmission);
+  const sourceSubmission = monitorVisibleSubmission ?? latestYearSubmission;
+  const hasSubmission = Boolean(sourceSubmission);
   const reviewByScope = new Map(
-    (latestYearSubmission?.scopeReviews ?? []).map((review) => [review.scopeId, review]),
+    (sourceSubmission?.scopeReviews ?? []).map((review) => [review.scopeId, review]),
   );
-  const reviewableStatus = normalizeWorkflowStatus(latestYearSubmission?.status);
+  const reviewableStatus = normalizeWorkflowStatus(sourceSubmission?.status);
   const canReviewFullSubmission = reviewableStatus === "submitted" || reviewableStatus === "returned";
-  const sentScopeIds = submittedScopeIdSet(latestYearSubmission);
+  const sentScopeIds = submittedScopeIdSet(sourceSubmission);
 
   return checklistItems.map<MonitorDrawerPackageRow>((item) => {
-    const submittedAt = latestYearSubmission?.submittedAt ?? latestYearSubmission?.updatedAt ?? latestYearSubmission?.createdAt ?? null;
+    const submittedAt = sourceSubmission?.submittedAt ?? sourceSubmission?.updatedAt ?? sourceSubmission?.createdAt ?? null;
     const review = reviewByScope.get(item.id) ?? null;
     const reviewDecision = review?.decision === "verified" || review?.decision === "returned" ? review.decision : null;
     const overlayStatusLabel = reviewDecision === "verified"
@@ -387,7 +400,7 @@ function buildMonitorPackageRows(
         : null;
 
     if (item.kind === "file") {
-      const fileEntry = latestYearSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
+      const fileEntry = sourceSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
       const hasUploadedFile = Boolean(fileEntry?.uploaded);
       const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
       const fileViewUrl = hasUploadedFile ? (fileEntry?.viewUrl ?? null) : null;
@@ -395,7 +408,7 @@ function buildMonitorPackageRows(
 
       return {
         id: item.id,
-        submissionId: latestYearSubmission?.id ?? null,
+        submissionId: sourceSubmission?.id ?? null,
         label: item.label,
         kind: item.kind,
         statusLabel,
@@ -405,6 +418,7 @@ function buildMonitorPackageRows(
         viewUrl: fileViewUrl,
         downloadUrl: fileDownloadUrl,
         actionLabel: fileViewUrl ? `View ${item.label}` : null,
+        actionTarget: null,
         canReview: hasUploadedFile && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
         reviewDecision,
         reviewNotes: review?.notes ?? null,
@@ -417,7 +431,7 @@ function buildMonitorPackageRows(
 
     return {
       id: item.id,
-      submissionId: latestYearSubmission?.id ?? null,
+      submissionId: sourceSubmission?.id ?? null,
       label: item.label,
       kind: item.kind,
       statusLabel,
@@ -426,7 +440,8 @@ function buildMonitorPackageRows(
       detail: hasSubmission ? item.detail : "No submitted package exists for the selected year.",
       viewUrl: null,
       downloadUrl: null,
-      actionLabel: null,
+      actionLabel: isComplete ? `View ${item.label}` : null,
+      actionTarget: isComplete ? monitorSectionActionTarget(item.id) : null,
       canReview: isComplete && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
       reviewDecision,
       reviewNotes: review?.notes ?? null,
@@ -452,17 +467,19 @@ export function buildMonitorDrawerYearDetail(
     latestYearSubmission,
   } = resolveMonitorSchoolDetailYearSelection(schoolDrawerSubmissions, selectedSchoolDrawerYear);
   const selectedYearMonitorReportSubmission = resolveSelectedYearMonitorReportSubmission(sortedSelectedYearSubmissions);
+  const monitorVisibleYearSubmission = selectedYearMonitorReportSubmission ?? latestYearSubmission;
   const selectedYearWorkflowStatus = normalizeWorkflowStatus(
-    sortedSelectedYearSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status))?.status
+    monitorVisibleYearSubmission?.status
+    ?? sortedSelectedYearSubmissions.find((submission) => isMonitorRelevantPackageStatus(submission.status))?.status
     ?? latestYearSubmission?.status,
   );
-  const latestYearSubmittedScopeIds = submittedScopeIdSet(latestYearSubmission);
+  const latestYearSubmittedScopeIds = submittedScopeIdSet(monitorVisibleYearSubmission);
   const currentYearRows = schoolIndicatorRows.filter((row) =>
     Object.prototype.hasOwnProperty.call(row.valuesByYear, effectiveSelectedYear ?? ""),
   );
   const reportRows = currentYearRows.length > 0 ? currentYearRows : schoolIndicatorRows;
   const monitorReportSubmissionRows = submissionRows(selectedYearMonitorReportSubmission);
-  const latestYearIndicatorRows = submissionRows(latestYearSubmission);
+  const latestYearIndicatorRows = submissionRows(monitorVisibleYearSubmission);
   const canShowSchoolAchievements = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, SCHOOL_ACHIEVEMENTS_SCOPE_ID);
   const canShowKeyPerformance = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, KEY_PERFORMANCE_SCOPE_ID);
 
@@ -493,13 +510,13 @@ export function buildMonitorDrawerYearDetail(
 
   const checklistItems = [
     ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus, effectiveSelectedYear, latestYearSubmittedScopeIds),
-    ...buildMonitorChecklistFileItems(schoolDetail.schoolTypeRaw, latestYearSubmission, selectedYearWorkflowStatus, latestYearSubmittedScopeIds),
+    ...buildMonitorChecklistFileItems(schoolDetail.schoolTypeRaw, monitorVisibleYearSubmission, selectedYearWorkflowStatus, latestYearSubmittedScopeIds),
   ];
   const checklistCompleteCount = checklistItems.filter(
     (item) => item.statusLabel === "Complete" || item.statusLabel === "Uploaded",
   ).length;
   const checklistMissingCount = checklistItems.length - checklistCompleteCount;
-  const packageRows = buildMonitorPackageRows(checklistItems, latestYearSubmission);
+  const packageRows = buildMonitorPackageRows(checklistItems, latestYearSubmission, monitorVisibleYearSubmission);
   const currentIssue = buildMonitorCurrentIssue(
     selectedYearWorkflowStatus,
     checklistMissingCount,
@@ -515,7 +532,9 @@ export function buildMonitorDrawerYearDetail(
     checklistCompleteCount,
     checklistMissingCount,
     selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,
-    selectedYearLatestStatus: latestYearSubmission?.status ?? null,
+    selectedYearLatestStatus: selectedYearMonitorReportSubmission && !isFullMonitorReportStatus(selectedYearMonitorReportSubmission.status)
+      ? "submitted"
+      : latestYearSubmission?.status ?? null,
     finalizedReportSubmission: selectedYearMonitorReportSubmission,
     reportSourceContext: buildMonitorSubmittedReportSourceContext(
       selectedYearMonitorReportSubmission,

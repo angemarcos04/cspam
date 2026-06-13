@@ -64,6 +64,7 @@ export interface IndicatorListResult {
 
 export interface LoadAllSubmissionsOptions {
   signal?: AbortSignal;
+  force?: boolean;
 }
 
 interface IndicatorSubmissionsMeta {
@@ -1123,7 +1124,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       const versionKey = `${buildAllSubmissionsVersionKey()}|school:${normalizedSchoolId}`;
       const cached = schoolSubmissionsCacheRef.current.get(normalizedSchoolId);
-      if (cached && cached.versionKey === versionKey) {
+      if (!options?.force && cached && cached.versionKey === versionKey) {
         return cached.rows;
       }
 
