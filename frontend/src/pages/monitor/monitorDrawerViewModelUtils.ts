@@ -356,6 +356,7 @@ function typedCompositeValue(payload: Record<string, unknown> | null | undefined
 function typedYearRawValue(
   payload: Record<string, unknown> | null | undefined,
   selectedYear: string | null | undefined,
+  options?: { allowSingleValueFallback?: boolean },
 ): unknown {
   if (!payload || typeof payload !== "object") {
     return null;
@@ -381,12 +382,33 @@ function typedYearRawValue(
     }
   }
 
-  const definedEntries = Object.entries(values).filter(([, value]) => String(value ?? "").trim() !== "");
-  if (definedEntries.length === 1) {
-    return definedEntries[0]?.[1] ?? null;
+  if (options?.allowSingleValueFallback !== false) {
+    const definedEntries = Object.entries(values).filter(([, value]) => String(value ?? "").trim() !== "");
+    if (definedEntries.length === 1) {
+      return definedEntries[0]?.[1] ?? null;
+    }
   }
 
   return null;
+}
+
+export function resolveSubmissionItemSelectedYearRawValue(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  kind: "target" | "actual",
+  selectedYear: string | null | undefined,
+): unknown {
+  if (!indicator) {
+    return null;
+  }
+
+  const typedRaw = kind === "target"
+    ? indicator.targetTypedValue
+    : indicator.actualTypedValue;
+  const typed = typedRaw && typeof typedRaw === "object"
+    ? (typedRaw as Record<string, unknown>)
+    : null;
+
+  return typedYearRawValue(typed, selectedYear, { allowSingleValueFallback: false });
 }
 
 function selectedYearDisplaySegment(
@@ -444,7 +466,7 @@ function selectedYearDisplaySegment(
 export function resolveSubmissionItemDisplayValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
-  options?: { selectedYear?: string | null },
+  options?: { selectedYear?: string | null; strictSelectedYear?: boolean },
 ): string {
   if (!indicator) {
     return "-";
@@ -470,9 +492,15 @@ export function resolveSubmissionItemDisplayValue(
     // full-series display string. The joined display remains useful for
     // reference/history contexts, but it is not the source of truth for a
     // single selected-year report cell.
-    const selectedYearTypedValue = typedYearRawValue(typed, selectedYear);
+    const selectedYearTypedValue = typedYearRawValue(typed, selectedYear, {
+      allowSingleValueFallback: options?.strictSelectedYear !== true,
+    });
     if (selectedYearTypedValue !== null && selectedYearTypedValue !== undefined && String(selectedYearTypedValue).trim() !== "") {
       return formatMetricScopedReportValue(selectedYearTypedValue, indicator);
+    }
+
+    if (options?.strictSelectedYear === true) {
+      return "-";
     }
 
     const selectedYearDisplayValue = selectedYearDisplaySegment(displayRaw, selectedYear);

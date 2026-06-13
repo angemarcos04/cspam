@@ -983,7 +983,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertSame($codes, $seededCodes);
     }
 
-    public function test_auto_calculated_kpi_still_resolves_with_real_metric_id(): void
+    public function test_key_performance_payload_values_preserve_real_metric_id(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -1007,26 +1007,21 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ],
         ]);
 
-        $expectedSeries = app(\App\Support\Indicators\TargetsMetAutoCalculator::class)
-            ->deriveMatricesForSchool((int) $schoolHead->school_id);
-        $expectedActual = data_get($expectedSeries, "PR.actual.values.{$year}");
-        $expectedTarget = data_get($expectedSeries, "PR.target.values.{$year}");
-
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.indicators.0.metric.id', (string) $metric->id)
             ->assertJsonPath('data.indicators.0.metric.code', 'PR');
 
         $this->assertSame(
-            (float) $expectedActual,
+            93.0,
             (float) $created->json("data.indicators.0.actualTypedValue.values.{$year}"),
         );
         $this->assertSame(
-            (float) $expectedTarget,
+            91.0,
             (float) $created->json("data.indicators.0.targetTypedValue.values.{$year}"),
         );
     }
 
-    public function test_auto_calculated_kpi_still_resolves_with_metric_code_only(): void
+    public function test_key_performance_payload_values_preserve_metric_code_only(): void
     {
         $this->seedIndicatorFixtures();
 
@@ -1050,15 +1045,53 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ],
         ]);
 
-        $expectedSeries = app(\App\Support\Indicators\TargetsMetAutoCalculator::class)
-            ->deriveMatricesForSchool((int) $schoolHead->school_id);
-        $expectedActual = data_get($expectedSeries, "NER.actual.values.{$year}");
-        $expectedTarget = data_get($expectedSeries, "NER.target.values.{$year}");
+        $created->assertStatus(Response::HTTP_CREATED)
+            ->assertJsonPath('data.indicators.0.metric.code', 'NER')
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 97)
+            ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", 95);
+    }
+
+    public function test_explicit_zero_key_performance_values_are_preserved(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $year = (string) AcademicYear::query()->whereKey($academicYearId)->value('name');
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'Q1',
+            'indicators' => [
+                [
+                    'metric_code' => 'NER',
+                    'target' => ['values' => [$year => 0]],
+                    'actual' => ['values' => [$year => 0]],
+                ],
+            ],
+        ]);
 
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.indicators.0.metric.code', 'NER')
-            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", fn (mixed $value): bool => (float) $value === (float) $expectedActual)
-            ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", fn (mixed $value): bool => (float) $value === (float) $expectedTarget);
+            ->assertJsonPath("data.indicators.0.targetTypedValue.values.{$year}", 0)
+            ->assertJsonPath("data.indicators.0.actualTypedValue.values.{$year}", 0)
+            ->assertJsonPath('data.indicators.0.complianceStatus', 'met');
+    }
+
+    public function test_auto_calculated_kpi_does_not_fabricate_zero_series_for_missing_sources(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $derived = app(\App\Support\Indicators\TargetsMetAutoCalculator::class)
+            ->deriveMatricesForSchool((int) $schoolHead->school_id);
+
+        $this->assertArrayNotHasKey('LEARNER_SATISFACTION', $derived);
+        $this->assertArrayNotHasKey('RIGHTS_AWARENESS', $derived);
+        $this->assertArrayNotHasKey('VIOLENCE_REPORT_RATE', $derived);
     }
 
     public function test_synthetic_metric_id_with_metric_code_resolves_real_metric(): void

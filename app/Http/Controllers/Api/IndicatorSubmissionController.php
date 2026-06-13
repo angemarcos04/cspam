@@ -2357,6 +2357,10 @@ class IndicatorSubmissionController extends Controller
                     return $row;
                 }
 
+                if ($this->rowHasExplicitTargetActualValues($row)) {
+                    return $row;
+                }
+
                 /** @var array<string, mixed>|null $derived */
                 $derived = $derivedByCode[(string) $metric->code] ?? null;
                 if (! is_array($derived)) {
@@ -2373,6 +2377,38 @@ class IndicatorSubmissionController extends Controller
             })
             ->filter(static fn (mixed $row): bool => is_array($row))
             ->values();
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     */
+    private function rowHasExplicitTargetActualValues(array $row): bool
+    {
+        return $this->rowValueIsPresent($row['target'] ?? null)
+            || $this->rowValueIsPresent($row['actual'] ?? null)
+            || $this->rowValueIsPresent($row['target_value'] ?? null)
+            || $this->rowValueIsPresent($row['actual_value'] ?? null);
+    }
+
+    private function rowValueIsPresent(mixed $value): bool
+    {
+        if ($value === null) {
+            return false;
+        }
+
+        if (is_array($value)) {
+            if (array_key_exists('values', $value) && is_array($value['values'])) {
+                return collect($value['values'])->contains(
+                    static fn (mixed $entry): bool => $entry !== null && trim((string) $entry) !== '',
+                );
+            }
+
+            return collect($value)->contains(
+                static fn (mixed $entry): bool => $entry !== null && trim((string) $entry) !== '',
+            );
+        }
+
+        return trim((string) $value) !== '';
     }
 
     private function normalizeMetricId(mixed $value): int

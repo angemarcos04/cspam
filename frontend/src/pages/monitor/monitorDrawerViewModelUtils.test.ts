@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { formatSubmittedReportValue, resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import {
+  formatSubmittedReportValue,
+  resolveSubmissionItemDisplayValue,
+  resolveSubmissionItemSelectedYearRawValue,
+} from "@/pages/monitor/monitorDrawerViewModelUtils";
 import type { IndicatorSubmissionItem } from "@/types";
 
 function item(overrides: Partial<IndicatorSubmissionItem>): IndicatorSubmissionItem {
@@ -116,6 +120,59 @@ describe("resolveSubmissionItemDisplayValue", () => {
     });
 
     expect(resolveSubmissionItemDisplayValue(indicator, "actual", { selectedYear: "2025-2026" })).toBe("96.00%");
+  });
+
+  it("keeps strict selected-year KPI cells blank instead of falling back to scalar zero", () => {
+    const indicator = item({
+      metric: {
+        id: "metric-kpi",
+        code: "NER",
+        name: "Net Enrollment Rate",
+        category: "learner",
+        framework: "targets_met",
+        dataType: "yearly_matrix",
+        inputSchema: { valueType: "percentage", years: ["2025-2026"] },
+      },
+      actualTypedValue: {
+        values: {
+          "2026-2027": 0,
+        },
+      },
+      actualValue: 0,
+      actualDisplay: "2026-2027: 0.00%",
+    });
+
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", {
+      selectedYear: "2025-2026",
+      strictSelectedYear: true,
+    })).toBe("-");
+    expect(resolveSubmissionItemSelectedYearRawValue(indicator, "actual", "2025-2026")).toBeNull();
+  });
+
+  it("preserves explicit selected-year zero in strict KPI cells", () => {
+    const indicator = item({
+      metric: {
+        id: "metric-kpi",
+        code: "NER",
+        name: "Net Enrollment Rate",
+        category: "learner",
+        framework: "targets_met",
+        dataType: "yearly_matrix",
+        inputSchema: { valueType: "percentage", years: ["2025-2026"] },
+      },
+      actualTypedValue: {
+        values: {
+          "2025-2026": 0,
+        },
+      },
+      actualValue: 0,
+    });
+
+    expect(resolveSubmissionItemDisplayValue(indicator, "actual", {
+      selectedYear: "2025-2026",
+      strictSelectedYear: true,
+    })).toBe("0.00%");
+    expect(resolveSubmissionItemSelectedYearRawValue(indicator, "actual", "2025-2026")).toBe(0);
   });
 
   it("formats ratio and index style number metrics with deliberate generic precision", () => {

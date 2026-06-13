@@ -1,4 +1,7 @@
-import { resolveSubmissionItemDisplayValue } from "@/pages/monitor/monitorDrawerViewModelUtils";
+import {
+  resolveSubmissionItemDisplayValue,
+  resolveSubmissionItemSelectedYearRawValue,
+} from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
   resolveExactSubmissionItemByMetricCode,
   resolveSubmissionSchoolId,
@@ -434,6 +437,18 @@ export function resolveIndicatorValue(
   indicator: IndicatorSubmissionItem | null | undefined,
   kind: "target" | "actual",
   selectedYear?: string | null,
+  options?: { strictSelectedYear?: boolean },
 ): string {
-  return resolveSubmissionItemDisplayValue(indicator, kind, { selectedYear });
+  return resolveSubmissionItemDisplayValue(indicator, kind, {
+    selectedYear,
+    strictSelectedYear: options?.strictSelectedYear,
+  });
+}
+
+export function resolveIndicatorSelectedYearRawValue(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  kind: "target" | "actual",
+  selectedYear?: string | null,
+): unknown {
+  return resolveSubmissionItemSelectedYearRawValue(indicator, kind, selectedYear);
 }

@@ -29,6 +29,7 @@ import {
   compareSelectedYearSchoolHeadCurrentReportSubmissions,
   compareSelectedYearFinalizedReportSubmissions,
   isFinalizedSubmissionStatus,
+  resolveIndicatorSelectedYearRawValue,
   resolveIndicatorValue,
   resolvePreferredSchoolHeadCurrentReportAcademicYearId,
   resolveSelectedYearReportSubmission,
@@ -196,6 +197,68 @@ export function formatComplianceStatusLabel(value: unknown): string {
   }
 
   return formatDisplayValue(value);
+}
+
+function selectedYearValueIsPresent(value: unknown): boolean {
+  if (value === null || value === undefined) {
+    return false;
+  }
+
+  return typeof value === "string" ? value.trim().length > 0 : true;
+}
+
+function selectedYearComparableNumber(value: unknown): number | null {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.replace(/[%,$]/g, "").trim();
+  if (normalized.length === 0) {
+    return null;
+  }
+
+  const numeric = Number(normalized);
+  return Number.isFinite(numeric) ? numeric : null;
+}
+
+export function formatKpiComplianceStatusForSelectedYear(
+  indicator: IndicatorSubmissionItem | null | undefined,
+  selectedYear: string | null | undefined,
+): string {
+  if (!indicator) {
+    return "-";
+  }
+
+  const target = resolveIndicatorSelectedYearRawValue(indicator, "target", selectedYear);
+  const actual = resolveIndicatorSelectedYearRawValue(indicator, "actual", selectedYear);
+  if (!selectedYearValueIsPresent(target) || !selectedYearValueIsPresent(actual)) {
+    return "-";
+  }
+
+  const comparison = String(indicator.metric?.inputSchema?.comparison ?? "greater_or_equal").trim().toLowerCase();
+  const targetNumber = selectedYearComparableNumber(target);
+  const actualNumber = selectedYearComparableNumber(actual);
+
+  if (comparison === "equal") {
+    const isMet = targetNumber !== null && actualNumber !== null
+      ? actualNumber === targetNumber
+      : String(actual).trim().toLowerCase() === String(target).trim().toLowerCase();
+    return isMet ? "Met" : "Not met";
+  }
+
+  if (targetNumber === null || actualNumber === null) {
+    return "Not met";
+  }
+
+  const isMet = comparison === "less_or_equal"
+    ? actualNumber <= targetNumber
+    : actualNumber >= targetNumber;
+
+  return isMet ? "Met" : "Not met";
 }
 
 function isCountableComplianceStatus(value: unknown): boolean {
@@ -1193,9 +1256,9 @@ export function SchoolAdminDashboard() {
         key: row.key,
         label: row.label,
         indicator,
-        target: resolveIndicatorValue(indicator, "target", reportYearLabel),
-        actual: resolveIndicatorValue(indicator, "actual", reportYearLabel),
-        status: formatComplianceStatusLabel(indicator?.complianceStatus),
+        target: resolveIndicatorValue(indicator, "target", reportYearLabel, { strictSelectedYear: true }),
+        actual: resolveIndicatorValue(indicator, "actual", reportYearLabel, { strictSelectedYear: true }),
+        status: formatKpiComplianceStatusForSelectedYear(indicator, reportYearLabel),
       };
     });
 

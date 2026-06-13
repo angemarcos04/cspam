@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
-import type { IndicatorSubmission } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
 
 const useAuthMock = vi.fn();
 const useDataMock = vi.fn();
@@ -174,6 +174,11 @@ function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualVal
       category: "learner",
       framework: "targets_met",
       dataType: "yearly_matrix",
+      inputSchema: {
+        valueType: "percentage",
+        comparison: "greater_or_equal",
+        years: ["2025-2026", "2026-2027"],
+      },
     },
     targetValue,
     actualValue,
@@ -191,6 +196,49 @@ function buildKpiIndicator(overrides?: Partial<Record<"targetValue" | "actualVal
     },
     varianceValue: -2,
     complianceStatus: typeof overrides?.complianceStatus === "string" ? overrides.complianceStatus : "below_target",
+    remarks: null,
+  };
+}
+
+function buildKpiIndicatorFor(options: {
+  code: string;
+  name: string;
+  target?: number | string | null;
+  actual?: number | string | null;
+  comparison?: string;
+  complianceStatus?: string;
+  selectedYear?: string;
+  staleYear?: string;
+}): IndicatorSubmissionItem {
+  const selectedYear = options.selectedYear ?? "2025-2026";
+  const targetValues = options.target === undefined
+    ? { [options.staleYear ?? "2026-2027"]: 0 }
+    : { [selectedYear]: options.target };
+  const actualValues = options.actual === undefined
+    ? { [options.staleYear ?? "2026-2027"]: 0 }
+    : { [selectedYear]: options.actual };
+
+  return {
+    id: `kpi-${options.code}`,
+    metric: {
+      id: options.code,
+      code: options.code,
+      name: options.name,
+      category: "learner",
+      framework: "targets_met",
+      dataType: "yearly_matrix",
+      inputSchema: {
+        valueType: "percentage",
+        comparison: options.comparison ?? "greater_or_equal",
+        years: ["2025-2026", "2026-2027"],
+      },
+    },
+    targetValue: options.target === undefined ? 0 : Number(options.target),
+    actualValue: options.actual === undefined ? 0 : Number(options.actual),
+    targetTypedValue: { values: targetValues },
+    actualTypedValue: { values: actualValues },
+    varianceValue: null,
+    complianceStatus: options.complianceStatus ?? "met",
     remarks: null,
   };
 }
@@ -750,8 +798,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Source package: #draft-sync-101 (Draft).")).not.toBeNull();
     });
     expect(screen.queryByText("2,024")).toBeNull();
-    expect(screen.queryByText("97")).toBeNull();
-    expect(screen.queryByText("96")).toBeNull();
+    expect(screen.queryByText("97.00%")).toBeNull();
+    expect(screen.queryByText("96.00%")).toBeNull();
 
     act(() => {
       schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(hydratedDraft);
@@ -760,8 +808,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("2,024")).not.toBeNull();
     });
-    expect(screen.getByText("97")).not.toBeNull();
-    expect(screen.getByText("96")).not.toBeNull();
+    expect(screen.getByText("97.00%")).not.toBeNull();
+    expect(screen.getByText("96.00%")).not.toBeNull();
   });
 
   it("keeps the newest saved TARGETS-MET values across repeated save and login cycles", async () => {
@@ -846,7 +894,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("1,111")).not.toBeNull();
     });
-    expect(screen.getByText("90")).not.toBeNull();
+    expect(screen.getByText("90.00%")).not.toBeNull();
 
     act(() => {
       schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(savedB, { source: "optimistic" });
@@ -855,9 +903,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("2,222")).not.toBeNull();
     });
-    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.getByText("99.00%")).not.toBeNull();
     expect(screen.queryByText("1,111")).toBeNull();
-    expect(screen.queryByText("90")).toBeNull();
+    expect(screen.queryByText("90.00%")).toBeNull();
 
     firstLogin.unmount();
     schoolIndicatorPanelPropsMock = null;
@@ -871,14 +919,14 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(fetchSubmission).toHaveBeenCalledWith("draft-loop-101");
     });
     expect(screen.queryByText("1,111")).toBeNull();
-    expect(screen.queryByText("90")).toBeNull();
+    expect(screen.queryByText("90.00%")).toBeNull();
 
     await waitFor(() => {
       expect(screen.getByText("2,222")).not.toBeNull();
     });
-    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.getByText("99.00%")).not.toBeNull();
     expect(screen.queryByText("1,111")).toBeNull();
-    expect(screen.queryByText("90")).toBeNull();
+    expect(screen.queryByText("90.00%")).toBeNull();
   });
 
   it("renders TARGETS-MET from the effective saved source when selected-year rows are still empty", async () => {
@@ -953,8 +1001,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
     expect(screen.getByText("TARGETS-MET")).not.toBeNull();
     expect(screen.getByText("3,030")).not.toBeNull();
-    expect(screen.getByText("98")).not.toBeNull();
-    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.getByText("98.00%")).not.toBeNull();
+    expect(screen.getByText("99.00%")).not.toBeNull();
     expect(screen.queryByText("Submit your indicators to generate the report view.")).toBeNull();
   });
 
@@ -1293,7 +1341,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
     await waitFor(() => {
       expect(screen.getByText("1,515")).not.toBeNull();
-      expect(screen.getByText("94")).not.toBeNull();
+      expect(screen.getByText("94.00%")).not.toBeNull();
     });
 
     indicatorDataState.lastSyncedAt = "2026-05-17T00:00:05.000Z";
@@ -1305,7 +1353,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("2,024")).not.toBeNull();
     });
-    expect(screen.getByText("96")).not.toBeNull();
+    expect(screen.getByText("96.00%")).not.toBeNull();
   });
 
   it("prefers a fresher same-year submission from indicator state before the selected-year list reload catches up", async () => {
@@ -1380,7 +1428,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Source package: #submitted-stale (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("1,515")).not.toBeNull();
-    expect(screen.getByText("94")).not.toBeNull();
+    expect(screen.getByText("94.00%")).not.toBeNull();
 
     indicatorDataState.allSubmissions = [staleSubmitted, fresherSubmitted];
     view.rerender(<SchoolAdminDashboard />);
@@ -1389,7 +1437,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Source package: #submitted-fresh (Submitted).")).not.toBeNull();
     });
     expect(screen.getByText("2,024")).not.toBeNull();
-    expect(screen.getByText("96")).not.toBeNull();
+    expect(screen.getByText("96.00%")).not.toBeNull();
     expect(loadSubmissionsForYear).toHaveBeenCalledTimes(1);
   });
 
@@ -1639,6 +1687,157 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("Not met")).not.toBeNull();
     });
     expect(screen.queryByText("below_target")).toBeNull();
+  });
+
+  it("renders missing selected-year KPI values as dashes instead of scalar zero Met", async () => {
+    const submitted = buildSubmission({
+      id: "kpi-blank-101",
+      indicators: [
+        buildKpiIndicatorFor({
+          code: "NER",
+          name: "Net Enrollment Rate (NER)",
+          complianceStatus: "met",
+        }),
+      ],
+      items: [],
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [{
+        schoolId: "school-1",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        address: "Herritage Bldg.",
+      }],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    const row = await screen.findByText("Net Enrollment Rate (NER)");
+    const cells = within(row.closest("tr") as HTMLTableRowElement).getAllByRole("cell");
+    expect(cells[1]?.textContent?.trim()).toBe("-");
+    expect(cells[2]?.textContent?.trim()).toBe("-");
+    expect(cells[3]?.textContent?.trim()).toBe("-");
+  });
+
+  it("derives KPI status from selected-year target and actual values", async () => {
+    const submitted = buildSubmission({
+      id: "kpi-status-101",
+      indicators: [
+        buildKpiIndicatorFor({
+          code: "NER",
+          name: "Net Enrollment Rate (NER)",
+          target: 0,
+          actual: 0,
+          comparison: "greater_or_equal",
+          complianceStatus: "below_target",
+        }),
+        buildKpiIndicatorFor({
+          code: "DR",
+          name: "Drop-out Rate (DR)",
+          target: 5,
+          actual: 6,
+          comparison: "less_or_equal",
+          complianceStatus: "met",
+        }),
+        buildKpiIndicatorFor({
+          code: "VIOLENCE_REPORT_RATE",
+          name: "Learners Reporting School Violence",
+          target: 5,
+          actual: 4,
+          comparison: "less_or_equal",
+          complianceStatus: "below_target",
+        }),
+      ],
+      items: [],
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [{
+        schoolId: "school-1",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        address: "Herritage Bldg.",
+      }],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submitted],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submitted),
+      loadSubmissionsForYear: vi.fn(async () => [submitted]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    const nerRow = await screen.findByText("Net Enrollment Rate (NER)");
+    const nerCells = within(nerRow.closest("tr") as HTMLTableRowElement).getAllByRole("cell");
+    expect(nerCells[1]?.textContent?.trim()).toBe("0.00%");
+    expect(nerCells[2]?.textContent?.trim()).toBe("0.00%");
+    expect(nerCells[3]?.textContent?.trim()).toBe("Met");
+
+    const dropoutRow = await screen.findByText("Drop-out Rate (DR)");
+    const dropoutCells = within(dropoutRow.closest("tr") as HTMLTableRowElement).getAllByRole("cell");
+    expect(dropoutCells[1]?.textContent?.trim()).toBe("5.00%");
+    expect(dropoutCells[2]?.textContent?.trim()).toBe("6.00%");
+    expect(dropoutCells[3]?.textContent?.trim()).toBe("Not met");
+
+    const violenceRow = await screen.findByText("Learners Reporting School Violence");
+    const violenceCells = within(violenceRow.closest("tr") as HTMLTableRowElement).getAllByRole("cell");
+    expect(violenceCells[1]?.textContent?.trim()).toBe("5.00%");
+    expect(violenceCells[2]?.textContent?.trim()).toBe("4.00%");
+    expect(violenceCells[3]?.textContent?.trim()).toBe("Met");
   });
 
   it("previews uploaded report files through authenticated fetch and downloads through the data helper", async () => {

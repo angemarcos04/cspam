@@ -83,6 +83,15 @@ class TargetsMetAutoCalculator
         foreach ($seriesByCode as $code => $series) {
             $actualValues = $this->backfillSeries($schoolYears, $series);
             $targetValues = $this->deriveTargetSeries($schoolYears, $actualValues);
+            $actualValues = array_filter($actualValues, static fn (?float $value): bool => $value !== null);
+            $targetValues = array_intersect_key(
+                array_filter($targetValues, static fn (?float $value): bool => $value !== null),
+                $actualValues,
+            );
+
+            if ($actualValues === [] || $targetValues === []) {
+                continue;
+            }
 
             $derived[$code] = [
                 'target' => ['values' => $targetValues],
@@ -124,9 +133,9 @@ class TargetsMetAutoCalculator
             $series['PLM_PROF'][$year] = $snapshot['learningMasteryProficientPercent'] ?? null;
             $series['PLM_HIGH_PROF'][$year] = $snapshot['learningMasteryHighlyProficientPercent'] ?? null;
             $series['AE_PASS_RATE'][$year] = $snapshot['aePassRatePercent'] ?? null;
-            $series['VIOLENCE_REPORT_RATE'][$year] = 0.0;
-            $series['LEARNER_SATISFACTION'][$year] = 0.0;
-            $series['RIGHTS_AWARENESS'][$year] = 0.0;
+            $series['VIOLENCE_REPORT_RATE'][$year] = null;
+            $series['LEARNER_SATISFACTION'][$year] = null;
+            $series['RIGHTS_AWARENESS'][$year] = null;
             $series['RBE_MANIFEST'][$year] = $snapshot['rbeManifestPercent'] ?? null;
         }
 
@@ -286,7 +295,7 @@ class TargetsMetAutoCalculator
     /**
      * @param array<string, float|null> $series
      *
-     * @return array<string, float>
+     * @return array<string, float|null>
      */
     private function backfillSeries(array $years, array $series): array
     {
@@ -323,16 +332,16 @@ class TargetsMetAutoCalculator
 
         $filled = [];
         foreach ($years as $index => $year) {
-            $filled[$year] = round((float) ($values[$index] ?? 0.0), 2);
+            $filled[$year] = $values[$index] === null ? null : round((float) $values[$index], 2);
         }
 
         return $filled;
     }
 
     /**
-     * @param array<string, float> $actualValues
+     * @param array<string, float|null> $actualValues
      *
-     * @return array<string, float>
+     * @return array<string, float|null>
      */
     private function deriveTargetSeries(array $years, array $actualValues): array
     {
@@ -340,10 +349,15 @@ class TargetsMetAutoCalculator
         $previousActual = null;
 
         foreach ($years as $year) {
-            $actual = (float) ($actualValues[$year] ?? 0.0);
+            $actual = $actualValues[$year] ?? null;
+
+            if ($actual === null) {
+                $targets[$year] = $previousActual === null ? null : round($previousActual, 2);
+                continue;
+            }
 
             $targets[$year] = round($previousActual ?? $actual, 2);
-            $previousActual = $actual;
+            $previousActual = (float) $actual;
         }
 
         return $targets;
