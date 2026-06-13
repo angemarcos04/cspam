@@ -1,21 +1,33 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
+const downloadSubmissionFileMock = vi.hoisted(() => vi.fn());
 const reviewSubmissionScopeMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@/context/Auth", () => ({
+  useAuth: () => ({
+    apiToken: "monitor-token",
+  }),
+}));
 
 vi.mock("@/context/IndicatorData", () => ({
   useIndicatorData: () => ({
+    downloadSubmissionFile: downloadSubmissionFileMock,
     reviewSubmissionScope: reviewSubmissionScopeMock,
   }),
 }));
 
 describe("MonitorSchoolDrawer", () => {
   afterEach(() => {
+    downloadSubmissionFileMock.mockReset();
+    reviewSubmissionScopeMock.mockReset();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
     cleanup();
   });
 
-  it("keeps submissions as the main page and history as secondary reference", () => {
+  it("keeps submissions as the main page and history as secondary reference", async () => {
     const setActiveSchoolDrawerTab = vi.fn();
     render(
       <MonitorSchoolDrawer
@@ -143,9 +155,35 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByRole("button", { name: "Indicator History" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
     expect(screen.getByText("Submitted Packages")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "View School Achievements" }));
+    expect(screen.queryByRole("button", { name: "View School Achievements" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View FM-QAD-001" })).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]);
     expect(setActiveSchoolDrawerTab).toHaveBeenCalledWith("history");
-    expect(screen.getByRole("link", { name: "View FM-QAD-001" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "View FM-QAD-001" })).toBeNull();
+
+    const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["pdf"], { type: "application/pdf" }), { status: 200 }));
+    const createObjectURL = vi.fn(() => "blob:monitor-preview");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    vi.stubGlobal("URL", { ...URL, createObjectURL, revokeObjectURL });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "View" })[1]);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/submissions/sub-1/view/fm_qad_001",
+        expect.objectContaining({
+          credentials: "omit",
+          method: "GET",
+        }),
+      );
+    });
+    const requestOptions = fetchMock.mock.calls[0]?.[1] as { headers?: Headers };
+    expect(requestOptions.headers?.get("Authorization")).toBe("Bearer monitor-token");
+    expect(await screen.findByTitle("FM-QAD-001 PDF preview")).toBeTruthy();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Download" })[0]);
+    expect(downloadSubmissionFileMock).toHaveBeenCalledWith("sub-1", "fm_qad_001");
     expect(screen.queryByText("Year Checklist")).toBeNull();
     expect(screen.queryByText("Submitted Report View")).toBeNull();
     expect(screen.queryByText("Data Sync")).toBeNull();
@@ -617,7 +655,10 @@ describe("MonitorSchoolDrawer", () => {
     };
 
     expect(screen.getAllByText("Viewing SY 2025-2026.").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View BMEF" }).getAttribute("href")).toBe("/api/submissions/sub-2025/view/bmef");
+    expect(screen.getByText("bmef.pdf")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "View" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByRole("button", { name: "Download" }).length).toBeGreaterThanOrEqual(1);
 
     rerender(
       <MonitorSchoolDrawer
@@ -634,7 +675,8 @@ describe("MonitorSchoolDrawer", () => {
     );
 
     expect(screen.getAllByText("Viewing SY 2026-2027.").length).toBeGreaterThan(0);
-    expect(screen.getByRole("link", { name: "View BMEF" }).getAttribute("href")).toBe("/api/submissions/sub-2026/view/bmef");
+    expect(screen.getByText("bmef-2026.pdf")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
     expect(screen.queryByText("bmef.pdf")).toBeNull();
   });
 

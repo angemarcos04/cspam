@@ -353,7 +353,7 @@ describe("buildMonitorDrawerYearDetail", () => {
     const keyPerformanceRow = detail?.packageRows.find((row) => row.label === "Key Performance");
     expect(schoolAchievementsRow?.statusLabel).toBe("For Review");
     expect(schoolAchievementsRow?.canReview).toBe(true);
-    expect(schoolAchievementsRow?.actionLabel).toBe("View School Achievements");
+    expect(schoolAchievementsRow?.actionLabel).toBeNull();
     expect(schoolAchievementsRow?.actionTarget).toBe("school_achievements");
     expect(keyPerformanceRow?.canReview).toBe(false);
     expect(keyPerformanceRow?.actionTarget).toBe("key_performance");

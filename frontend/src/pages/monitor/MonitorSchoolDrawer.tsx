@@ -1,6 +1,9 @@
-import { useState } from "react";
-import { CheckCircle2, RotateCcw, X } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Download, RotateCcw, X } from "lucide-react";
+import { SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
+import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
@@ -13,7 +16,7 @@ import type {
   SchoolIndicatorRowGroup,
 } from "@/pages/monitor/monitorDrawerTypes";
 import type { SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
-import type { IndicatorSubmission } from "@/types";
+import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
 interface MonitorSchoolDrawerViewState {
   isOpen: boolean;
   showNavigatorManual: boolean;
@@ -119,6 +122,37 @@ function reportSectionElementId(target: MonitorDrawerPackageRow["actionTarget"])
   return null;
 }
 
+function normalizeFileExtension(filename: string | null | undefined): string {
+  const raw = String(filename ?? "").trim();
+  const match = raw.match(/\.([a-z0-9]+)$/i);
+  return match?.[1]?.toLowerCase() ?? "";
+}
+
+function buildAuthenticatedReportPreviewEndpoint(relativeUrl: string): string {
+  const apiBaseUrl = getApiBaseUrl();
+
+  if (/^https?:\/\//i.test(apiBaseUrl)) {
+    return new URL(relativeUrl, apiBaseUrl).toString();
+  }
+
+  return relativeUrl;
+}
+
+function inferSubmissionIdFromFileUrl(relativeUrl: string | null | undefined): string | null {
+  if (!relativeUrl) {
+    return null;
+  }
+
+  const match = relativeUrl.match(/\/submissions\/([^/]+)\/(?:view|download)\//i);
+  return match?.[1] ? decodeURIComponent(match[1]) : null;
+}
+
+function revokeBlobUrl(blobUrl: string | null): void {
+  if (blobUrl && typeof URL.revokeObjectURL === "function") {
+    URL.revokeObjectURL(blobUrl);
+  }
+}
+
 export function MonitorSchoolDrawer({
   viewState,
   loadingState,
@@ -126,12 +160,17 @@ export function MonitorSchoolDrawer({
   actions,
   formatting,
 }: MonitorSchoolDrawerProps) {
-  const { reviewSubmissionScope } = useIndicatorData();
+  const { apiToken } = useAuth();
+  const { downloadSubmissionFile, reviewSubmissionScope } = useIndicatorData();
   const [scopeReviewSavingKey, setScopeReviewSavingKey] = useState<string | null>(null);
   const [scopeReviewError, setScopeReviewError] = useState<string>("");
   const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [returnReviewNotes, setReturnReviewNotes] = useState("");
   const [isHistoryDetailsOpen, setIsHistoryDetailsOpen] = useState(false);
+  const [activeFilePreviewRow, setActiveFilePreviewRow] = useState<MonitorDrawerPackageRow | null>(null);
+  const [activeFilePreviewUrl, setActiveFilePreviewUrl] = useState<string | null>(null);
+  const [activeFilePreviewError, setActiveFilePreviewError] = useState("");
+  const [downloadingFileRowId, setDownloadingFileRowId] = useState<string | null>(null);
   const {
     isOpen,
     showNavigatorManual,
@@ -160,6 +199,77 @@ export function MonitorSchoolDrawer({
     closeSchoolDrawer,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
+
+  const closeFilePreview = () => {
+    revokeBlobUrl(activeFilePreviewUrl);
+    setActiveFilePreviewRow(null);
+    setActiveFilePreviewUrl(null);
+    setActiveFilePreviewError("");
+  };
+
+  useEffect(() => () => {
+    revokeBlobUrl(activeFilePreviewUrl);
+  }, [activeFilePreviewUrl]);
+
+  const openFilePreview = async (row: MonitorDrawerPackageRow) => {
+    const relativeUrl = row.viewUrl ?? row.downloadUrl;
+    if (row.kind !== "file" || !relativeUrl) {
+      return;
+    }
+
+    if (activeFilePreviewUrl) {
+      revokeBlobUrl(activeFilePreviewUrl);
+    }
+
+    setActiveFilePreviewRow(row);
+    setActiveFilePreviewUrl(null);
+    setActiveFilePreviewError("");
+
+    try {
+      const endpoint = buildAuthenticatedReportPreviewEndpoint(relativeUrl);
+      const headers = new Headers({ Accept: "*/*" });
+      if (apiToken !== COOKIE_SESSION_TOKEN) {
+        headers.set("Authorization", `Bearer ${apiToken}`);
+      }
+
+      const response = await fetch(endpoint, {
+        method: "GET",
+        credentials: apiToken === COOKIE_SESSION_TOKEN ? "include" : "omit",
+        headers,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Preview request failed with status ${response.status}.`);
+      }
+
+      setActiveFilePreviewUrl(URL.createObjectURL(await response.blob()));
+    } catch {
+      setActiveFilePreviewError("Preview could not be loaded. Use Download to open the uploaded file.");
+    }
+  };
+
+  const downloadFileRow = async (row: MonitorDrawerPackageRow) => {
+    if (row.kind !== "file") {
+      return;
+    }
+
+    const submissionId = row.submissionId ?? inferSubmissionIdFromFileUrl(row.downloadUrl ?? row.viewUrl);
+    if (!submissionId) {
+      setScopeReviewError("Download is unavailable for this file.");
+      return;
+    }
+
+    const fileType = row.id as IndicatorSubmissionFileType;
+    setDownloadingFileRowId(row.id);
+    setScopeReviewError("");
+    try {
+      await downloadSubmissionFile(submissionId, fileType);
+    } catch (error) {
+      setScopeReviewError(errorMessageFromUnknown(error));
+    } finally {
+      setDownloadingFileRowId(null);
+    }
+  };
 
   const saveScopeReview = async (
     row: MonitorDrawerPackageRow,
@@ -368,7 +478,12 @@ export function MonitorSchoolDrawer({
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-slate-200">
-                            {schoolDrawerYearDetail.packageRows.map((row) => (
+                            {schoolDrawerYearDetail.packageRows.map((row) => {
+                              const canPreviewFile = row.kind === "file" && Boolean(row.viewUrl || row.downloadUrl);
+                              const canViewSection = row.kind === "section" && Boolean(row.actionTarget) && row.canReview;
+                              const canDownloadFile = row.kind === "file" && Boolean(row.viewUrl || row.downloadUrl);
+
+                              return (
                               <tr key={`monitor-package-row-${row.id}`} className="bg-white">
                                 <td className="px-3 py-3 align-top">
                                   <p className="font-semibold text-slate-900">{row.label}</p>
@@ -389,32 +504,24 @@ export function MonitorSchoolDrawer({
                                 </td>
                                 <td className="px-3 py-3 text-right align-top">
                                   <div className="flex flex-wrap justify-end gap-1.5">
-                                    {row.viewUrl ? (
-                                      <a
-                                        href={row.viewUrl}
-                                        target="_blank"
-                                        rel="noreferrer"
+                                    {canPreviewFile ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void openFilePreview(row)}
                                         className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                                       >
-                                        {row.actionLabel ?? `View ${row.label}`}
-                                      </a>
-                                    ) : row.downloadUrl ? (
-                                      <a
-                                        href={row.downloadUrl}
-                                        className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        Download
-                                      </a>
-                                    ) : row.actionTarget && row.canReview ? (
+                                        View
+                                      </button>
+                                    ) : canViewSection ? (
                                       <button
                                         type="button"
                                         onClick={() => viewSectionReport(row)}
                                         className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                                       >
-                                        {row.actionLabel ?? `View ${row.label}`}
+                                        View
                                       </button>
                                     ) : null}
-                                    {!row.viewUrl && !row.downloadUrl && (
+                                    {!canPreviewFile && !canViewSection && (
                                       <button
                                         type="button"
                                         disabled
@@ -422,6 +529,17 @@ export function MonitorSchoolDrawer({
                                         className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-400"
                                       >
                                         View
+                                      </button>
+                                    )}
+                                    {canDownloadFile && (
+                                      <button
+                                        type="button"
+                                        onClick={() => void downloadFileRow(row)}
+                                        disabled={downloadingFileRowId === row.id}
+                                        className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
+                                      >
+                                        <Download className="h-3.5 w-3.5" />
+                                        {downloadingFileRowId === row.id ? "Downloading..." : "Download"}
                                       </button>
                                     )}
                                     <button
@@ -454,7 +572,8 @@ export function MonitorSchoolDrawer({
                                   </div>
                                 </td>
                               </tr>
-                            ))}
+                              );
+                            })}
                           </tbody>
                         </table>
                       </div>
@@ -751,6 +870,90 @@ export function MonitorSchoolDrawer({
           )}
         </div>
       </aside>
+
+      {activeFilePreviewRow && (
+        <div className="fixed inset-0 z-[90] flex flex-col bg-slate-950/70 p-3 backdrop-blur-sm">
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-sm border border-slate-300 bg-white shadow-2xl">
+            <header className="flex items-center justify-between gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3">
+              <div>
+                <p className="text-sm font-bold uppercase tracking-wide text-slate-700">
+                  {(SUBMISSION_FILE_DEFINITION_BY_TYPE[activeFilePreviewRow.id as IndicatorSubmissionFileType]?.shortLabel ?? activeFilePreviewRow.label)} Report
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{activeFilePreviewRow.detail}</p>
+              </div>
+              <div className="flex items-center gap-2">
+                {(activeFilePreviewRow.downloadUrl || activeFilePreviewRow.viewUrl) && (
+                  <button
+                    type="button"
+                    onClick={() => void downloadFileRow(activeFilePreviewRow)}
+                    disabled={downloadingFileRowId === activeFilePreviewRow.id}
+                    className="inline-flex items-center gap-1 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    {downloadingFileRowId === activeFilePreviewRow.id ? "Downloading..." : "Download"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={closeFilePreview}
+                  className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1.5 text-slate-700 transition hover:bg-slate-100"
+                  aria-label="Close file preview"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </header>
+
+            <div className="min-h-0 flex-1 overflow-auto bg-slate-100 p-3">
+              {activeFilePreviewError ? (
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                  {activeFilePreviewError}
+                </div>
+              ) : !activeFilePreviewUrl ? (
+                <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                  Loading report preview...
+                </div>
+              ) : (() => {
+                const extension = normalizeFileExtension(activeFilePreviewRow.detail);
+                if (extension === "pdf") {
+                  return (
+                    <iframe
+                      title={`${activeFilePreviewRow.label} PDF preview`}
+                      src={activeFilePreviewUrl}
+                      className="h-full w-full rounded-sm border border-slate-300 bg-white"
+                    />
+                  );
+                }
+                if (extension === "png" || extension === "jpg" || extension === "jpeg" || extension === "webp" || extension === "gif") {
+                  return (
+                    <div className="flex h-full items-center justify-center overflow-auto rounded-sm border border-slate-300 bg-white p-4">
+                      <img
+                        src={activeFilePreviewUrl}
+                        alt={`${activeFilePreviewRow.label} report`}
+                        className="max-h-full max-w-full"
+                      />
+                    </div>
+                  );
+                }
+                if (extension === "xlsx" || extension === "xls" || extension === "csv") {
+                  return (
+                    <div className="flex h-full items-center justify-center rounded-sm border border-slate-300 bg-white p-6 text-center text-sm font-semibold text-slate-600">
+                      Spreadsheet preview is not available in the browser. Use Download to open the uploaded file.
+                    </div>
+                  );
+                }
+                return (
+                  <iframe
+                    title={`${activeFilePreviewRow.label} report preview`}
+                    src={activeFilePreviewUrl}
+                    className="h-full w-full rounded-sm border border-slate-300 bg-white"
+                  />
+                );
+              })()}
+            </div>
+          </section>
+        </div>
+      )}
 
       {returnReviewRow && (
         <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/40 px-4">
