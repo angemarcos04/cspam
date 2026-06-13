@@ -588,6 +588,123 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.getByText("96")).not.toBeNull();
   });
 
+  it("keeps the newest saved TARGETS-MET values across repeated save and login cycles", async () => {
+    const savedA = buildSubmission({
+      id: "draft-loop-101",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [
+        buildEnrollmentIndicator(1111),
+        buildKpiIndicator({ targetValue: 91, actualValue: 90, complianceStatus: "below_target" }),
+      ],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+    const savedB = buildSubmission({
+      id: "draft-loop-101",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [
+        buildEnrollmentIndicator(2222),
+        buildKpiIndicator({ targetValue: 98, actualValue: 99, complianceStatus: "met" }),
+      ],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-10T00:05:00.000Z",
+    });
+    const staleListA = buildSubmission({
+      ...savedA,
+      indicators: [buildEnrollmentIndicator(1111)],
+      updatedAt: "2026-05-10T00:00:00.000Z",
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    const fetchSubmission = vi.fn(async () => savedA);
+    const loadSubmissionsForYear = vi.fn(async () => [savedA]);
+    const indicatorDataState = {
+      submissions: [],
+      allSubmissions: [savedA],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission,
+      loadSubmissionsForYear,
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    };
+
+    useIndicatorDataMock.mockImplementation(() => indicatorDataState);
+
+    const firstLogin = render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByText("1,111")).not.toBeNull();
+    });
+    expect(screen.getByText("90")).not.toBeNull();
+
+    act(() => {
+      schoolIndicatorPanelPropsMock?.onWorkspaceSubmissionHydrated?.(savedB, { source: "optimistic" });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("2,222")).not.toBeNull();
+    });
+    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.queryByText("1,111")).toBeNull();
+    expect(screen.queryByText("90")).toBeNull();
+
+    firstLogin.unmount();
+    schoolIndicatorPanelPropsMock = null;
+    fetchSubmission.mockImplementation(async () => savedB);
+    loadSubmissionsForYear.mockImplementation(async () => [staleListA]);
+    indicatorDataState.allSubmissions = [staleListA];
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("draft-loop-101");
+    });
+    expect(screen.queryByText("1,111")).toBeNull();
+    expect(screen.queryByText("90")).toBeNull();
+
+    await waitFor(() => {
+      expect(screen.getByText("2,222")).not.toBeNull();
+    });
+    expect(screen.getByText("99")).not.toBeNull();
+    expect(screen.queryByText("1,111")).toBeNull();
+    expect(screen.queryByText("90")).toBeNull();
+  });
+
   it("renders TARGETS-MET from the effective saved source when selected-year rows are still empty", async () => {
     const hydratedDraft = buildSubmission({
       id: "draft-empty-source",
