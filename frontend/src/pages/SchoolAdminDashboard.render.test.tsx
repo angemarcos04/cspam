@@ -237,6 +237,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
   });
 
@@ -417,6 +418,181 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(screen.getByText("2,222")).not.toBeNull();
     });
     expect(screen.queryByText("1,111")).toBeNull();
+  });
+
+  it("retries saved report hydration after a transient login detail failure", async () => {
+    const lightweightDraft = buildSubmission({
+      id: "draft-retry-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    const hydratedDraft = buildSubmission({
+      id: "draft-retry-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(3333)],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    const fetchSubmission = vi.fn()
+      .mockRejectedValueOnce(new Error("temporary network failure"))
+      .mockResolvedValue(hydratedDraft);
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [lightweightDraft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission,
+      loadSubmissionsForYear: vi.fn(async () => [lightweightDraft]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(1);
+    });
+    expect(screen.queryByText("3,333")).toBeNull();
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("3,333")).not.toBeNull();
+    });
+    expect(screen.queryByText("Retrying saved report details...")).toBeNull();
+  });
+
+  it("shows a retry action instead of infinite loading when saved report hydration keeps failing", async () => {
+    const lightweightDraft = buildSubmission({
+      id: "draft-failed-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    const hydratedDraft = buildSubmission({
+      id: "draft-failed-login",
+      status: "draft",
+      statusLabel: "Draft",
+      indicators: [buildEnrollmentIndicator(4444)],
+      items: [],
+      submittedAt: null,
+      updatedAt: "2026-05-12T00:00:00.000Z",
+    });
+    const fetchSubmission = vi.fn()
+      .mockRejectedValueOnce(new Error("first failure"))
+      .mockRejectedValueOnce(new Error("second failure"))
+      .mockRejectedValueOnce(new Error("third failure"))
+      .mockResolvedValue(hydratedDraft);
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+
+    useDataMock.mockReturnValue({
+      records: [
+        {
+          schoolId: "school-1",
+          schoolName: "AMA CC - Santiago City",
+          schoolCode: "401777",
+          address: "Herritage Bldg.",
+        },
+      ],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [lightweightDraft],
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+      ],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission,
+      loadSubmissionsForYear: vi.fn(async () => [lightweightDraft]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(1);
+    });
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(2);
+    });
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(3);
+    });
+    await waitFor(() => {
+      expect(screen.getAllByRole("button", { name: /Retry loading saved report/i }).length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByText("Unable to load saved report details.").length).toBeGreaterThan(0);
+    expect(screen.queryByText("TOTAL NUMBER OF ENROLMENT")).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: /Retry loading saved report/i })[0]!);
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledTimes(4);
+    });
+    await waitFor(() => {
+      expect(screen.getByText("4,444")).not.toBeNull();
+    });
   });
 
   it("shows a newer saved draft in Report View as a workspace preview", async () => {

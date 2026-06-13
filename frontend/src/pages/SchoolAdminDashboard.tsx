@@ -442,6 +442,11 @@ export function resolveSelectedYearCurrentReportContextSubmissions(
 }
 
 const MOBILE_BREAKPOINT = 768;
+const REPORT_DETAIL_HYDRATION_MAX_ATTEMPTS = 3;
+const REPORT_DETAIL_HYDRATION_RETRY_DELAY_MS = 50;
+
+type ReportHydrationStatus = "idle" | "loading" | "retrying" | "ready" | "failed";
+
 const SCHOOL_ACHIEVEMENT_ROWS = [
   { key: "school_head_name", label: "NAME OF SCHOOL HEAD" },
   { key: "total_enrolment", label: "TOTAL NUMBER OF ENROLMENT" },
@@ -839,6 +844,9 @@ export function SchoolAdminDashboard() {
   const [reportZoomLevel, setReportZoomLevel] = useState(1);
   const [hydratedSubmittedReportSubmission, setHydratedSubmittedReportSubmission] = useState<IndicatorSubmission | null>(null);
   const [isHydratingReportSubmission, setIsHydratingReportSubmission] = useState(false);
+  const [reportHydrationStatus, setReportHydrationStatus] = useState<ReportHydrationStatus>("idle");
+  const [reportHydrationError, setReportHydrationError] = useState("");
+  const [reportHydrationRetryTick, setReportHydrationRetryTick] = useState(0);
   const [isMobileViewport, setIsMobileViewport] = useState(() =>
     typeof window === "undefined" ? false : window.innerWidth < MOBILE_BREAKPOINT,
   );
@@ -848,6 +856,10 @@ export function SchoolAdminDashboard() {
   const lastLoadedYearKeyRef = useRef("");
   const previousDashboardContextKeyRef = useRef("");
   const activeReportPreviewUrlRef = useRef<string | null>(null);
+  const reportHydrationAttemptsRef = useRef<{ fingerprint: string; attempts: number }>({ fingerprint: "", attempts: 0 });
+  const reportHydrationInFlightRef = useRef("");
+  const reportHydrationRetryScheduledRef = useRef("");
+  const reportHydrationRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearActiveReportPreview = useCallback(() => {
     if (activeReportPreviewUrlRef.current) {
@@ -868,7 +880,29 @@ export function SchoolAdminDashboard() {
     setActiveReportPreviewUrl(url);
   }, []);
 
-  useEffect(() => () => clearActiveReportPreview(), [clearActiveReportPreview]);
+  const clearReportHydrationRetryTimer = useCallback(() => {
+    if (reportHydrationRetryTimerRef.current) {
+      clearTimeout(reportHydrationRetryTimerRef.current);
+      reportHydrationRetryTimerRef.current = null;
+    }
+    reportHydrationRetryScheduledRef.current = "";
+  }, []);
+
+  const retryReportDetailHydration = useCallback(() => {
+    clearReportHydrationRetryTimer();
+    reportHydrationAttemptsRef.current = { fingerprint: "", attempts: 0 };
+    reportHydrationInFlightRef.current = "";
+    finalizedSubmissionRefreshRef.current = "";
+    setReportHydrationError("");
+    setReportHydrationStatus("loading");
+    setIsHydratingReportSubmission(true);
+    setReportHydrationRetryTick((current) => current + 1);
+  }, [clearReportHydrationRetryTimer]);
+
+  useEffect(() => () => {
+    clearActiveReportPreview();
+    clearReportHydrationRetryTimer();
+  }, [clearActiveReportPreview, clearReportHydrationRetryTimer]);
 
   /* ── Derived data ── */
   const orderedAcademicYears = useMemo(
@@ -964,6 +998,11 @@ export function SchoolAdminDashboard() {
     setDashboardViewSubmissions([]);
     setHydratedSubmittedReportSubmission(null);
     setIsHydratingReportSubmission(false);
+    setReportHydrationStatus("idle");
+    setReportHydrationError("");
+    reportHydrationAttemptsRef.current = { fingerprint: "", attempts: 0 };
+    reportHydrationInFlightRef.current = "";
+    clearReportHydrationRetryTimer();
     setIsDashboardYearSwitching(false);
     clearActiveReportPreview();
     setActiveReportModalType(null);
@@ -975,11 +1014,14 @@ export function SchoolAdminDashboard() {
         window.sessionStorage.removeItem(dashboardYearManualStorageKey);
       }
     }
-  }, [clearActiveReportPreview, dashboardContextKey, dashboardYearManualStorageKey, dashboardYearSelectionStorageKey]);
+  }, [clearActiveReportPreview, clearReportHydrationRetryTimer, dashboardContextKey, dashboardYearManualStorageKey, dashboardYearSelectionStorageKey]);
 
   useEffect(() => {
     if (!groupAReportSourceSubmission?.id) {
       finalizedSubmissionRefreshRef.current = "";
+      reportHydrationAttemptsRef.current = { fingerprint: "", attempts: 0 };
+      reportHydrationInFlightRef.current = "";
+      clearReportHydrationRetryTimer();
       setHydratedSubmittedReportSubmission((current) => (
         resolveSchoolHeadCurrentReportSubmissionForView(current, {
           selectedSchoolId,
@@ -987,6 +1029,8 @@ export function SchoolAdminDashboard() {
         }) ?? null
       ));
       setIsHydratingReportSubmission(false);
+      setReportHydrationStatus("idle");
+      setReportHydrationError("");
       return;
     }
 
@@ -1000,21 +1044,44 @@ export function SchoolAdminDashboard() {
 
     if (hasTrustedHydratedDetail) {
       finalizedSubmissionRefreshRef.current = refreshFingerprint;
+      reportHydrationAttemptsRef.current = { fingerprint: refreshFingerprint, attempts: 0 };
+      reportHydrationInFlightRef.current = "";
+      clearReportHydrationRetryTimer();
       setIsHydratingReportSubmission(false);
+      setReportHydrationStatus("ready");
+      setReportHydrationError("");
       return () => {
         cancelled = true;
       };
     }
 
-    if (finalizedSubmissionRefreshRef.current === refreshFingerprint) {
-      setIsHydratingReportSubmission(true);
+    if (reportHydrationInFlightRef.current === refreshFingerprint || reportHydrationRetryScheduledRef.current === refreshFingerprint) {
       return () => {
         cancelled = true;
       };
     }
 
+    const attemptState = reportHydrationAttemptsRef.current.fingerprint === refreshFingerprint
+      ? reportHydrationAttemptsRef.current
+      : { fingerprint: refreshFingerprint, attempts: 0 };
+
+    if (attemptState.attempts >= REPORT_DETAIL_HYDRATION_MAX_ATTEMPTS) {
+      finalizedSubmissionRefreshRef.current = refreshFingerprint;
+      setIsHydratingReportSubmission(false);
+      setReportHydrationStatus("failed");
+      setReportHydrationError("Unable to load saved report details.");
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    const nextAttemptCount = attemptState.attempts + 1;
+    reportHydrationAttemptsRef.current = { fingerprint: refreshFingerprint, attempts: nextAttemptCount };
+    reportHydrationInFlightRef.current = refreshFingerprint;
     finalizedSubmissionRefreshRef.current = refreshFingerprint;
     setIsHydratingReportSubmission(true);
+    setReportHydrationStatus(nextAttemptCount > 1 ? "retrying" : "loading");
+    setReportHydrationError(nextAttemptCount > 1 ? "Retrying saved report details..." : "");
     void fetchSubmission(submissionId)
       .then((submission) => {
         if (!cancelled && submission.id === submissionId) {
@@ -1026,11 +1093,37 @@ export function SchoolAdminDashboard() {
               selectedAcademicYearId: effectiveAcademicYearId,
             },
           ));
+          setReportHydrationStatus("ready");
+          setReportHydrationError("");
         }
       })
-      .catch(() => undefined)
+      .catch(() => {
+        if (cancelled) {
+          return;
+        }
+
+        if (nextAttemptCount < REPORT_DETAIL_HYDRATION_MAX_ATTEMPTS) {
+          setReportHydrationStatus("retrying");
+          setReportHydrationError("Retrying saved report details...");
+          clearReportHydrationRetryTimer();
+          reportHydrationRetryScheduledRef.current = refreshFingerprint;
+          reportHydrationRetryTimerRef.current = setTimeout(() => {
+            reportHydrationRetryTimerRef.current = null;
+            reportHydrationRetryScheduledRef.current = "";
+            setReportHydrationRetryTick((current) => current + 1);
+          }, REPORT_DETAIL_HYDRATION_RETRY_DELAY_MS);
+          return;
+        }
+
+        setReportHydrationStatus("failed");
+        setReportHydrationError("Unable to load saved report details.");
+      })
       .finally(() => {
-        if (!cancelled) {
+        if (reportHydrationInFlightRef.current === refreshFingerprint) {
+          reportHydrationInFlightRef.current = "";
+        }
+
+        if (!cancelled && reportHydrationRetryScheduledRef.current !== refreshFingerprint) {
           setIsHydratingReportSubmission(false);
         }
       });
@@ -1038,7 +1131,15 @@ export function SchoolAdminDashboard() {
     return () => {
       cancelled = true;
     };
-  }, [effectiveAcademicYearId, fetchSubmission, groupAReportSourceSubmission, selectedSchoolId, trustedHydratedReportSubmission]);
+  }, [
+    clearReportHydrationRetryTimer,
+    effectiveAcademicYearId,
+    fetchSubmission,
+    groupAReportSourceSubmission,
+    reportHydrationRetryTick,
+    selectedSchoolId,
+    trustedHydratedReportSubmission,
+  ]);
   const groupAReportView = useMemo(() => {
     const reportYearLabel = selectedYearLabel(
       effectiveAcademicYearId,
@@ -1139,16 +1240,22 @@ export function SchoolAdminDashboard() {
     groupAReportSourceSubmission
     && !trustedHydratedReportSubmission,
   );
-  const reportViewRenderState: "loading" | "empty" | "ready" = (
-    (isYearScopedLoading && !reportHasRenderableDetails)
-    || reportNeedsTrustedHydratedSource
-    || (reportHasSource && !reportHasRenderableDetails)
-    || isCurrentReportHydratingDetails
+  const reportViewRenderState: "loading" | "empty" | "ready" | "failed" = (
+    reportHydrationStatus === "failed"
+    && reportNeedsTrustedHydratedSource
+    && !reportHasRenderableDetails
   )
-    ? "loading"
-    : reportHasSource
-      ? "ready"
-      : "empty";
+    ? "failed"
+    : (
+      (isYearScopedLoading && !reportHasRenderableDetails)
+      || reportNeedsTrustedHydratedSource
+      || (reportHasSource && !reportHasRenderableDetails)
+      || isCurrentReportHydratingDetails
+    )
+      ? "loading"
+      : reportHasSource
+        ? "ready"
+        : "empty";
   const isReportViewReady = reportViewRenderState === "ready";
   const canShowReportSourceContext = reportViewRenderState !== "empty" && reportHasSource;
   const reportViewTitle = groupAReportView.sourceMode === "submitted"
@@ -1650,7 +1757,22 @@ export function SchoolAdminDashboard() {
           </div>
 
           {reportViewRenderState === "loading" && (
-            <p className="mb-3 text-xs font-medium text-slate-500">Loading saved report details...</p>
+            <p className="mb-3 text-xs font-medium text-slate-500">
+              {reportHydrationStatus === "retrying" ? reportHydrationError || "Retrying saved report details..." : "Loading saved report details..."}
+            </p>
+          )}
+          {reportViewRenderState === "failed" && (
+            <div className="mb-3 flex flex-col gap-2 rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 sm:flex-row sm:items-center sm:justify-between">
+              <span>{reportHydrationError || "Unable to load saved report details."}</span>
+              <button
+                type="button"
+                onClick={retryReportDetailHydration}
+                className="inline-flex items-center justify-center gap-1.5 rounded-sm border border-amber-300 bg-white px-3 py-1.5 font-semibold text-amber-900 transition hover:bg-amber-100"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Retry loading saved report
+              </button>
+            </div>
           )}
           {reportViewRenderState === "empty" && (
             <div className="mb-3 space-y-1">
@@ -1772,7 +1894,12 @@ export function SchoolAdminDashboard() {
                 )}
                 {reportViewRenderState === "loading" && (
                   <span className="pl-3 text-xs font-medium text-slate-500">
-                    Loading saved report details before showing values.
+                    {reportHydrationStatus === "retrying" ? "Retrying saved report details before showing values." : "Loading saved report details before showing values."}
+                  </span>
+                )}
+                {reportViewRenderState === "failed" && (
+                  <span className="pl-3 text-xs font-medium text-amber-700">
+                    Unable to load saved report details.
                   </span>
                 )}
                 {reportViewRenderState === "empty" && (
@@ -1784,8 +1911,23 @@ export function SchoolAdminDashboard() {
             </h2>
             {reportViewRenderState === "loading" && (
               <p className="p-4 text-xs font-medium text-slate-500">
-                Loading saved report details before showing TARGETS-MET values.
+                {reportHydrationStatus === "retrying"
+                  ? "Retrying saved report details before showing TARGETS-MET values."
+                  : "Loading saved report details before showing TARGETS-MET values."}
               </p>
+            )}
+            {reportViewRenderState === "failed" && (
+              <div className="flex flex-col gap-3 p-4 text-xs font-medium text-amber-800 sm:flex-row sm:items-center sm:justify-between">
+                <span>{reportHydrationError || "Unable to load saved report details."}</span>
+                <button
+                  type="button"
+                  onClick={retryReportDetailHydration}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-sm border border-amber-300 bg-amber-50 px-3 py-2 font-semibold text-amber-900 transition hover:bg-amber-100"
+                >
+                  <RefreshCw className="h-3.5 w-3.5" />
+                  Retry loading saved report
+                </button>
+              </div>
             )}
             {reportViewRenderState === "empty" && (
               <p className="p-4 text-xs font-medium text-slate-500">
