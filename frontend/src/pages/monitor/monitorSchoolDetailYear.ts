@@ -17,6 +17,7 @@ import {
   schoolYearStartValue,
 } from "@/pages/monitor/monitorDrawerViewModelUtils";
 import {
+  buildTargetsMetReportViewRowsForSubmission,
   buildSubmittedReportBlankStateLines,
   resolveIndicatorValue,
   resolveSubmittedReportIndicatorByMetricCode,
@@ -478,35 +479,32 @@ export function buildMonitorDrawerYearDetail(
     Object.prototype.hasOwnProperty.call(row.valuesByYear, effectiveSelectedYear ?? ""),
   );
   const reportRows = currentYearRows.length > 0 ? currentYearRows : schoolIndicatorRows;
-  const monitorReportSubmissionRows = submissionRows(selectedYearMonitorReportSubmission);
   const latestYearIndicatorRows = submissionRows(monitorVisibleYearSubmission);
   const canShowSchoolAchievements = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, SCHOOL_ACHIEVEMENTS_SCOPE_ID);
   const canShowKeyPerformance = isScopeVisibleToMonitor(selectedYearMonitorReportSubmission, KEY_PERFORMANCE_SCOPE_ID);
 
-  const schoolAchievementRows = reportRows
-    .filter((row) => row.category === SCHOOL_ACHIEVEMENTS_CATEGORY_LABEL)
-    .map<MonitorDrawerSchoolAchievementReportRow>((row) => ({
-      key: row.key,
-      label: row.label,
-      value: canShowSchoolAchievements
-        ? resolveIndicatorValue(resolveSubmittedReportIndicatorByMetricCode(monitorReportSubmissionRows, row.code), "actual", effectiveSelectedYear)
-        : "-",
-    }));
+  const targetsMetRows = buildTargetsMetReportViewRowsForSubmission(
+    selectedYearMonitorReportSubmission,
+    effectiveSelectedYear,
+    {
+      showSchoolAchievements: canShowSchoolAchievements,
+      showKeyPerformance: canShowKeyPerformance,
+    },
+  );
 
-  const kpiRows = reportRows
-    .filter((row) => row.category === KEY_PERFORMANCE_CATEGORY_LABEL)
-    .map<MonitorDrawerKpiReportRow>((row) => {
-      const indicator = canShowKeyPerformance
-        ? resolveSubmittedReportIndicatorByMetricCode(monitorReportSubmissionRows, row.code)
-        : null;
-      return {
-        key: row.key,
-        label: row.label,
-        target: indicator ? resolveIndicatorValue(indicator, "target", effectiveSelectedYear) : "-",
-        actual: indicator ? resolveIndicatorValue(indicator, "actual", effectiveSelectedYear) : "-",
-        status: String(indicator?.complianceStatus ?? "-").trim() || "-",
-      };
-    });
+  const schoolAchievementRows = targetsMetRows.schoolAchievementRows.map<MonitorDrawerSchoolAchievementReportRow>((row) => ({
+    key: row.key,
+    label: row.label,
+    value: row.value,
+  }));
+
+  const kpiRows = targetsMetRows.kpiRows.map<MonitorDrawerKpiReportRow>((row) => ({
+    key: row.key,
+    label: row.label,
+    target: row.target,
+    actual: row.actual,
+    status: row.status,
+  }));
 
   const checklistItems = [
     ...buildMonitorChecklistSectionItems(currentYearRows, latestYearIndicatorRows, selectedYearWorkflowStatus, effectiveSelectedYear, latestYearSubmittedScopeIds),

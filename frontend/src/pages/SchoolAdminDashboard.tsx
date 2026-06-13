@@ -26,11 +26,11 @@ import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import {
   buildSchoolHeadCurrentReportBlankStateLines,
   buildSchoolHeadCurrentReportSourceContext,
+  buildTargetsMetReportViewRowsForSubmission,
   compareSelectedYearSchoolHeadCurrentReportSubmissions,
   compareSelectedYearFinalizedReportSubmissions,
   isFinalizedSubmissionStatus,
   resolveIndicatorSelectedYearRawValue,
-  resolveIndicatorValue,
   resolvePreferredSchoolHeadCurrentReportAcademicYearId,
   resolveSelectedYearReportSubmission,
   resolveSelectedYearSchoolHeadCurrentReportSubmission,
@@ -1237,30 +1237,7 @@ export function SchoolAdminDashboard() {
     }
 
     const availableMetricCodes = Array.from(indicatorCodeCounts.keys()).sort();
-    const getIndicatorByGroupAKey = (
-      group: keyof typeof GROUP_A_METRIC_KEYS,
-      key: string,
-    ): IndicatorSubmissionItem | null => resolveCurrentReportIndicatorByGroupAKey(indicators, group, key);
-    const schoolAchievementRows = SCHOOL_ACHIEVEMENT_ROWS.map((row) => {
-      const indicator = getIndicatorByGroupAKey("schoolAchievement", row.key);
-      return {
-        key: row.key,
-        label: row.label,
-        indicator,
-        value: resolveIndicatorValue(indicator, "actual", reportYearLabel),
-      };
-    });
-    const kpiRows = KPI_ROWS.map((row) => {
-      const indicator = getIndicatorByGroupAKey("kpi", row.key);
-      return {
-        key: row.key,
-        label: row.label,
-        indicator,
-        target: resolveIndicatorValue(indicator, "target", reportYearLabel, { strictSelectedYear: true }),
-        actual: resolveIndicatorValue(indicator, "actual", reportYearLabel, { strictSelectedYear: true }),
-        status: formatKpiComplianceStatusForSelectedYear(indicator, reportYearLabel),
-      };
-    });
+    const targetsMetRows = buildTargetsMetReportViewRowsForSubmission(submission, reportYearLabel);
 
     if (
       import.meta.env.DEV &&
@@ -1277,7 +1254,7 @@ export function SchoolAdminDashboard() {
     return {
       submission,
       sourceMode: resolveSchoolHeadReportSourceMode(submission),
-      getIndicatorByGroupAKey,
+      getIndicatorByGroupAKey: targetsMetRows.getIndicatorByGroupAKey,
       completedIndicators: indicators.length > 0
         ? indicators.filter((indicator) => isCountableComplianceStatus(indicator.complianceStatus)).length
         : (
@@ -1287,8 +1264,8 @@ export function SchoolAdminDashboard() {
         ),
       totalIndicators: submission?.summary?.totalIndicators ?? 0,
       indicators,
-      schoolAchievementRows,
-      kpiRows,
+      schoolAchievementRows: targetsMetRows.schoolAchievementRows,
+      kpiRows: targetsMetRows.kpiRows,
     };
   }, [academicYears, currentAcademicYearOption?.name, effectiveAcademicYearId, groupAReportSourceSubmission, selectedSchoolId, trustedHydratedReportSubmission]);
   const effectiveReportSourceSubmission = groupAReportView.submission;

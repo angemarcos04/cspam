@@ -125,20 +125,20 @@ describe("buildMonitorDrawerYearDetail", () => {
       ],
       [
         {
-          key: "IMETA_HEAD_NAME",
-          code: "IMETA_HEAD_NAME",
-          label: "NAME OF SCHOOL HEAD",
-          category: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES",
-          sortOrder: 1,
-          valuesByYear: { "2025-2026": { target: "", actual: "Jane Doe" } },
-        },
-        {
           key: "NER",
           code: "NER",
           label: "Net Enrollment Rate",
           category: "KEY PERFORMANCE INDICATORS",
           sortOrder: 2,
           valuesByYear: { "2025-2026": { target: "100.00%", actual: "98.00%" } },
+        },
+        {
+          key: "IMETA_HEAD_NAME",
+          code: "IMETA_HEAD_NAME",
+          label: "NAME OF SCHOOL HEAD",
+          category: "SCHOOL'S ACHIEVEMENTS AND LEARNING OUTCOMES",
+          sortOrder: 1,
+          valuesByYear: { "2025-2026": { target: "", actual: "Jane Doe" } },
         },
       ],
     );
@@ -151,7 +151,11 @@ describe("buildMonitorDrawerYearDetail", () => {
       "SMEA:For Review",
     ]);
     expect(detail?.reportSourceContext[0]).toContain("2025-2026");
+    expect(detail?.schoolAchievementRows[0]?.label).toBe("NAME OF SCHOOL HEAD");
+    expect(detail?.schoolAchievementRows[1]?.label).toBe("TOTAL NUMBER OF ENROLMENT");
     expect(detail?.schoolAchievementRows[0]?.value).toBe("Jane Doe");
+    expect(detail?.kpiRows).toHaveLength(19);
+    expect(detail?.kpiRows[0]?.label).toBe("Net Enrollment Rate (NER)");
     expect(detail?.kpiRows[0]?.actual).toBe("98.00%");
     expect(detail?.packageRows.find((row) => row.label === "BMEF")?.statusLabel).toBe("For Review");
   });
