@@ -438,6 +438,170 @@ describe("SchoolIndicatorPanel batch submit", () => {
     });
   });
 
+  it("sends a saved file scope even when unrelated indicator fields are dirty", async () => {
+    const submitSubmissionScopes = vi.fn().mockResolvedValue({
+      ...buildHydratedSubmission("submission-1"),
+      updatedAt: "2026-05-19T10:00:00.000Z",
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-19T09:00:00.000Z",
+          downloadUrl: "/api/submissions/submission-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/submission-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      scopeProgress: {
+        requiredScopeIds: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        submittedScopeIds: ["fm_qad_001"],
+        pendingScopeIds: ["school_achievements_learning_outcomes"],
+        submittedRequiredScopeCount: 1,
+        totalRequiredScopeCount: 2,
+      },
+    });
+    const hydratedSubmission = {
+      ...buildHydratedSubmission("submission-1"),
+      updatedAt: "2026-05-19T10:00:00.000Z",
+      indicators: [
+        {
+          id: "indicator-1",
+          metric: {
+            id: "metric-1",
+            code: "IMETA_ENROLL_TOTAL",
+            name: "TOTAL NUMBER OF ENROLMENT",
+            category: "school_achievements_learning_outcomes",
+            framework: "imeta",
+            dataType: "yearly_matrix",
+            inputSchema: {
+              valueType: "integer",
+              years: ["2025-2026"],
+            },
+          },
+          targetValue: null,
+          actualValue: 1515,
+          varianceValue: null,
+          actualTypedValue: {
+            values: {
+              "2025-2026": 1515,
+            },
+          },
+          complianceStatus: "recorded",
+          remarks: null,
+        },
+      ],
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-19T09:00:00.000Z",
+          downloadUrl: "/api/submissions/submission-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/submission-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: true,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      scopeProgress: {
+        requiredScopeIds: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        submittedScopeIds: [],
+        pendingScopeIds: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        submittedRequiredScopeCount: 0,
+        totalRequiredScopeCount: 2,
+      },
+      academicYear: {
+        id: "year-1",
+        name: "2025-2026",
+      },
+    };
+    const fetchSubmission = vi.fn().mockResolvedValue(hydratedSubmission);
+
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [hydratedSubmission],
+      allSubmissions: [],
+      metrics: [{
+        id: "metric-1",
+        code: "IMETA_ENROLL_TOTAL",
+        name: "TOTAL NUMBER OF ENROLMENT",
+        category: "school_achievements_learning_outcomes",
+        framework: "imeta",
+        dataType: "yearly_matrix",
+        inputSchema: {
+          valueType: "integer",
+          years: ["2025-2026"],
+        },
+        sortOrder: 1,
+      }],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
+      fetchSubmission,
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes,
+      loadHistory: vi.fn(),
+    });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    const [valueInput] = await within(view.container).findAllByRole("spinbutton");
+    expect(valueInput).toBeDefined();
+    if (!valueInput) {
+      throw new Error("Expected a School Achievements value input.");
+    }
+    fireEvent.change(valueInput, { target: { value: "2024" } });
+    const fileTabs = await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i });
+    const fileTab = fileTabs.find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+
+    const sendButtons = await within(view.container).findAllByRole("button", { name: "Send" });
+    const sendButton = sendButtons.find((button) => button.getAttribute("title") === "Send the current ready workspace item.");
+    expect(sendButton).toBeDefined();
+    if (!sendButton) {
+      throw new Error("Expected the unified Send button for the active file scope.");
+    }
+    expect(sendButton.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(sendButton);
+
+    await waitFor(() => {
+      expect(submitSubmissionScopes).toHaveBeenCalledWith("submission-1", ["fm_qad_001"]);
+    });
+    expect(screen.queryByText("Save your indicator changes before sending a file scope.")).toBeNull();
+  }, 10_000);
+
   it("shows the simplified Save and Send action labels in the School Head action bar", async () => {
     useAuthMock.mockReturnValue({
       apiToken: "token",
@@ -959,7 +1123,13 @@ describe("SchoolIndicatorPanel batch submit", () => {
 
     const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
-    fireEvent.click(await within(view.container).findByRole("button", { name: /FM-QAD-001/i }));
+    const fileTabs = await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i });
+    const fileTab = fileTabs.find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
     const initialBottomSaveButtons = await within(view.container).findAllByRole("button", { name: "Save" });
     const initialBottomFileSaveButton = initialBottomSaveButtons.find((button) => button.getAttribute("type") === "submit");
     expect(initialBottomFileSaveButton).toBeDefined();
@@ -1001,6 +1171,92 @@ describe("SchoolIndicatorPanel batch submit", () => {
     });
     expect(await screen.findByText(/hydrated-fm-qad-001\.pdf/i)).not.toBeNull();
     expect(refreshSubmissions).not.toHaveBeenCalled();
+  }, 10_000);
+
+  it("blocks sending a file scope while that file has an unsaved replacement selected", async () => {
+    const submitSubmissionScopes = vi.fn();
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [{
+        ...buildHydratedSubmission("submission-1"),
+        files: {
+          fm_qad_001: {
+            type: "fm_qad_001",
+            uploaded: true,
+            path: null,
+            originalFilename: "saved-fm-qad-001.pdf",
+            sizeBytes: 2048,
+            uploadedAt: "2026-05-22T09:00:00.000Z",
+            downloadUrl: "/api/submissions/submission-1/download/fm_qad_001",
+            viewUrl: "/api/submissions/submission-1/view/fm_qad_001",
+          },
+        },
+        completion: {
+          hasImetaFormData: false,
+          hasBmefFile: false,
+          hasSmeaFile: false,
+          isComplete: false,
+          requiredFileTypes: ["fm_qad_001"],
+          uploadedFileTypes: ["fm_qad_001"],
+          missingFileTypes: [],
+        },
+        scopeProgress: {
+          requiredScopeIds: ["fm_qad_001"],
+          submittedScopeIds: [],
+          pendingScopeIds: ["fm_qad_001"],
+          submittedRequiredScopeCount: 0,
+          totalRequiredScopeCount: 1,
+        },
+      }],
+      allSubmissions: [],
+      metrics: [],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
+      fetchSubmission: vi.fn().mockResolvedValue(buildHydratedSubmission("submission-1")),
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes,
+      loadHistory: vi.fn(),
+    });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    const fileTabs = await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i });
+    const fileTab = fileTabs.find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+    const fileInput = view.container.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error("Expected the hidden file input to be rendered.");
+    }
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["replacement"], "replacement-fm-qad-001.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    const sendButtons = await within(view.container).findAllByRole("button", { name: "Send" });
+    const sendButton = sendButtons.find((button) => button.getAttribute("title") === "Save or cancel the selected file before sending it.");
+    expect(sendButton).toBeDefined();
+    if (!sendButton) {
+      throw new Error("Expected the unified Send button to be blocked by the pending replacement.");
+    }
+    expect(sendButton.hasAttribute("disabled")).toBe(true);
+    fireEvent.click(sendButton);
+
+    expect(submitSubmissionScopes).not.toHaveBeenCalled();
   }, 10_000);
 });
 

@@ -5207,11 +5207,6 @@ function SchoolIndicatorPanelComponent({
         setSubmitError("Save or cancel the selected file before sending it.");
         return;
       }
-      if (activeTab?.kind === "upload" && hasUnsavedWorkspaceChanges) {
-        setSubmitError("Save your indicator changes before sending a file scope.");
-        return;
-      }
-
       submittedEditPreserveContextRef.current = null;
       if (!ensureWorkspaceLineageAlignment()) {
         return;

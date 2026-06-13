@@ -238,6 +238,97 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(detail?.checklistItems.some((item) => item.label === "FM-QAD-002" && item.statusLabel === "Missing")).toBe(true);
   });
 
+  it("keeps returned file scopes visible as returned but without monitor file actions until resend", () => {
+    const detail = buildMonitorDrawerYearDetail(
+      {
+        schoolKey: "school-2",
+        schoolCode: "401778",
+        schoolName: "Private School",
+        region: "II",
+        level: "High School",
+        type: "Private",
+        schoolTypeRaw: "private",
+        requirementModeLabel: "Active package requirements: FM-QAD uploads only.",
+        activePackageLabel: "FM-QAD uploads only",
+        address: "N/A",
+        hasComplianceRecord: true,
+        indicatorStatus: "returned",
+        hasActivePackageSubmission: true,
+        missingCount: 1,
+        awaitingReviewCount: 0,
+        lastActivityAt: "2026-05-18T08:00:00.000Z",
+        reportedStudents: 0,
+        reportedTeachers: 0,
+        synchronizedStudents: 0,
+        synchronizedTeachers: 0,
+      },
+      "2025-2026",
+      [
+        {
+          id: "draft-1",
+          formType: "indicator",
+          status: "draft",
+          statusLabel: "Draft",
+          reportingPeriod: "ANNUAL",
+          version: 2,
+          notes: null,
+          reviewNotes: null,
+          submittedAt: null,
+          reviewedAt: null,
+          createdAt: "2026-05-16T07:00:00.000Z",
+          updatedAt: "2026-05-18T08:00:00.000Z",
+          summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+          files: {
+            fm_qad_001: {
+              type: "fm_qad_001",
+              uploaded: false,
+              path: null,
+              originalFilename: null,
+              sizeBytes: null,
+              uploadedAt: null,
+              viewUrl: null,
+              downloadUrl: null,
+            },
+          },
+          completion: {
+            hasImetaFormData: false,
+            hasBmefFile: false,
+            hasSmeaFile: false,
+            isComplete: false,
+            requiredFileTypes: ["fm_qad_001"],
+            uploadedFileTypes: [],
+            missingFileTypes: ["fm_qad_001"],
+          },
+          scopeProgress: {
+            requiredScopeIds: ["fm_qad_001"],
+            submittedScopeIds: [],
+            pendingScopeIds: ["fm_qad_001"],
+            submittedRequiredScopeCount: 0,
+            totalRequiredScopeCount: 1,
+          },
+          scopeReviews: [
+            {
+              scopeId: "fm_qad_001",
+              decision: "returned",
+              notes: "Please upload the signed report.",
+              reviewedAt: "2026-05-18T08:00:00.000Z",
+            },
+          ],
+          indicators: [],
+          academicYear: { id: "year-1", name: "2025-2026" },
+        } as never,
+      ],
+      [],
+    );
+
+    const returnedFileRow = detail?.packageRows.find((row) => row.label === "FM-QAD-001");
+    expect(returnedFileRow?.statusLabel).toBe("Returned");
+    expect(returnedFileRow?.reviewNotes).toBe("Please upload the signed report.");
+    expect(returnedFileRow?.canReview).toBe(false);
+    expect(returnedFileRow?.viewUrl).toBeNull();
+    expect(returnedFileRow?.downloadUrl).toBeNull();
+  });
+
   it("shows only sent draft scope values to the monitor report view", () => {
     const detail = buildMonitorDrawerYearDetail(
       {
