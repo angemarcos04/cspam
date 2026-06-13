@@ -562,10 +562,13 @@ export function MonitorSchoolDrawer({
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className="inline-block border-l-[3px] border-primary-600 pl-3 text-base font-semibold text-slate-900">
-                          Submitted Report View
+                          TARGETS-MET
                         </span>
                         <span className="pl-3 text-xs font-medium text-slate-500">
-                          Monitor-visible values appear here after the School Head sends the item or submits the package.
+                          Monitor-visible completion: {schoolDrawerYearDetail?.checklistCompleteCount ?? 0}/{(schoolDrawerYearDetail?.checklistCompleteCount ?? 0) + (schoolDrawerYearDetail?.checklistMissingCount ?? 0)} complete
+                        </span>
+                        <span className="pl-3 text-xs font-medium text-slate-500">
+                          Values appear here only after the School Head sends a section/file or submits the full package.
                         </span>
                         {schoolDrawerYearDetail?.reportSourceContext.map((line) => (
                           <span key={`monitor-report-context-${line}`} className="pl-3 text-xs text-slate-500">
@@ -590,18 +593,22 @@ export function MonitorSchoolDrawer({
                           </div>
                           <table className="w-full text-[13px] text-slate-900">
                             <thead>
-                              <tr className="border-b border-slate-200 bg-slate-50">
+                              <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
                                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Metric</th>
                                 <th className="px-4 py-2.5 text-right text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Value</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-[#E5E7EB]">
                               {schoolDrawerYearDetail.schoolAchievementRows.map((row) => (
                                 <tr key={`monitor-achievement-report-${row.key}`}>
                                   <td className={`px-4 py-2.5 text-slate-900 ${isSubItemMetric(row.label) ? "pl-9 text-[12px] italic font-medium text-slate-600" : ""}`}>
                                     {row.label}
                                   </td>
-                                  <td className="px-4 py-2.5 text-right font-semibold text-slate-900">{row.value}</td>
+                                  <td className="px-4 py-2.5 text-right text-slate-900">
+                                    <span className="font-semibold text-slate-900">
+                                      {row.value}
+                                    </span>
+                                  </td>
                                 </tr>
                               ))}
                             </tbody>
@@ -616,19 +623,27 @@ export function MonitorSchoolDrawer({
                           </div>
                           <table className="w-full text-[13px] text-slate-900">
                             <thead>
-                              <tr className="border-b border-slate-200 bg-slate-50">
+                              <tr className="border-b border-[#E5E7EB] bg-[#F9FAFB]">
                                 <th className="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Indicator</th>
                                 <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Target</th>
                                 <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Actual</th>
                                 <th className="px-4 py-2.5 text-center text-[11px] font-semibold uppercase tracking-[0.6px] text-slate-500">Status</th>
                               </tr>
                             </thead>
-                            <tbody className="divide-y divide-slate-200">
+                            <tbody className="divide-y divide-[#E5E7EB]">
                               {schoolDrawerYearDetail.kpiRows.map((row) => (
                                 <tr key={`monitor-kpi-report-${row.key}`}>
                                   <td className="px-4 py-2.5 text-slate-900">{row.label}</td>
-                                  <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.target}</td>
-                                  <td className="px-4 py-2.5 text-center font-semibold text-slate-900">{row.actual}</td>
+                                  <td className="px-4 py-2.5 text-center text-slate-900">
+                                    <span className="font-semibold text-slate-900">
+                                      {row.target}
+                                    </span>
+                                  </td>
+                                  <td className="px-4 py-2.5 text-center text-slate-900">
+                                    <span className="font-semibold text-slate-900">
+                                      {row.actual}
+                                    </span>
+                                  </td>
                                   <td className="px-4 py-2.5 text-center text-slate-900">{row.status}</td>
                                 </tr>
                               ))}

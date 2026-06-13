@@ -444,7 +444,9 @@ describe("MonitorSchoolDrawer", () => {
       />,
     );
 
-    expect(screen.getByText("Submitted Report View")).toBeTruthy();
+    expect(screen.getByText("TARGETS-MET")).toBeTruthy();
+    expect(screen.getByText("Monitor-visible completion: 2/2 complete")).toBeTruthy();
+    expect(screen.queryByText("Submitted Report View")).toBeNull();
     expect(screen.getByText("School's Achievement (SY 2025-2026)")).toBeTruthy();
     expect(screen.getByText("Key Performance Indicators (SY 2025-2026)")).toBeTruthy();
     expect(screen.getByText("Jane Doe")).toBeTruthy();
