@@ -1,11 +1,80 @@
+import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
+import { ALL_SCHOOL_SCOPE } from "@/pages/monitor/monitorFilters";
 import {
   buildMonitorRequirementSummaryState,
   buildSchoolCategoryCounts,
   matchesSchoolCategoryFilter,
   normalizeSchoolLevel,
   normalizeSchoolSector,
+  useMonitorRequirementData,
 } from "@/pages/monitor/useMonitorRequirementData";
+import type { SchoolRecord } from "@/types";
+
+const REQUIREMENT_FILTER_OPTIONS = [
+  { id: "all" as const, label: "All" },
+  { id: "missing" as const, label: "Missing" },
+  { id: "waiting" as const, label: "Waiting" },
+  { id: "returned" as const, label: "Returned" },
+  { id: "submitted" as const, label: "Submitted" },
+  { id: "validated" as const, label: "Validated" },
+];
+
+function buildRecord(status: "submitted" | "validated" | "returned"): SchoolRecord {
+  return {
+    id: "record-1",
+    schoolId: "108323",
+    schoolCode: "108323",
+    schoolName: "Abra Elementary School",
+    level: "Elementary",
+    district: null,
+    address: null,
+    type: "public",
+    studentCount: 125,
+    teacherCount: 9,
+    region: "Region II",
+    status: "active",
+    submittedBy: "School Head",
+    lastUpdated: "2026-06-18T08:00:00.000Z",
+    indicatorLatest: {
+      id: "submission-1",
+      status,
+      submittedAt: "2026-06-18T08:00:00.000Z",
+      reviewedAt: status === "submitted" ? null : "2026-06-18T09:00:00.000Z",
+      createdAt: "2026-06-18T07:30:00.000Z",
+      updatedAt: status === "submitted" ? "2026-06-18T08:00:00.000Z" : "2026-06-18T09:00:00.000Z",
+    },
+  };
+}
+
+function renderRequirementHook(records: SchoolRecord[]) {
+  return renderHook(({ currentRecords }: { currentRecords: SchoolRecord[] }) =>
+    useMonitorRequirementData({
+      records: currentRecords,
+      scopedRecords: currentRecords,
+      scopedSchoolKeys: null,
+      selectedSchoolScopeKey: ALL_SCHOOL_SCOPE,
+      hasSelectedSchoolScope: false,
+      filterDateFrom: "",
+      filterDateTo: "",
+      requirementFilter: "all",
+      statusFilter: "all",
+      schoolQuickPreset: "all",
+      schoolSectorFilter: "all",
+      schoolLevelFilter: "all",
+      queueLane: "all",
+      effectiveSearch: "",
+      activeTopNavigator: "reviews",
+      requirementsPage: 1,
+      recordsPage: 1,
+      requirementPageSize: 10,
+      recordPageSize: 10,
+      allSchoolScopeKey: ALL_SCHOOL_SCOPE,
+      requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
+    }),
+    { initialProps: { currentRecords: records } },
+  );
+}
 
 describe("buildMonitorRequirementSummaryState", () => {
   it("makes private active package meaning explicit in monitor summary state", () => {
@@ -114,6 +183,35 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(returnedState.awaitingReviewCount).toBe(0);
     expect(returnedState.missingCount).toBe(0);
     expect(returnedState.hasActivePackageSubmission).toBe(true);
+  });
+
+  it("updates visible queue rows and school badges when refreshed records change after review", () => {
+    const { result, rerender } = renderRequirementHook([buildRecord("submitted")]);
+
+    expect(result.current.queueLaneCounts.for_review).toBe(1);
+    expect(result.current.requirementCounts.awaitingReview).toBe(1);
+    expect(result.current.paginatedRequirementRows).toHaveLength(1);
+    expect(result.current.paginatedRequirementRows[0].indicatorStatus).toBe("submitted");
+    expect(result.current.paginatedRequirementRows[0].awaitingReviewCount).toBe(1);
+    expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("submitted");
+
+    rerender({ currentRecords: [buildRecord("validated")] });
+
+    expect(result.current.queueLaneCounts.for_review).toBe(0);
+    expect(result.current.requirementCounts.awaitingReview).toBe(0);
+    expect(result.current.requirementCounts.missing).toBe(0);
+    expect(result.current.requirementCounts.complete).toBe(1);
+    expect(result.current.paginatedRequirementRows).toHaveLength(0);
+    expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("validated");
+
+    rerender({ currentRecords: [buildRecord("returned")] });
+
+    expect(result.current.queueLaneCounts.returned).toBe(1);
+    expect(result.current.requirementCounts.returned).toBe(1);
+    expect(result.current.requirementCounts.awaitingReview).toBe(0);
+    expect(result.current.paginatedRequirementRows).toHaveLength(1);
+    expect(result.current.paginatedRequirementRows[0].indicatorStatus).toBe("returned");
+    expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("returned");
   });
 
   it("normalizes school sector and level values used by monitor school filters", () => {
