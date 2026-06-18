@@ -27,6 +27,98 @@ describe("MonitorSchoolDrawer", () => {
     cleanup();
   });
 
+  function reviewableDrawerProps(
+    packageRow: NonNullable<Parameters<typeof MonitorSchoolDrawer>[0]["data"]["schoolDrawerYearDetail"]>["packageRows"][number],
+    actionOverrides: Partial<Parameters<typeof MonitorSchoolDrawer>[0]["actions"]> = {},
+  ): Parameters<typeof MonitorSchoolDrawer>[0] {
+    return {
+      viewState: {
+        isOpen: true,
+        showNavigatorManual: true,
+        isMobileViewport: false,
+        activeTopNavigator: "schools",
+        activeSchoolDrawerTab: "submissions",
+        selectedSchoolDrawerYear: "2025-2026",
+        highlightedDrawerIndicatorKey: null,
+        expandedDrawerIndicatorRows: {},
+      },
+      loadingState: {
+        syncedCountsLoadingSchoolKey: null,
+        syncedCountsError: "",
+        isSchoolDrawerSubmissionsLoading: false,
+        schoolDrawerSubmissionsError: "",
+      },
+      data: {
+        schoolDetail: {
+          schoolKey: "school-1",
+          schoolCode: "401777",
+          schoolName: "AMA CC - Santiago City",
+          region: "II",
+          level: "High School",
+          type: "Private",
+          schoolTypeRaw: "private",
+          requirementModeLabel: "Active package requirements: FM-QAD uploads only.",
+          activePackageLabel: "FM-QAD uploads only",
+          address: "N/A",
+          hasComplianceRecord: true,
+          indicatorStatus: "submitted",
+          hasActivePackageSubmission: true,
+          missingCount: 0,
+          awaitingReviewCount: 1,
+          lastActivityAt: null,
+          reportedStudents: 0,
+          reportedTeachers: 0,
+          synchronizedStudents: 0,
+          synchronizedTeachers: 0,
+        },
+        availableSchoolDrawerYears: ["2025-2026"],
+        schoolDrawerYearDetail: {
+          selectedYearLabel: "2025-2026",
+          availableYears: [{ id: "2025-2026", label: "2025-2026" }],
+          currentIssueLabel: "Awaiting monitor review.",
+          currentIssueTone: "info",
+          checklistItems: [],
+          packageRows: [packageRow],
+          checklistCompleteCount: 0,
+          checklistMissingCount: 0,
+          selectedYearLatestSubmissionId: "sub-1",
+          selectedYearLatestStatus: "draft",
+          finalizedReportSubmission: null,
+          reportSourceContext: [],
+          reportBlankStateLines: ["No monitor-visible report package exists yet.", "Sent values appear after School Head sends a scope."],
+          schoolAchievementRows: [],
+          kpiRows: [],
+        },
+        schoolDrawerHistorySummary: null,
+        schoolDrawerCriticalAlerts: [],
+        schoolIndicatorPackageRows: [],
+        latestSchoolPackage: null,
+        schoolIndicatorMatrix: { years: [], rows: [], latestSubmission: null },
+        latestSchoolIndicatorYear: "",
+        schoolDrawerIndicatorSubmissions: [],
+        schoolIndicatorRowsByCategory: [],
+        missingDrawerIndicatorKeys: [],
+        returnedDrawerIndicatorKeys: [],
+        missingDrawerIndicatorKeySet: new Set(),
+        returnedDrawerIndicatorKeySet: new Set(),
+      },
+      actions: {
+        setActiveSchoolDrawerTab: vi.fn(),
+        setSelectedSchoolDrawerYear: vi.fn(),
+        closeSchoolDrawer: vi.fn(),
+        handleJumpToMissingIndicators: vi.fn(),
+        handleJumpToReturnedIndicators: vi.fn(),
+        toggleDrawerIndicatorLabel: vi.fn(),
+        ...actionOverrides,
+      },
+      formatting: {
+        workflowTone: () => "",
+        workflowLabel: (status: string | null) => status ?? "N/A",
+        formatDateTime: () => "N/A",
+      },
+    };
+  }
+
   it("keeps submissions as the main page and history as secondary reference", async () => {
     const setActiveSchoolDrawerTab = vi.fn();
     render(
@@ -159,7 +251,7 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByRole("button", { name: "View FM-QAD-001" })).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]);
     expect(setActiveSchoolDrawerTab).toHaveBeenCalledWith("history");
-    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
     expect(screen.queryByRole("link", { name: "View FM-QAD-001" })).toBeNull();
 
     const fetchMock = vi.fn().mockResolvedValue(new Response(new Blob(["pdf"], { type: "application/pdf" }), { status: 200 }));
@@ -182,7 +274,7 @@ describe("MonitorSchoolDrawer", () => {
     expect(requestOptions.headers?.get("Authorization")).toBe("Bearer monitor-token");
     expect(await screen.findByTitle("FM-QAD-001 PDF preview")).toBeTruthy();
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Download" })[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Download" }));
     expect(downloadSubmissionFileMock).toHaveBeenCalledWith("sub-1", "fm_qad_001");
     expect(screen.queryByText("Year Checklist")).toBeNull();
     expect(screen.queryByText("Submitted Report View")).toBeNull();
@@ -658,7 +750,7 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByText("bmef.pdf")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "View" }).length).toBeGreaterThanOrEqual(1);
-    expect(screen.getAllByRole("button", { name: "Download" }).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
 
     rerender(
       <MonitorSchoolDrawer
@@ -678,6 +770,169 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByText("bmef-2026.pdf")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
     expect(screen.queryByText("bmef.pdf")).toBeNull();
+  });
+
+  it("refreshes monitor review data when a file preview becomes forbidden", async () => {
+    const onReviewDataChanged = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "fm_qad_001",
+            submissionId: "sub-1",
+            label: "FM-QAD-001",
+            kind: "file",
+            statusLabel: "For Review",
+            tone: "info",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Profile-1.pdf",
+            viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+            downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+            actionLabel: null,
+            actionTarget: null,
+            canReview: true,
+          },
+          { onReviewDataChanged },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByText(/no longer available for monitor review/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(onReviewDataChanged).toHaveBeenCalledWith(expect.objectContaining({
+        reason: "file-preview-stale",
+      }));
+    });
+  });
+
+  it("refreshes monitor review data when a file preview is missing", async () => {
+    const onReviewDataChanged = vi.fn().mockResolvedValue(undefined);
+    const fetchMock = vi.fn().mockResolvedValue(new Response("", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "fm_qad_001",
+            submissionId: "sub-1",
+            label: "FM-QAD-001",
+            kind: "file",
+            statusLabel: "For Review",
+            tone: "info",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Profile-1.pdf",
+            viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+            downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+            actionLabel: null,
+            actionTarget: null,
+            canReview: true,
+          },
+          { onReviewDataChanged },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByText(/removed or reset/i)).toBeTruthy();
+    await waitFor(() => {
+      expect(onReviewDataChanged).toHaveBeenCalledWith(expect.objectContaining({
+        reason: "file-preview-stale",
+      }));
+    });
+  });
+
+  it("returns a requirement without requiring a note and refreshes monitor review data", async () => {
+    const onReviewDataChanged = vi.fn().mockResolvedValue(undefined);
+    reviewSubmissionScopeMock.mockResolvedValue({ id: "sub-1", status: "draft" });
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "key_performance_indicators",
+            submissionId: "sub-1",
+            label: "Key Performance",
+            kind: "section",
+            statusLabel: "For Review",
+            tone: "info",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Targets and actual values are available for this year.",
+            viewUrl: null,
+            downloadUrl: null,
+            actionLabel: null,
+            actionTarget: "key_performance",
+            canReview: true,
+          },
+          { onReviewDataChanged },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Return" }));
+    expect(screen.queryByLabelText("Return note")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Return requirement" }));
+
+    await waitFor(() => {
+      expect(reviewSubmissionScopeMock).toHaveBeenCalledWith("sub-1", {
+        scopeId: "key_performance_indicators",
+        decision: "returned",
+        notes: null,
+      });
+    });
+    expect(onReviewDataChanged).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "scope-review",
+      decision: "returned",
+    }));
+  });
+
+  it("requires a return note only when the optional note toggle is enabled", async () => {
+    reviewSubmissionScopeMock.mockResolvedValue({ id: "sub-1", status: "draft" });
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps({
+          id: "school_achievements_learning_outcomes",
+          submissionId: "sub-1",
+          label: "School Achievements",
+          kind: "section",
+          statusLabel: "For Review",
+          tone: "info",
+          submittedAt: "2026-06-14T06:39:00.000Z",
+          detail: "Section values are available for this year.",
+          viewUrl: null,
+          downloadUrl: null,
+          actionLabel: null,
+          actionTarget: "school_achievements",
+          canReview: true,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Return" }));
+    fireEvent.click(screen.getByLabelText("Include a note to the School Head"));
+
+    const submitButton = screen.getByRole("button", { name: "Return requirement" });
+    expect(submitButton.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("Return note"), {
+      target: { value: "Please upload the signed copy." },
+    });
+    fireEvent.click(submitButton);
+
+    await waitFor(() => {
+      expect(reviewSubmissionScopeMock).toHaveBeenCalledWith("sub-1", {
+        scopeId: "school_achievements_learning_outcomes",
+        decision: "returned",
+        notes: "Please upload the signed copy.",
+      });
+    });
   });
 
   it("shows disabled package actions for public and private rows without submissions", () => {

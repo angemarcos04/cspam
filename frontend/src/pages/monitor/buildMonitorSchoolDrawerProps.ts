@@ -42,6 +42,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   handleJumpToMissingIndicators: MonitorSchoolDrawerActions["handleJumpToMissingIndicators"];
   handleJumpToReturnedIndicators: MonitorSchoolDrawerActions["handleJumpToReturnedIndicators"];
   toggleDrawerIndicatorLabel: MonitorSchoolDrawerActions["toggleDrawerIndicatorLabel"];
+  onReviewDataChanged?: MonitorSchoolDrawerActions["onReviewDataChanged"];
   workflowTone: MonitorSchoolDrawerFormatting["workflowTone"];
   workflowLabel: MonitorSchoolDrawerFormatting["workflowLabel"];
   formatDateTime: MonitorSchoolDrawerFormatting["formatDateTime"];
@@ -81,6 +82,7 @@ export function buildMonitorSchoolDrawerProps({
   handleJumpToMissingIndicators,
   handleJumpToReturnedIndicators,
   toggleDrawerIndicatorLabel,
+  onReviewDataChanged,
   workflowTone,
   workflowLabel,
   formatDateTime,
@@ -126,6 +128,7 @@ export function buildMonitorSchoolDrawerProps({
       handleJumpToMissingIndicators,
       handleJumpToReturnedIndicators,
       toggleDrawerIndicatorLabel,
+      onReviewDataChanged,
     },
     formatting: {
       workflowTone,

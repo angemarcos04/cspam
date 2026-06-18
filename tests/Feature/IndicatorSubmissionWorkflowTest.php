@@ -332,27 +332,35 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
             ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
 
-        $missingNote = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+        $returnedWithoutNote = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
             'scopeId' => 'smea',
             'decision' => 'returned',
         ]);
-        $missingNote->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+        $returnedWithoutNote->assertOk();
+        $smeaReview = collect($returnedWithoutNote->json('data.scopeReviews', []))
+            ->firstWhere('scopeId', 'smea');
+        $this->assertSame('returned', $smeaReview['decision'] ?? null);
+        $this->assertNull($smeaReview['notes'] ?? null);
 
         $returned = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
-            'scopeId' => 'smea',
+            'scopeId' => 'bmef',
             'decision' => 'returned',
             'notes' => 'Please upload the signed version.',
         ]);
 
-        $returned->assertOk()
-            ->assertJsonPath('data.scopeReviews.1.scopeId', 'smea')
-            ->assertJsonPath('data.scopeReviews.1.decision', 'returned')
-            ->assertJsonPath('data.scopeReviews.1.notes', 'Please upload the signed version.');
+        $returned->assertOk();
 
         $this->assertDatabaseHas('indicator_submission_scope_reviews', [
             'indicator_submission_id' => $submissionId,
             'scope_id' => 'smea',
             'decision' => 'returned',
+            'notes' => null,
+        ]);
+        $this->assertDatabaseHas('indicator_submission_scope_reviews', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+            'decision' => 'returned',
+            'notes' => 'Please upload the signed version.',
         ]);
         $this->assertDatabaseHas('notifications', [
             'type' => IndicatorScopeReviewOutcomeNotification::class,

@@ -60,6 +60,12 @@ interface MonitorSchoolDrawerActions {
   handleJumpToMissingIndicators: () => void;
   handleJumpToReturnedIndicators: () => void;
   toggleDrawerIndicatorLabel: (key: string) => void;
+  onReviewDataChanged?: (payload: {
+    reason: "scope-review" | "file-preview-stale";
+    submission?: IndicatorSubmission;
+    decision?: "verified" | "returned";
+    row?: MonitorDrawerPackageRow;
+  }) => void | Promise<void>;
 }
 
 interface MonitorSchoolDrawerFormatting {
@@ -166,6 +172,7 @@ export function MonitorSchoolDrawer({
   const [scopeReviewError, setScopeReviewError] = useState<string>("");
   const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [returnReviewNotes, setReturnReviewNotes] = useState("");
+  const [includeReturnNote, setIncludeReturnNote] = useState(false);
   const [isHistoryDetailsOpen, setIsHistoryDetailsOpen] = useState(false);
   const [activeFilePreviewRow, setActiveFilePreviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [activeFilePreviewUrl, setActiveFilePreviewUrl] = useState<string | null>(null);
@@ -197,6 +204,7 @@ export function MonitorSchoolDrawer({
     setActiveSchoolDrawerTab,
     setSelectedSchoolDrawerYear,
     closeSchoolDrawer,
+    onReviewDataChanged,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
 
@@ -212,7 +220,7 @@ export function MonitorSchoolDrawer({
   }, [activeFilePreviewUrl]);
 
   const openFilePreview = async (row: MonitorDrawerPackageRow) => {
-    const relativeUrl = row.viewUrl ?? row.downloadUrl;
+    const relativeUrl = row.viewUrl;
     if (row.kind !== "file" || !relativeUrl) {
       return;
     }
@@ -239,12 +247,24 @@ export function MonitorSchoolDrawer({
       });
 
       if (!response.ok) {
+        if (response.status === 403) {
+          setActiveFilePreviewError("This file is no longer available for monitor review. Refreshing the school detail...");
+          await onReviewDataChanged?.({ reason: "file-preview-stale", row });
+          return;
+        }
+
+        if (response.status === 404) {
+          setActiveFilePreviewError("This file was removed or reset and can no longer be previewed. Refreshing the school detail...");
+          await onReviewDataChanged?.({ reason: "file-preview-stale", row });
+          return;
+        }
+
         throw new Error(`Preview request failed with status ${response.status}.`);
       }
 
       setActiveFilePreviewUrl(URL.createObjectURL(await response.blob()));
     } catch {
-      setActiveFilePreviewError("Preview could not be loaded. Use Download to open the uploaded file.");
+      setActiveFilePreviewError("Preview could not be loaded. Use the modal Download button to open the uploaded file.");
     }
   };
 
@@ -285,14 +305,21 @@ export function MonitorSchoolDrawer({
     setScopeReviewError("");
 
     try {
-      await reviewSubmissionScope(row.submissionId, {
+      const updatedSubmission = await reviewSubmissionScope(row.submissionId, {
         scopeId: row.id,
         decision,
         notes: notes?.trim() || null,
       });
+      await onReviewDataChanged?.({
+        reason: "scope-review",
+        submission: updatedSubmission,
+        decision,
+        row,
+      });
       if (decision === "returned") {
         setReturnReviewRow(null);
         setReturnReviewNotes("");
+        setIncludeReturnNote(false);
       }
     } catch (error) {
       setScopeReviewError(errorMessageFromUnknown(error));
@@ -306,13 +333,13 @@ export function MonitorSchoolDrawer({
       return;
     }
 
-    const notes = returnReviewNotes.trim();
-    if (notes.length < 3) {
+    const notes = includeReturnNote ? returnReviewNotes.trim() : "";
+    if (includeReturnNote && notes.length < 3) {
       setScopeReviewError("Add a short return note before sending this back.");
       return;
     }
 
-    void saveScopeReview(returnReviewRow, "returned", notes);
+    void saveScopeReview(returnReviewRow, "returned", includeReturnNote ? notes : null);
   };
 
   const viewSectionReport = (row: MonitorDrawerPackageRow) => {
@@ -479,9 +506,8 @@ export function MonitorSchoolDrawer({
                           </thead>
                           <tbody className="divide-y divide-slate-200">
                             {schoolDrawerYearDetail.packageRows.map((row) => {
-                              const canPreviewFile = row.kind === "file" && Boolean(row.viewUrl || row.downloadUrl);
+                              const canPreviewFile = row.kind === "file" && Boolean(row.viewUrl);
                               const canViewSection = row.kind === "section" && Boolean(row.actionTarget) && row.canReview;
-                              const canDownloadFile = row.kind === "file" && Boolean(row.viewUrl || row.downloadUrl);
 
                               return (
                               <tr key={`monitor-package-row-${row.id}`} className="bg-white">
@@ -531,17 +557,6 @@ export function MonitorSchoolDrawer({
                                         View
                                       </button>
                                     )}
-                                    {canDownloadFile && (
-                                      <button
-                                        type="button"
-                                        onClick={() => void downloadFileRow(row)}
-                                        disabled={downloadingFileRowId === row.id}
-                                        className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-wait disabled:opacity-70"
-                                      >
-                                        <Download className="h-3.5 w-3.5" />
-                                        {downloadingFileRowId === row.id ? "Downloading..." : "Download"}
-                                      </button>
-                                    )}
                                     <button
                                       type="button"
                                       onClick={() => void saveScopeReview(row, "verified")}
@@ -559,11 +574,12 @@ export function MonitorSchoolDrawer({
                                           return;
                                         }
                                         setScopeReviewError("");
-                                        setReturnReviewNotes(row.reviewNotes ?? "");
+                                        setReturnReviewNotes("");
+                                        setIncludeReturnNote(false);
                                         setReturnReviewRow(row);
                                       }}
                                       disabled={!row.canReview || scopeReviewSavingKey !== null}
-                                      title={row.canReview ? "Return this requirement with a note." : disabledPackageActionTitle(row)}
+                                      title={row.canReview ? "Return this requirement." : disabledPackageActionTitle(row)}
                                       className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
                                     >
                                       <RotateCcw className="h-3.5 w-3.5" />
@@ -882,7 +898,7 @@ export function MonitorSchoolDrawer({
                 <p className="mt-1 text-xs text-slate-500">{activeFilePreviewRow.detail}</p>
               </div>
               <div className="flex items-center gap-2">
-                {(activeFilePreviewRow.downloadUrl || activeFilePreviewRow.viewUrl) && (
+                {activeFilePreviewRow.downloadUrl && (
                   <button
                     type="button"
                     onClick={() => void downloadFileRow(activeFilePreviewRow)}
@@ -962,7 +978,7 @@ export function MonitorSchoolDrawer({
               <div>
                 <p className="text-sm font-semibold text-slate-900">Return Requirement</p>
                 <p className="mt-1 text-xs text-slate-600">
-                  Add a note for {returnReviewRow.label}. The School Head will see this on their dashboard.
+                  Returning {returnReviewRow.label} will notify the School Head. A note is optional.
                 </p>
               </div>
               <button
@@ -970,6 +986,7 @@ export function MonitorSchoolDrawer({
                 onClick={() => {
                   setReturnReviewRow(null);
                   setReturnReviewNotes("");
+                  setIncludeReturnNote(false);
                 }}
                 className="rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
                 aria-label="Close return requirement dialog"
@@ -983,17 +1000,36 @@ export function MonitorSchoolDrawer({
                   {scopeReviewError}
                 </div>
               )}
-              <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="scope-return-note">
-                Return note
+              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={includeReturnNote}
+                  onChange={(event) => {
+                    setIncludeReturnNote(event.target.checked);
+                    if (!event.target.checked) {
+                      setReturnReviewNotes("");
+                    }
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                />
+                Include a note to the School Head
               </label>
-              <textarea
-                id="scope-return-note"
-                value={returnReviewNotes}
-                onChange={(event) => setReturnReviewNotes(event.target.value)}
-                rows={4}
-                className="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                placeholder="Explain what needs to be corrected or clarified."
-              />
+              {includeReturnNote && (
+                <>
+                  <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="scope-return-note">
+                    Return note
+                  </label>
+                  <textarea
+                    id="scope-return-note"
+                    value={returnReviewNotes}
+                    onChange={(event) => setReturnReviewNotes(event.target.value)}
+                    rows={4}
+                    maxLength={2000}
+                    className="w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-800 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                    placeholder="Explain what needs to be corrected or clarified."
+                  />
+                </>
+              )}
             </div>
             <div className="flex justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
               <button
@@ -1001,6 +1037,7 @@ export function MonitorSchoolDrawer({
                 onClick={() => {
                   setReturnReviewRow(null);
                   setReturnReviewNotes("");
+                  setIncludeReturnNote(false);
                 }}
                 className="rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
               >
@@ -1009,7 +1046,7 @@ export function MonitorSchoolDrawer({
               <button
                 type="button"
                 onClick={submitReturnReview}
-                disabled={scopeReviewSavingKey !== null || returnReviewNotes.trim().length < 3}
+                disabled={scopeReviewSavingKey !== null || (includeReturnNote && returnReviewNotes.trim().length < 3)}
                 className="rounded-sm border border-amber-600 bg-amber-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 Return requirement

@@ -468,6 +468,14 @@ export function MonitorDashboard() {
     activeSchoolDrawerKey: schoolDrawerKey,
     onRefreshActiveDrawer: refreshSchoolDrawer,
   });
+  const handleSchoolDrawerReviewDataChanged = useCallback(async () => {
+    refreshSchoolDrawer();
+    try {
+      await refreshSubmissions();
+    } catch {
+      // Drawer-specific review actions already completed; realtime/manual refresh can recover if global refresh fails.
+    }
+  }, [refreshSchoolDrawer, refreshSubmissions]);
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
     focusedSectionId,
@@ -705,6 +713,7 @@ export function MonitorDashboard() {
       handleJumpToMissingIndicators,
       handleJumpToReturnedIndicators,
       toggleDrawerIndicatorLabel,
+      onReviewDataChanged: handleSchoolDrawerReviewDataChanged,
       workflowTone,
       workflowLabel,
       formatDateTime,
