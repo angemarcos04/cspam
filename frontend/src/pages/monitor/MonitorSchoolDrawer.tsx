@@ -118,6 +118,76 @@ function errorMessageFromUnknown(error: unknown): string {
   return "Unable to save this review decision. Please try again.";
 }
 
+function extractPreviewPayloadMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  if ("message" in payload && typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  if ("error" in payload && typeof payload.error === "string") {
+    return payload.error;
+  }
+
+  if ("errors" in payload && payload.errors && typeof payload.errors === "object") {
+    for (const value of Object.values(payload.errors as Record<string, unknown>)) {
+      if (Array.isArray(value)) {
+        const firstString = value.find((item): item is string => typeof item === "string" && item.trim().length > 0);
+        if (firstString) {
+          return firstString;
+        }
+      }
+      if (typeof value === "string" && value.trim()) {
+        return value;
+      }
+    }
+  }
+
+  return null;
+}
+
+function sanitizePreviewFailureMessage(message: string | null): string | null {
+  const trimmed = String(message ?? "")
+    .replace(/https?:\/\/\S+/gi, "[link]")
+    .replace(/[A-Za-z]:\\[^\s"'<>]+/g, "[path]")
+    .replace(/\/[^\s"'<>]+/g, "[path]")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!trimmed || trimmed.length < 3 || /<html|<!doctype/i.test(trimmed)) {
+    return null;
+  }
+
+  return trimmed.length > 140 ? `${trimmed.slice(0, 137).trimEnd()}...` : trimmed;
+}
+
+async function previewFailureMessageForResponse(response: Response): Promise<string> {
+  let safeMessage: string | null = null;
+
+  try {
+    const contentType = response.headers.get("content-type") ?? "";
+    const rawText = await response.text();
+    if (rawText.trim()) {
+      if (contentType.includes("json")) {
+        try {
+          safeMessage = extractPreviewPayloadMessage(JSON.parse(rawText));
+        } catch {
+          safeMessage = rawText;
+        }
+      } else if (contentType.includes("text/plain")) {
+        safeMessage = rawText;
+      }
+    }
+  } catch {
+    safeMessage = null;
+  }
+
+  const suffix = sanitizePreviewFailureMessage(safeMessage);
+  return `Preview failed (status ${response.status}).${suffix ? ` ${suffix}.` : ""} Use Download in this modal to open the uploaded file.`;
+}
+
 function reportSectionElementId(target: MonitorDrawerPackageRow["actionTarget"]): string | null {
   if (target === "school_achievements") {
     return "monitor-submitted-report-school-achievements";
@@ -259,12 +329,13 @@ export function MonitorSchoolDrawer({
           return;
         }
 
-        throw new Error(`Preview request failed with status ${response.status}.`);
+        setActiveFilePreviewError(await previewFailureMessageForResponse(response));
+        return;
       }
 
       setActiveFilePreviewUrl(URL.createObjectURL(await response.blob()));
     } catch {
-      setActiveFilePreviewError("Preview could not be loaded. Use the modal Download button to open the uploaded file.");
+      setActiveFilePreviewError("Preview could not be loaded due to a network or server error. Use Download in this modal to open the uploaded file.");
     }
   };
 

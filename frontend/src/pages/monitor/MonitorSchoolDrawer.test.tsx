@@ -848,6 +848,105 @@ describe("MonitorSchoolDrawer", () => {
     });
   });
 
+  it("shows a safe status-aware message when preview fails with a JSON server error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ message: "Preview renderer failed for this document." }),
+      {
+        status: 500,
+        headers: { "content-type": "application/json" },
+      },
+    ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps({
+          id: "fm_qad_001",
+          submissionId: "sub-1",
+          label: "FM-QAD-001",
+          kind: "file",
+          statusLabel: "For Review",
+          tone: "info",
+          submittedAt: "2026-06-14T06:39:00.000Z",
+          detail: "Profile-1.pdf",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          actionLabel: null,
+          actionTarget: null,
+          canReview: true,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByText(/Preview failed \(status 500\)\. Preview renderer failed for this document\./i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
+  it("shows a safe status-aware message when preview fails with a plain text server error", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("Preview service is unavailable.", {
+      status: 422,
+      headers: { "content-type": "text/plain" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps({
+          id: "fm_qad_001",
+          submissionId: "sub-1",
+          label: "FM-QAD-001",
+          kind: "file",
+          statusLabel: "For Review",
+          tone: "info",
+          submittedAt: "2026-06-14T06:39:00.000Z",
+          detail: "Profile-1.pdf",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          actionLabel: null,
+          actionTarget: null,
+          canReview: true,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByText(/Preview failed \(status 422\)\. Preview service is unavailable\./i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
+  it("shows a safe network fallback when preview fetch rejects", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("network down"));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps({
+          id: "fm_qad_001",
+          submissionId: "sub-1",
+          label: "FM-QAD-001",
+          kind: "file",
+          statusLabel: "For Review",
+          tone: "info",
+          submittedAt: "2026-06-14T06:39:00.000Z",
+          detail: "Profile-1.pdf",
+          viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+          downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+          actionLabel: null,
+          actionTarget: null,
+          canReview: true,
+        })}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(await screen.findByText(/network or server error/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Download" })).toBeTruthy();
+  });
+
   it("returns a requirement without requiring a note and refreshes monitor review data", async () => {
     const onReviewDataChanged = vi.fn().mockResolvedValue(undefined);
     reviewSubmissionScopeMock.mockResolvedValue({ id: "sub-1", status: "draft" });

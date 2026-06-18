@@ -58,6 +58,64 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(returnedState.hasAnySubmitted).toBe(true);
   });
 
+  it("derives queue and school badge state from refreshed indicator status", () => {
+    const forReviewState = buildMonitorRequirementSummaryState(
+      {
+        type: "public",
+        indicatorLatest: {
+          id: "sub-1",
+          status: "submitted",
+          submittedAt: "2026-06-18T08:00:00.000Z",
+          reviewedAt: null,
+          createdAt: null,
+          updatedAt: null,
+        },
+      },
+      true,
+    );
+    const verifiedState = buildMonitorRequirementSummaryState(
+      {
+        type: "public",
+        indicatorLatest: {
+          id: "sub-1",
+          status: "validated",
+          submittedAt: "2026-06-18T08:00:00.000Z",
+          reviewedAt: "2026-06-18T09:00:00.000Z",
+          createdAt: null,
+          updatedAt: null,
+        },
+      },
+      true,
+    );
+    const returnedState = buildMonitorRequirementSummaryState(
+      {
+        type: "public",
+        indicatorLatest: {
+          id: "sub-1",
+          status: "returned",
+          submittedAt: "2026-06-18T08:00:00.000Z",
+          reviewedAt: "2026-06-18T09:00:00.000Z",
+          createdAt: null,
+          updatedAt: null,
+        },
+      },
+      true,
+    );
+
+    expect(forReviewState.indicatorStatus).toBe("submitted");
+    expect(forReviewState.awaitingReviewCount).toBe(1);
+    expect(forReviewState.missingCount).toBe(0);
+
+    expect(verifiedState.indicatorStatus).toBe("validated");
+    expect(verifiedState.awaitingReviewCount).toBe(0);
+    expect(verifiedState.missingCount).toBe(0);
+
+    expect(returnedState.indicatorStatus).toBe("returned");
+    expect(returnedState.awaitingReviewCount).toBe(0);
+    expect(returnedState.missingCount).toBe(0);
+    expect(returnedState.hasActivePackageSubmission).toBe(true);
+  });
+
   it("normalizes school sector and level values used by monitor school filters", () => {
     expect(normalizeSchoolSector("Public")).toBe("public");
     expect(normalizeSchoolSector(" private ")).toBe("private");

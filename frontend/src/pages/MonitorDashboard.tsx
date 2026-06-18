@@ -63,6 +63,7 @@ import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import { useMonitorQuickJump } from "@/pages/monitor/useMonitorQuickJump";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
 import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
+import { refreshMonitorReviewData } from "@/pages/monitor/monitorReviewDataRefresh";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorDashboardBindings } from "@/pages/monitor/useMonitorDashboardBindings";
@@ -469,13 +470,12 @@ export function MonitorDashboard() {
     onRefreshActiveDrawer: refreshSchoolDrawer,
   });
   const handleSchoolDrawerReviewDataChanged = useCallback(async () => {
-    refreshSchoolDrawer();
-    try {
-      await refreshSubmissions();
-    } catch {
-      // Drawer-specific review actions already completed; realtime/manual refresh can recover if global refresh fails.
-    }
-  }, [refreshSchoolDrawer, refreshSubmissions]);
+    await refreshMonitorReviewData({
+      refreshSchoolDrawer,
+      refreshSubmissions,
+      refreshRecords,
+    });
+  }, [refreshRecords, refreshSchoolDrawer, refreshSubmissions]);
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
     focusedSectionId,
