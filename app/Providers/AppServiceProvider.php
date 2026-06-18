@@ -464,7 +464,8 @@ class AppServiceProvider extends ServiceProvider
             || str_contains($commandLine, 'route:cache')
             || str_contains($commandLine, 'view:cache')
             || str_contains($commandLine, 'migrate')
-            || str_contains($commandLine, 'optimize');
+            || str_contains($commandLine, 'optimize')
+            || preg_match('/(?:^|\s)(?:test|pest)(?:\s|$)/', $commandLine) === 1;
     }
 
     /**
