@@ -59,10 +59,17 @@ if (Test-Path -LiteralPath $buildInfoPath) {
 
 Write-Host ""
 Write-Host "Running node/php processes" -ForegroundColor Cyan
-$processes = Get-CimInstance Win32_Process -Filter "name = 'node.exe' or name = 'php.exe'" |
-    Select-Object ProcessId, Name, ExecutablePath, CommandLine
+$processes = @()
+$processInspectionAvailable = $true
+try {
+    $processes = Get-CimInstance Win32_Process -Filter "name = 'node.exe' or name = 'php.exe'" -ErrorAction Stop |
+        Select-Object ProcessId, Name, ExecutablePath, CommandLine
+} catch {
+    $processInspectionAvailable = $false
+    Write-Warning "Could not inspect node/php process command lines. Run this script from an elevated PowerShell session if runtime path verification is still needed."
+}
 
-if ($processes) {
+if ($processInspectionAvailable -and $processes) {
     $processes | Format-List
     $staleMatches = $processes | Where-Object {
         $_.CommandLine -and $_.CommandLine.IndexOf($staleRepo, [System.StringComparison]::OrdinalIgnoreCase) -ge 0
@@ -73,7 +80,7 @@ if ($processes) {
     } else {
         Write-Host "No node/php command line references $staleRepo." -ForegroundColor Green
     }
-} else {
+} elseif ($processInspectionAvailable) {
     Write-Host "No node.exe or php.exe processes are currently visible."
 }
 

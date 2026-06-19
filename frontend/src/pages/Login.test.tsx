@@ -68,6 +68,29 @@ describe("Login", () => {
     expect(switchedForgotLinks.some((link) => link.getAttribute("href") === "/forgot-password?role=monitor")).toBe(true);
   });
 
+  it("submits a leading-zero school code as a six-digit string", async () => {
+    authState.login.mockResolvedValueOnce({ status: "authenticated" });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    await waitFor(() => {
+      expect(authState.login).toHaveBeenCalledWith({
+        role: "school_head",
+        login: "001234",
+        password: "Demo@123456",
+      });
+    });
+  });
+
   it("shows a deployment-oriented message when the API cannot be reached during login", async () => {
     authState.login.mockRejectedValueOnce(new ApiError("NetworkError when attempting to fetch resource.", 0, null));
 
