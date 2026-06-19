@@ -1943,7 +1943,11 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
     });
-    const [fetchInput, requestInit] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    const previewFetchCall = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>).find(([input]) => (
+      String(input).includes("/api/submissions/file-101/view/bmef")
+    ));
+    expect(previewFetchCall).toBeTruthy();
+    const [fetchInput, requestInit] = previewFetchCall as [RequestInfo | URL, RequestInit];
     expect(String(fetchInput)).toContain("/api/submissions/file-101/view/bmef");
     expect((requestInit.headers as Headers).get("Authorization")).toBe("Bearer token");
 
@@ -2072,7 +2076,11 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
     });
-    const [fetchInput, requestInit] = fetchMock.mock.calls[0] as unknown as [RequestInfo | URL, RequestInit];
+    const previewFetchCall = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>).find(([input]) => (
+      String(input).includes("/api/submissions/private-file-101/view/fm_qad_001")
+    ));
+    expect(previewFetchCall).toBeTruthy();
+    const [fetchInput, requestInit] = previewFetchCall as [RequestInfo | URL, RequestInit];
     expect(String(fetchInput)).toContain("/api/submissions/private-file-101/view/fm_qad_001");
     expect((requestInit.headers as Headers).get("Authorization")).toBe("Bearer token");
 

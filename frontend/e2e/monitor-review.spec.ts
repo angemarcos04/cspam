@@ -188,6 +188,59 @@ function buildSubmission(state: ReviewState, reviewNotes: string | null = null) 
   };
 }
 
+function buildAuditEvent(id: string, eventType: string, eventLabel: string, scopeId: string, scopeLabel: string) {
+  const isFile = scopeId.startsWith("fm_qad") || scopeId === "bmef" || scopeId === "smea";
+
+  return {
+    id,
+    eventType,
+    eventLabel,
+    actor: {
+      id: eventType.startsWith("monitor.") ? "1" : "2",
+      name: eventType.startsWith("monitor.") ? "Division Monitor" : "School Head",
+      role: eventType.startsWith("monitor.") ? "monitor" : "school_head",
+    },
+    school: {
+      id: "record-1",
+      code: "401777",
+      name: "AMA Computer College-Santiago City",
+      type: "private",
+    },
+    academicYear: {
+      id: "ay-2025",
+      label: "2025-2026",
+    },
+    submissionId: "sub-1",
+    scopeId,
+    scopeType: isFile ? "file" : "section",
+    scopeLabel,
+    fileType: isFile ? scopeId : null,
+    fileLabel: isFile ? scopeLabel : null,
+    status: {
+      from: "draft",
+      to: "draft",
+      decision: eventType.endsWith("returned") ? "returned" : eventType.endsWith("verified") ? "verified" : null,
+      previousDecision: eventType.includes("resent") ? "returned" : null,
+    },
+    details: {},
+    ipAddress: "127.0.0.1",
+    createdAt: nowIso,
+  };
+}
+
+function buildAuditEvents() {
+  return [
+    buildAuditEvent("audit-1", "workspace.section_saved", "Saved section", "school_achievements_learning_outcomes", "School Achievements"),
+    buildAuditEvent("audit-2", "workspace.file_saved", "Saved file", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-3", "submission.file_sent", "Sent file", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-4", "monitor.file_previewed", "Previewed file", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-5", "monitor.scope_verified", "Verified requirement", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-6", "monitor.scope_returned", "Returned requirement", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-7", "submission.file_resent", "Resent returned file", "fm_qad_001", "FM-QAD-001"),
+    buildAuditEvent("audit-8", "submission.final_submitted", "Final submitted package", "final_package", "Final Package"),
+  ];
+}
+
 async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState; reviewNotes: string | null }) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -308,6 +361,18 @@ async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState
       });
     }
 
+    if (path === "/api/audit-logs") {
+      return jsonResponse(route, {
+        data: buildAuditEvents(),
+        meta: {
+          current_page: 1,
+          last_page: 1,
+          per_page: 30,
+          total: buildAuditEvents().length,
+        },
+      });
+    }
+
     if (path === "/api/indicators/submissions/sub-1/scope-review") {
       const payload = request.postDataJSON() as { decision?: string; notes?: string | null };
       stateRef.value = payload.decision === "verified" ? "verified" : "returned";
@@ -421,5 +486,23 @@ test.describe("monitor review smoke flow", () => {
 
     const queueRow = page.locator("tr", { hasText: "AMA Computer College-Santiago City" }).first();
     await expect(queueRow.getByText("Returned for Correction")).toBeVisible();
+  });
+
+  test("renders audited workflow actions in the monitor Audit Trail", async ({ page }) => {
+    const stateRef = { value: "forReview" as ReviewState, reviewNotes: null as string | null };
+    await installMonitorApiMocks(page, stateRef);
+    await signInAsMonitor(page);
+
+    await page.getByRole("button", { name: "Open Audit Trail" }).click();
+
+    await expect(page.getByText("Saved section")).toBeVisible();
+    await expect(page.getByText("Saved file")).toBeVisible();
+    await expect(page.getByText("Sent file")).toBeVisible();
+    await expect(page.getByText("Previewed file")).toBeVisible();
+    await expect(page.getByText("Verified requirement")).toBeVisible();
+    await expect(page.getByText("Returned requirement")).toBeVisible();
+    await expect(page.getByText("Resent returned file")).toBeVisible();
+    await expect(page.getByText("Final submitted package")).toBeVisible();
+    await expect(page.getByText(/downloadUrl/i)).toHaveCount(0);
   });
 });

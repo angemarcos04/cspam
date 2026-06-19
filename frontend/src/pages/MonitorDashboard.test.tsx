@@ -2,6 +2,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
+import { AuditTrailPanel } from "@/pages/monitor/MonitorAuditTrail";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
@@ -628,6 +629,68 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByText("Maria Santos")).toBeTruthy();
     expect(screen.queryByText(/downloadUrl/i)).toBeNull();
     expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/audit-logs?"), expect.any(Object));
+  });
+
+  it("refreshes an audit panel when a matching audit realtime event arrives", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [],
+        meta: { current_page: 1, last_page: 1, per_page: 12, total: 0 },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: [
+          {
+            id: "audit-2",
+            eventType: "workspace.section_saved",
+            eventLabel: "Saved section",
+            actor: { id: "2", name: "Maria Santos", role: "school_head" },
+            school: { id: "1", code: "900001", name: "Santiago Elementary", type: "public" },
+            academicYear: { id: "1", label: "2025-2026" },
+            submissionId: "10",
+            scopeId: "school_achievements_learning_outcomes",
+            scopeType: "section",
+            scopeLabel: "School Achievements",
+            fileType: null,
+            fileLabel: null,
+            status: { from: "draft", to: "draft", decision: null, previousDecision: null },
+            details: {},
+            ipAddress: "127.0.0.1",
+            createdAt: "2026-06-19T10:05:00.000Z",
+          },
+        ],
+        meta: { current_page: 1, last_page: 1, per_page: 12, total: 1 },
+      }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AuditTrailPanel
+        compact
+        schoolId="1"
+        academicYearLabel="2025-2026"
+      />,
+    );
+
+    expect(await screen.findByText("No audit events match this view yet.")).toBeTruthy();
+
+    window.dispatchEvent(new CustomEvent("cspams:update", {
+      detail: {
+        entity: "audit",
+        eventType: "audit.log_created",
+        auditAction: "workspace.section_saved",
+        schoolId: "1",
+        academicYearLabel: "2025-2026",
+      },
+    }));
+
+    expect(await screen.findByText("Saved section")).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("sends queue reminders with an optional note", async () => {

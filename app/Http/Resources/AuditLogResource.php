@@ -112,6 +112,7 @@ class AuditLogResource extends JsonResource
             'submission.scope_sent' => 'Sent scope',
             'submission.file_sent' => 'Sent file',
             'submission.scope_resent' => 'Resent returned item',
+            'submission.file_resent' => 'Resent returned file',
             'submission.final_submitted' => 'Final submitted package',
             'monitor.report_viewed' => 'Viewed TARGETS-MET',
             'monitor.file_previewed' => 'Previewed file',

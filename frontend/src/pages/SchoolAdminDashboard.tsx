@@ -23,6 +23,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { isEditableKeyboardTarget, isRefreshShortcut } from "@/lib/keyboardShortcuts";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
+import { AuditTrailPanel } from "@/pages/monitor/MonitorAuditTrail";
 import {
   buildSchoolHeadCurrentReportBlankStateLines,
   buildSchoolHeadCurrentReportSourceContext,
@@ -2258,6 +2259,17 @@ export function SchoolAdminDashboard() {
                 </div>
               </div>
             )}
+            <div className="border-t border-slate-200 p-4">
+              <AuditTrailPanel
+                id="school-head-recent-activity"
+                compact
+                title="Recent Activity"
+                description="Private audit trail for this school and selected academic year."
+                schoolId={selectedSchoolId || null}
+                schoolCode={selectedSchoolId ? null : schoolCode}
+                academicYearLabel={selectedReportYearLabel}
+              />
+            </div>
           </div>
         </div>
       </section>

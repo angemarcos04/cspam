@@ -991,6 +991,54 @@ describe("MonitorSchoolDrawer", () => {
     }));
   });
 
+  it("logs an explicit monitor report view when a reviewable section View button is clicked", async () => {
+    const setActiveSchoolDrawerTab = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { logged: true } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "school_achievements_learning_outcomes",
+            submissionId: "sub-1",
+            label: "School Achievements",
+            kind: "section",
+            statusLabel: "For Review",
+            tone: "info",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Section values are available for this year.",
+            viewUrl: null,
+            downloadUrl: null,
+            actionLabel: null,
+            actionTarget: "school_achievements",
+            canReview: true,
+          },
+          { setActiveSchoolDrawerTab },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(setActiveSchoolDrawerTab).toHaveBeenCalledWith("history");
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/indicators/submissions/sub-1/report-viewed"),
+        expect.objectContaining({
+          method: "POST",
+        }),
+      );
+    });
+    const requestOptions = (fetchMock.mock.calls as unknown as Array<[RequestInfo | URL, RequestInit]>)[0]?.[1];
+    expect(JSON.parse(String(requestOptions?.body))).toEqual({
+      scopeId: "school_achievements_learning_outcomes",
+    });
+  });
+
   it("requires a return note only when the optional note toggle is enabled", async () => {
     reviewSubmissionScopeMock.mockResolvedValue({ id: "sub-1", status: "draft" });
 

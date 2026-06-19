@@ -46,7 +46,7 @@ class AuthAuditLogger
             'ip_address' => $normalizedIpAddress,
             'user_agent' => $normalizedUserAgent,
             'occurred_at' => now()->toISOString(),
-        ], $metadata);
+        ], self::schoolMetadataFor($user), $metadata);
 
         $auditLog = AuditLog::query()->create([
             'user_id' => $user?->id,
@@ -73,6 +73,35 @@ class AuthAuditLogger
         } catch (\Throwable $exception) {
             report($exception);
         }
+
+        try {
+            app(AuditRealtimeNotifier::class)->dispatch($auditLog);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function schoolMetadataFor(?User $user): array
+    {
+        if (! $user || ! $user->school_id) {
+            return [];
+        }
+
+        $user->loadMissing('school:id,school_code,name,type');
+
+        return array_filter([
+            'actor_role' => UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)
+                ? UserRoleResolver::SCHOOL_HEAD
+                : (UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? UserRoleResolver::MONITOR : null),
+            'actor_name' => self::safeString($user->name),
+            'school_id' => (string) $user->school_id,
+            'school_code' => self::safeString($user->school?->school_code),
+            'school_name' => self::safeString($user->school?->name),
+            'school_type' => self::safeString($user->school?->type),
+        ], static fn (?string $value): bool => $value !== null && $value !== '');
     }
 
     private static function normalizeRole(string $role): ?string
@@ -182,5 +211,21 @@ class AuthAuditLogger
         }
 
         return Str::limit($normalized, 500, '');
+    }
+
+    private static function safeString(mixed $value, int $limit = 180): ?string
+    {
+        if (! is_scalar($value) && ! $value instanceof \Stringable) {
+            return null;
+        }
+
+        $normalized = trim((string) $value);
+        if ($normalized === '') {
+            return null;
+        }
+
+        $normalized = preg_replace('/\s+/', ' ', $normalized) ?: $normalized;
+
+        return Str::limit($normalized, $limit, '');
     }
 }

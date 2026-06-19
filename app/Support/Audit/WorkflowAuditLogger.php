@@ -28,7 +28,7 @@ class WorkflowAuditLogger
             'academicYear:id,name',
         ]);
 
-        AuditLog::query()->create([
+        $auditLog = AuditLog::query()->create([
             'user_id' => $actor->id,
             'action' => $action,
             'auditable_type' => IndicatorSubmission::class,
@@ -38,6 +38,12 @@ class WorkflowAuditLogger
             'user_agent' => $this->normalizeUserAgent($request->userAgent()),
             'created_at' => now(),
         ]);
+
+        try {
+            app(AuditRealtimeNotifier::class)->dispatch($auditLog);
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
     }
 
     /**

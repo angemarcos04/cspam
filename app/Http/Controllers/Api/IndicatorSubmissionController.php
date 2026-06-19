@@ -190,14 +190,66 @@ class IndicatorSubmissionController extends Controller
             'reviewedBy:id,name,email',
         ]);
 
-        if ($this->isMonitor($user)) {
-            $this->auditSubmissionEvent($request, 'monitor.report_viewed', $submission, $user, [
-                'status' => $this->statusValue($submission->status),
+        return response()->json([
+            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ]);
+    }
+
+    public function reportViewed(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanReview($user);
+        $this->assertCanView($user, $submission->school_id);
+
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+
+        $validated = $request->validate([
+            'scopeId' => ['required', 'string'],
+        ]);
+
+        $scopeIds = $scopeProgressResolver->normalizeScopeIds($submission, [(string) $validated['scopeId']]);
+        if ($scopeIds === []) {
+            throw ValidationException::withMessages([
+                'scopeId' => 'Select a valid report section.',
             ]);
         }
 
+        $scopeId = $scopeIds[0];
+        if (SubmissionFileDefinition::isValidType($scopeId)) {
+            throw ValidationException::withMessages([
+                'scopeId' => 'Use file preview for uploaded file requirements.',
+            ]);
+        }
+
+        $status = $this->statusValue($submission->status);
+        if (! in_array($status, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+        ], true)) {
+            $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+            $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
+                ? $scopeProgress['submittedScopeIds']
+                : [];
+
+            if (! in_array($scopeId, $submittedScopeIds, true)) {
+                throw ValidationException::withMessages([
+                    'scopeId' => 'Only sent report sections can be viewed by the monitor.',
+                ]);
+            }
+        }
+
+        $this->auditSubmissionEvent($request, 'monitor.report_viewed', $submission, $user, [
+            'status' => $status,
+            'scope_id' => $scopeId,
+            'scope_type' => 'section',
+            'scope_label' => $scopeProgressResolver->scopeLabel($scopeId),
+        ]);
+
         return response()->json([
-            'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+            'data' => [
+                'logged' => true,
+            ],
         ]);
     }
 
@@ -819,7 +871,7 @@ class IndicatorSubmissionController extends Controller
             $this->auditSubmissionEvent(
                 $request,
                 $isResend
-                    ? 'submission.scope_resent'
+                    ? ($scopeType === 'file' ? 'submission.file_resent' : 'submission.scope_resent')
                     : ($scopeType === 'file' ? 'submission.file_sent' : 'submission.scope_sent'),
                 $submission,
                 $user,

@@ -3,7 +3,7 @@ import { CheckCircle2, Download, RotateCcw, X } from "lucide-react";
 import { SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
-import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
@@ -467,6 +467,18 @@ export function MonitorSchoolDrawer({
     const sectionId = reportSectionElementId(row.actionTarget ?? null);
     if (!sectionId || !row.canReview) {
       return;
+    }
+
+    if (row.submissionId && row.actionTarget) {
+      void apiRequestVoid(`/api/indicators/submissions/${row.submissionId}/report-viewed`, {
+        method: "POST",
+        token: apiToken,
+        body: {
+          scopeId: row.id,
+        },
+      }).catch(() => {
+        // Viewing should still work if audit logging fails; backend tests cover audit behavior.
+      });
     }
 
     setActiveSchoolDrawerTab("history");

@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { apiRequest, COOKIE_SESSION_TOKEN } from "@/lib/api";
+import type { CspamsRealtimePayload } from "@/lib/realtime";
 import type { AuditLogEntry } from "@/types";
 
 interface AuditLogResponse {
@@ -14,13 +15,15 @@ interface AuditLogResponse {
   };
 }
 
-interface MonitorAuditTrailProps {
+interface AuditTrailPanelProps {
+  id?: string;
   title?: string;
   description?: string;
   schoolId?: string | number | null;
   schoolCode?: string | number | null;
   academicYearLabel?: string | null;
   compact?: boolean;
+  enableRealtime?: boolean;
 }
 
 const ACTION_OPTIONS = [
@@ -69,14 +72,61 @@ function detailText(entry: AuditLogEntry): string {
   return pieces.length > 0 ? pieces.join(" | ") : "-";
 }
 
-export function MonitorAuditTrail({
+function normalizeRealtimeValue(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function auditRealtimeMatchesFilters(
+  payload: CspamsRealtimePayload,
+  {
+    schoolId,
+    schoolCode,
+    academicYearLabel,
+    actionPrefix,
+  }: {
+    schoolId: string | number | null;
+    schoolCode: string | number | null;
+    academicYearLabel: string | null;
+    actionPrefix: string;
+  },
+): boolean {
+  if (payload.entity !== "audit" || payload.eventType !== "audit.log_created") {
+    return false;
+  }
+
+  const payloadAction = normalizeRealtimeValue(payload.auditAction);
+  if (actionPrefix && !payloadAction.startsWith(actionPrefix)) {
+    return false;
+  }
+
+  const expectedSchoolId = normalizeRealtimeValue(schoolId);
+  if (expectedSchoolId && normalizeRealtimeValue(payload.schoolId) !== expectedSchoolId) {
+    return false;
+  }
+
+  const expectedSchoolCode = normalizeRealtimeValue(schoolCode).toUpperCase();
+  if (!expectedSchoolId && expectedSchoolCode && normalizeRealtimeValue(payload.schoolCode).toUpperCase() !== expectedSchoolCode) {
+    return false;
+  }
+
+  const expectedAcademicYear = normalizeRealtimeValue(academicYearLabel);
+  if (expectedAcademicYear && normalizeRealtimeValue(payload.academicYearLabel) !== expectedAcademicYear) {
+    return false;
+  }
+
+  return true;
+}
+
+export function AuditTrailPanel({
+  id,
   title = "Audit Trail",
   description = "Permanent record of workflow and security-sensitive activity.",
   schoolId = null,
   schoolCode = null,
   academicYearLabel = null,
   compact = false,
-}: MonitorAuditTrailProps) {
+  enableRealtime = true,
+}: AuditTrailPanelProps) {
   const { apiToken } = useAuth();
   const [entries, setEntries] = useState<AuditLogEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -85,6 +135,7 @@ export function MonitorAuditTrail({
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
   const token = apiToken ?? COOKIE_SESSION_TOKEN;
 
   const queryString = useMemo(() => {
@@ -144,8 +195,45 @@ export function MonitorAuditTrail({
     return () => controller.abort();
   }, [loadAuditTrail]);
 
+  useEffect(() => {
+    if (!enableRealtime || typeof window === "undefined") {
+      return;
+    }
+
+    const handleRealtimeAuditEvent = (event: Event) => {
+      const payload = (event as CustomEvent<CspamsRealtimePayload>).detail;
+      if (!auditRealtimeMatchesFilters(payload, {
+        schoolId,
+        schoolCode,
+        academicYearLabel,
+        actionPrefix,
+      })) {
+        return;
+      }
+
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+      }
+
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        void loadAuditTrail();
+      }, 250);
+    };
+
+    window.addEventListener("cspams:update", handleRealtimeAuditEvent);
+
+    return () => {
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
+      window.removeEventListener("cspams:update", handleRealtimeAuditEvent);
+    };
+  }, [academicYearLabel, actionPrefix, enableRealtime, loadAuditTrail, schoolCode, schoolId]);
+
   return (
-    <section id={compact ? "monitor-school-audit-trail" : "monitor-audit-trail"} className="rounded-sm border border-slate-200 bg-white">
+    <section id={id ?? (compact ? "monitor-school-audit-trail" : "monitor-audit-trail")} className="rounded-sm border border-slate-200 bg-white">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">{title}</p>
@@ -263,4 +351,8 @@ export function MonitorAuditTrail({
       </div>
     </section>
   );
+}
+
+export function MonitorAuditTrail(props: AuditTrailPanelProps) {
+  return <AuditTrailPanel {...props} />;
 }
