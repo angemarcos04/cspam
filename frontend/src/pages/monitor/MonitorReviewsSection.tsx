@@ -1,4 +1,4 @@
-import { useState, type ComponentProps, type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlertCircle,
   AlertTriangle,
@@ -8,9 +8,8 @@ import {
   Eye,
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
-import { MonitorIndicatorPanel } from "@/components/indicators/MonitorIndicatorPanel";
 import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
-import type { SchoolRecord, SchoolStatus } from "@/types";
+import type { SchoolStatus } from "@/types";
 
 interface ReviewQueueRow {
   schoolKey: string;
@@ -54,11 +53,6 @@ interface MonitorReviewsSectionProps {
   safeRequirementsPage: number;
   totalRequirementPages: number;
   setRequirementsPage: Dispatch<SetStateAction<number>>;
-  queueWorkspaceSchoolFilterKeys: Set<string> | null;
-  records: SchoolRecord[];
-  pushToast: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onToast"]>;
-  sendReminderForSchool: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onSendReminder"]>;
-  handleQueueReviewCompleted: NonNullable<ComponentProps<typeof MonitorIndicatorPanel>["onReviewCompleted"]>;
 }
 
 const REMINDER_NOTE_MAX_LENGTH = 500;
@@ -89,11 +83,6 @@ export function MonitorReviewsSection({
   safeRequirementsPage,
   totalRequirementPages,
   setRequirementsPage,
-  queueWorkspaceSchoolFilterKeys,
-  records,
-  pushToast,
-  sendReminderForSchool,
-  handleQueueReviewCompleted,
 }: MonitorReviewsSectionProps) {
   const [reminderTarget, setReminderTarget] = useState<ReviewQueueRow | null>(null);
   const [reminderNote, setReminderNote] = useState("");
@@ -401,26 +390,6 @@ export function MonitorReviewsSection({
           </div>
         </div>
       )}
-
-      <section
-        id="monitor-queue-workspace"
-        className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm ${sectionFocusClass("monitor-queue-workspace")}`}
-      >
-        {queueWorkspaceSchoolFilterKeys && queueWorkspaceSchoolFilterKeys.size > 0 ? (
-          <MonitorIndicatorPanel
-            embedded
-            schoolFilterKeys={queueWorkspaceSchoolFilterKeys}
-            schoolRecords={records}
-            onToast={pushToast}
-            onSendReminder={sendReminderForSchool}
-            onReviewCompleted={handleQueueReviewCompleted}
-          />
-        ) : (
-          <div className="px-5 py-8 text-sm text-slate-500">
-            Select a school from the queue to start reviewing submissions.
-          </div>
-        )}
-      </section>
     </>
   );
 }

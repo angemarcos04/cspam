@@ -11,8 +11,6 @@ import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
 
-const monitorIndicatorPanelMock = vi.hoisted(() => vi.fn());
-
 vi.mock("@/context/Auth", () => ({
   useAuth: vi.fn(),
 }));
@@ -66,20 +64,6 @@ vi.mock("@/components/charts/SubmissionTrendChart", () => ({
   SubmissionTrendChart: () => null,
 }));
 
-vi.mock("@/components/indicators/MonitorIndicatorPanel", () => ({
-  MonitorIndicatorPanel: (props: {
-    schoolFilterKeys?: Set<string> | null;
-    onSchoolFocusChange?: (schoolKey: string, schoolName: string) => void;
-  }) => {
-    monitorIndicatorPanelMock(props);
-    return (
-      <div data-testid="monitor-indicator-panel">
-        Review workspace schools: {[...(props.schoolFilterKeys ?? new Set<string>())].join(",")}
-      </div>
-    );
-  },
-}));
-
 vi.mock("@/components/students/StudentRecordsPanel", () => ({
   StudentRecordsPanel: () => null,
 }));
@@ -99,7 +83,6 @@ describe("MonitorDashboard School Head delivery flows", () => {
     bulkImportRecordsMock.mockReset();
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
-    monitorIndicatorPanelMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
@@ -537,29 +520,25 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByRole("button", { name: /Needs account/i }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("opens the review workspace for a queue row when no dashboard filters are active", async () => {
+  it("opens School Detail for a queue row when no dashboard filters are active", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
     expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
-    expect(screen.getByText("Select a school from the queue to start reviewing submissions.")).toBeTruthy();
+    expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
+    expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
 
     await new Promise((resolve) => window.setTimeout(resolve, 120));
     scrollIntoViewMock.mockClear();
     fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
 
     await waitFor(() => {
-      expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
-      expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
       const schoolDetail = screen.getByText("School Detail").closest("aside");
       expect(schoolDetail).toBeTruthy();
       expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
     });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
-
-    const latestWorkspaceProps = monitorIndicatorPanelMock.mock.calls[monitorIndicatorPanelMock.mock.calls.length - 1]?.[0];
-    expect(latestWorkspaceProps?.onSchoolFocusChange).toBeUndefined();
   });
 
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {
@@ -575,7 +554,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(topReviewsToolbar as HTMLElement).queryByRole("button", { name: "Filters" })).toBeNull();
     expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Queue List" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Review Workspace" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Review Workspace" })).toBeNull();
+    expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "I-META" })).toBeNull();
     expect(screen.queryByLabelText("Auto-open next school after review")).toBeNull();
 
     const globalSearch = screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
@@ -598,12 +580,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
     await new Promise((resolve) => window.setTimeout(resolve, 120));
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
-    expect(screen.getByTestId("monitor-indicator-panel").textContent).toContain("900001");
     const schoolDetail = screen.getByText("School Detail").closest("aside");
     expect(schoolDetail).toBeTruthy();
     expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
-    const latestWorkspaceProps = monitorIndicatorPanelMock.mock.calls[monitorIndicatorPanelMock.mock.calls.length - 1]?.[0];
-    expect(latestWorkspaceProps?.onSchoolFocusChange).toBeUndefined();
 
     fireEvent.click(screen.getByRole("button", { name: "Queue List" }));
     expect(scrollIntoViewMock).toHaveBeenCalled();

@@ -344,12 +344,16 @@ async function signInAsMonitor(page: Page) {
   await page.getByLabel("Login ID").fill("monitor@cspams.local");
   await page.locator("#passcode").fill("monitor-passcode");
   await page.getByRole("button", { name: "Sign In" }).click();
-  await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("button", { name: "Review Workspace" })).toHaveCount(0);
+  await expect(page.locator("#monitor-queue-workspace")).toHaveCount(0);
 }
 
 async function openSchoolDetail(page: Page) {
   const queueRow = page.locator("tr", { hasText: "AMA Computer College-Santiago City" }).first();
   await expect(queueRow.getByText("For Review")).toBeVisible();
+  await expect(queueRow.getByRole("button", { name: "Details" })).toHaveCount(0);
+  await expect(queueRow.getByRole("button", { name: "I-META" })).toHaveCount(0);
   await queueRow.getByRole("button", { name: "Review" }).click();
 
   const drawer = page.locator("aside", { hasText: "School Detail" });

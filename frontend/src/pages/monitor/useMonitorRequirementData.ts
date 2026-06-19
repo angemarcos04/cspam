@@ -247,7 +247,6 @@ export interface UseMonitorRequirementDataResult {
     missing: number;
     returned: number;
   };
-  queueWorkspaceSchoolFilterKeys: Set<string> | null;
   compactSchoolRows: MonitorSchoolRecordsListRow[];
   totalRequirementPages: number;
   safeRequirementsPage: number;
@@ -714,14 +713,6 @@ export function useMonitorRequirementData({
     ],
   );
 
-  const queueWorkspaceSchoolFilterKeys = useMemo(() => {
-    if (selectedSchoolScopeKey !== allSchoolScopeKey) {
-      return new Set([selectedSchoolScopeKey]);
-    }
-
-    return filteredSchoolKeys;
-  }, [allSchoolScopeKey, filteredSchoolKeys, selectedSchoolScopeKey]);
-
   const compactSchoolRows = useMemo(
     () =>
       filteredSchoolsByPreset
@@ -785,7 +776,6 @@ export function useMonitorRequirementData({
     schoolCategoryCounts,
     filteredSchoolsByPreset,
     stickySummaryStats,
-    queueWorkspaceSchoolFilterKeys,
     compactSchoolRows,
     totalRequirementPages,
     safeRequirementsPage,

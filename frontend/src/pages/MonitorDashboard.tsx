@@ -62,7 +62,6 @@ import { useMonitorPageStateGuard } from "@/pages/monitor/useMonitorPageStateGua
 import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import { useMonitorQuickJump } from "@/pages/monitor/useMonitorQuickJump";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
-import { useMonitorReviewFlow } from "@/pages/monitor/useMonitorReviewFlow";
 import { refreshMonitorReviewData } from "@/pages/monitor/monitorReviewDataRefresh";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
@@ -189,7 +188,6 @@ export function MonitorDashboard() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
-  const [reviewWorkspaceSchoolKey, setReviewWorkspaceSchoolKey] = useState<string | null>(null);
   const [reviewStatusOverrides, setReviewStatusOverrides] = useState<Record<string, MonitorReviewStatusOverride>>({});
   const {
     records,
@@ -438,7 +436,6 @@ export function MonitorDashboard() {
     schoolPresetCounts,
     schoolCategoryCounts,
     stickySummaryStats,
-    queueWorkspaceSchoolFilterKeys,
     compactSchoolRows,
     totalRequirementPages,
     safeRequirementsPage,
@@ -469,17 +466,6 @@ export function MonitorDashboard() {
     allSchoolScopeKey: ALL_SCHOOL_SCOPE,
     requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
   });
-  useEffect(() => {
-    if (!reviewWorkspaceSchoolKey) return;
-    if (queueWorkspaceSchoolFilterKeys === null) return;
-    if (queueWorkspaceSchoolFilterKeys?.has(reviewWorkspaceSchoolKey)) return;
-
-    setReviewWorkspaceSchoolKey(null);
-  }, [queueWorkspaceSchoolFilterKeys, reviewWorkspaceSchoolKey]);
-  const effectiveQueueWorkspaceSchoolFilterKeys = useMemo(
-    () => (reviewWorkspaceSchoolKey ? new Set([reviewWorkspaceSchoolKey]) : queueWorkspaceSchoolFilterKeys),
-    [queueWorkspaceSchoolFilterKeys, reviewWorkspaceSchoolKey],
-  );
   const dashboardLastSyncedAt = useMemo(() => {
     const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
     const indicatorTime = indicatorLastSyncedAt ? Date.parse(indicatorLastSyncedAt) : Number.NaN;
@@ -714,12 +700,6 @@ export function MonitorDashboard() {
     studentStatsBySchoolKey,
     accurateSyncedCountsBySchoolKey,
   });
-  const {
-    handleQueueReviewCompleted,
-  } = useMonitorReviewFlow({
-    activeSchoolDrawerKey: schoolDrawerKey,
-    onRefreshActiveDrawer: refreshSchoolDrawer,
-  });
   const handleSchoolDrawerReviewDataChanged = useCallback(async (payload?: {
     reason: "scope-review" | "file-preview-stale";
     submission?: IndicatorSubmission;
@@ -873,7 +853,6 @@ export function MonitorDashboard() {
     recordBySchoolKey,
     schoolRequirementByKey,
     setActiveTopNavigator,
-    setReviewWorkspaceSchoolKey,
     openSchoolDrawer,
     focusAndScrollTo,
     pushToast,
@@ -1209,11 +1188,6 @@ export function MonitorDashboard() {
               safeRequirementsPage={safeRequirementsPage}
               totalRequirementPages={totalRequirementPages}
               setRequirementsPage={setRequirementsPage}
-              queueWorkspaceSchoolFilterKeys={effectiveQueueWorkspaceSchoolFilterKeys}
-              records={records}
-              pushToast={pushToast}
-              sendReminderForSchool={sendReminderForSchool}
-              handleQueueReviewCompleted={handleQueueReviewCompleted}
             />
           )}
 

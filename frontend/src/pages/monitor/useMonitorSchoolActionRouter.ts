@@ -16,7 +16,6 @@ interface UseMonitorSchoolActionRouterArgs {
   recordBySchoolKey: Map<string, SchoolRecord>;
   schoolRequirementByKey: Map<string, MonitorSchoolRequirementSummary>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
-  setReviewWorkspaceSchoolKey: Dispatch<SetStateAction<string | null>>;
   openSchoolDrawer: (schoolKey: string) => void;
   focusAndScrollTo: (targetId: string) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
@@ -48,7 +47,6 @@ export function useMonitorSchoolActionRouter({
   recordBySchoolKey,
   schoolRequirementByKey,
   setActiveTopNavigator,
-  setReviewWorkspaceSchoolKey,
   openSchoolDrawer,
   focusAndScrollTo,
   pushToast,
@@ -90,12 +88,11 @@ export function useMonitorSchoolActionRouter({
 
   const handleReviewSchool = useCallback(
     (summary: SchoolActionSummary) => {
-      setReviewWorkspaceSchoolKey(summary.schoolKey);
       setActiveTopNavigator("reviews");
       openSchoolDrawer(summary.schoolKey);
-      pushToast(`Review workspace selected for ${summary.schoolName}.`, "info");
+      pushToast(`Opened school details for ${summary.schoolName}.`, "info");
     },
-    [openSchoolDrawer, pushToast, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
+    [openSchoolDrawer, pushToast, setActiveTopNavigator],
   );
 
   const handleOpenSchool = useCallback(
@@ -129,12 +126,11 @@ export function useMonitorSchoolActionRouter({
         return;
       }
 
-      setReviewWorkspaceSchoolKey(schoolKey);
       setActiveTopNavigator("reviews");
       openSchoolDrawer(schoolKey);
-      pushToast(`Review workspace selected for ${record.schoolName}.`, "info");
+      pushToast(`Opened school details for ${record.schoolName}.`, "info");
     },
-    [handleReviewSchool, openSchoolDrawer, pushToast, schoolRequirementByKey, setActiveTopNavigator, setReviewWorkspaceSchoolKey],
+    [handleReviewSchool, openSchoolDrawer, pushToast, schoolRequirementByKey, setActiveTopNavigator],
   );
 
   const handleOpenSchoolRecord = useCallback(
