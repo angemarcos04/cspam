@@ -1,6 +1,6 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { lazy, Suspense, useEffect, type ReactNode } from "react";
-import { LoaderCircle } from "lucide-react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
+import { AlertTriangle, LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
@@ -138,10 +138,48 @@ function RealtimeBridge() {
   return null;
 }
 
+function RealtimeDisconnectedBanner() {
+  const [isDisconnected, setIsDisconnected] = useState(() => (
+    typeof window !== "undefined" && window.echoDisconnected === true
+  ));
+
+  useEffect(() => {
+    const handleDisconnected = () => {
+      setIsDisconnected(true);
+    };
+
+    window.addEventListener("reverb:disconnected", handleDisconnected);
+
+    return () => {
+      window.removeEventListener("reverb:disconnected", handleDisconnected);
+    };
+  }, []);
+
+  if (!isDisconnected) {
+    return null;
+  }
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-x-0 top-0 z-[1000] border-b border-red-700 bg-red-600 px-4 py-3 text-white shadow-lg"
+    >
+      <div className="mx-auto flex max-w-7xl items-start gap-3 text-sm font-semibold">
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+        <span>
+          Realtime updates are disconnected. Your dashboard can still be used, but refresh the page if saved or sent items look delayed.
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
   return (
     <>
       <RealtimeBridge />
+      <RealtimeDisconnectedBanner />
       <NotificationProvider>{children}</NotificationProvider>
     </>
   );

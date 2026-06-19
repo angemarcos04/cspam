@@ -5,6 +5,7 @@ import { COOKIE_SESSION_TOKEN, ensureCsrfCookie, getApiBaseUrl, readXsrfToken } 
 declare global {
   interface Window {
     Pusher: typeof Pusher;
+    echoDisconnected?: boolean;
   }
 }
 
@@ -36,6 +37,44 @@ let isStarted = false;
 let activeToken = "";
 let activeScopeKey = "";
 const BROADCAST_AUTH_TIMEOUT_MS = 10_000;
+const INTENTIONAL_DISCONNECT_SUPPRESSION_MS = 1_000;
+let suppressDisconnectNoticeUntil = 0;
+
+interface PusherConnectionLike {
+  bind?: (event: string, callback: () => void) => void;
+}
+
+interface EchoWithConnection {
+  connector?: {
+    pusher?: {
+      connection?: PusherConnectionLike;
+    };
+  };
+}
+
+function shouldSuppressDisconnectNotice(): boolean {
+  return Date.now() <= suppressDisconnectNoticeUntil;
+}
+
+function dispatchRealtimeDisconnected() {
+  if (shouldSuppressDisconnectNotice()) {
+    return;
+  }
+
+  window.echoDisconnected = true;
+  window.dispatchEvent(new CustomEvent("reverb:disconnected"));
+}
+
+function bindRealtimeConnectionEvents(echo: Echo<"reverb">) {
+  const connection = (echo as EchoWithConnection).connector?.pusher?.connection;
+
+  if (!connection?.bind) {
+    return;
+  }
+
+  connection.bind("disconnected", dispatchRealtimeDisconnected);
+  connection.bind("unavailable", dispatchRealtimeDisconnected);
+}
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
   if (!value) return fallback;
@@ -235,6 +274,8 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
     }),
   });
 
+  bindRealtimeConnectionEvents(realtimeEcho);
+
   realtimeEcho
     .private(channelName)
     .listen(".cspams.update", (payload: CspamsRealtimePayload) => {
@@ -248,6 +289,7 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
 
 export function stopRealtimeBridge() {
   if (realtimeEcho) {
+    suppressDisconnectNoticeUntil = Date.now() + INTENTIONAL_DISCONNECT_SUPPRESSION_MS;
     realtimeEcho.disconnect();
   }
   realtimeEcho = null;
