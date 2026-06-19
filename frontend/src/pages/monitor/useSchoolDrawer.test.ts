@@ -8,6 +8,7 @@ import {
   isFreshSchoolDetailCountsCacheEntry,
   isMissingSchoolRecordError,
   matchesDrawerSchool,
+  matchesDrawerSubmission,
   mergeLatestSchoolDrawerSubmission,
   shouldForceSchoolSubmissionReload,
   useSchoolDrawer,
@@ -23,6 +24,12 @@ describe("useSchoolDrawer", () => {
     expect(matchesDrawerSchool("school-1", "401777", "school-1", "")).toBe(true);
     expect(matchesDrawerSchool("other-school", "401777", "school-1", "401777")).toBe(true);
     expect(matchesDrawerSchool("other-school", "DIFFERENT", "school-1", "401777")).toBe(false);
+  });
+
+  it("matches monitor realtime updates by the active drawer submission id", () => {
+    expect(matchesDrawerSubmission("submission-1", "submission-1", new Set())).toBe(true);
+    expect(matchesDrawerSubmission("submission-2", "", new Set(["submission-2"]))).toBe(true);
+    expect(matchesDrawerSubmission("submission-3", "submission-1", new Set(["submission-2"]))).toBe(false);
   });
 
   it("recognizes the archived school record error without surfacing it as a generic failure", () => {
@@ -209,7 +216,7 @@ describe("useSchoolDrawer", () => {
       submittedAt: null,
       updatedAt: "2026-06-14T06:39:00.000Z",
       createdAt: "2026-06-14T06:39:00.000Z",
-    } as IndicatorSubmission;
+    } as unknown as IndicatorSubmission;
     const listSubmissionsForSchool = vi.fn().mockResolvedValue([]);
     const fetchSubmission = vi.fn().mockResolvedValue(latestSubmission);
     const queryStudents = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
@@ -242,6 +249,93 @@ describe("useSchoolDrawer", () => {
     });
 
     expect(listSubmissionsForSchool).not.toHaveBeenCalled();
+  });
+
+  it("hydrates a matching sent-scope realtime submission before stale list rows", async () => {
+    const realtimeSubmission = {
+      id: "submission-sent",
+      status: "draft",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      scopeProgress: { submittedScopeIds: ["fm_qad_001"] },
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          originalFilename: "Profile-1.pdf",
+        },
+      },
+      submittedAt: null,
+      updatedAt: "2026-06-14T06:39:00.000Z",
+      createdAt: "2026-06-14T06:39:00.000Z",
+    } as unknown as IndicatorSubmission;
+    const staleListRow = {
+      id: "submission-sent",
+      status: "draft",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      scopeProgress: { submittedScopeIds: [] },
+      files: {},
+      submittedAt: null,
+      updatedAt: "2026-06-14T06:30:00.000Z",
+      createdAt: "2026-06-14T06:30:00.000Z",
+    } as unknown as IndicatorSubmission;
+    const listSubmissionsForSchool = vi.fn().mockResolvedValue([staleListRow]);
+    const fetchSubmission = vi.fn().mockResolvedValue(realtimeSubmission);
+    const queryStudents = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+    const listTeachers = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+
+    const { result, rerender } = renderHook(
+      ({ latestRealtimeBatch }) =>
+        useSchoolDrawer({
+          authSessionKey: "monitor:1",
+          isAuthenticated: true,
+          latestRealtimeBatch,
+          resolveRecordId: () => "",
+          resolveSchoolCode: () => "401777",
+          resolveLatestIndicatorSubmissionId: () => "",
+          fetchSubmission,
+          listSubmissionsForSchool,
+          queryStudents,
+          listTeachers,
+        }),
+      {
+        initialProps: { latestRealtimeBatch: null as Parameters<typeof useSchoolDrawer>[0]["latestRealtimeBatch"] },
+      },
+    );
+
+    act(() => {
+      result.current.openSchoolDrawer("school-1");
+    });
+
+    await waitFor(() => {
+      expect(listSubmissionsForSchool).toHaveBeenCalled();
+    });
+
+    rerender({
+      latestRealtimeBatch: {
+        updates: [
+          {
+            entity: "indicators",
+            eventType: "indicators.scopes_submitted",
+            submissionId: "submission-sent",
+            schoolId: "12",
+            schoolCode: "401777",
+            academicYearId: "ay-1",
+            touchedScopes: ["fm_qad_001"],
+          },
+        ],
+        entities: ["indicators"],
+        schoolIds: ["12"],
+        schoolCodes: ["401777"],
+        occurredAt: Date.now(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("submission-sent");
+      expect(result.current.schoolDrawerSubmissions[0]).toEqual(realtimeSubmission);
+    });
   });
 
   it("merges latest drawer detail ahead of duplicate list rows", () => {

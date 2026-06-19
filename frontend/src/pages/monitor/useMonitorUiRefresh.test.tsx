@@ -4,7 +4,15 @@ import { useMonitorUiRefresh } from "@/pages/monitor/useMonitorUiRefresh";
 
 const UI_REFRESH_DEBOUNCE_MS = 120;
 
-function dispatchRealtimeUpdate(detail: { entity?: string; schoolId?: string; schoolCode?: string }) {
+function dispatchRealtimeUpdate(detail: {
+  entity?: string;
+  eventType?: string;
+  submissionId?: string;
+  schoolId?: string;
+  schoolCode?: string;
+  academicYearId?: string;
+  touchedScopes?: string[];
+}) {
   window.dispatchEvent(new CustomEvent("cspams:update", { detail }));
 }
 
@@ -36,8 +44,12 @@ describe("useMonitorUiRefresh", () => {
       updates: [
         {
           entity: "students",
+          eventType: "",
+          submissionId: "",
           schoolId: "42",
           schoolCode: "SCH-001",
+          academicYearId: "",
+          touchedScopes: [],
         },
       ],
     });
@@ -81,13 +93,55 @@ describe("useMonitorUiRefresh", () => {
       updates: [
         {
           entity: "school_records",
+          eventType: "",
+          submissionId: "",
           schoolId: "7",
           schoolCode: "REC-007",
+          academicYearId: "",
+          touchedScopes: [],
         },
         {
           entity: "dashboard",
+          eventType: "",
+          submissionId: "",
           schoolId: "",
           schoolCode: "",
+          academicYearId: "",
+          touchedScopes: [],
+        },
+      ],
+    });
+  });
+
+  it("preserves indicator submission metadata for monitor drawer refreshes", () => {
+    const { result } = renderHook(() => useMonitorUiRefresh());
+
+    act(() => {
+      dispatchRealtimeUpdate({
+        entity: "indicators",
+        eventType: "indicators.scopes_submitted",
+        submissionId: "submission-77",
+        schoolId: "12",
+        schoolCode: "401777",
+        academicYearId: "ay-2025",
+        touchedScopes: ["fm_qad_001"],
+      });
+      vi.advanceTimersByTime(UI_REFRESH_DEBOUNCE_MS);
+    });
+
+    expect(result.current.latestRealtimeBatch).toMatchObject({
+      entities: ["indicators"],
+      schoolIds: ["12"],
+      schoolCodes: ["401777"],
+      updates: [
+        {
+          entity: "indicators",
+          eventType: "indicators.scopes_submitted",
+          submissionId: "submission-77",
+          schoolId: "12",
+          schoolCode: "401777",
+          academicYearId: "ay-2025",
+          touchedScopes: ["fm_qad_001"],
         },
       ],
     });

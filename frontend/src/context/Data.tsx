@@ -1421,7 +1421,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!token) return;
 
-    const scheduleSync = (delayMs: number) => {
+    const scheduleSync = (delayMs: number, force = false) => {
       if (typeof window === "undefined") {
         return;
       }
@@ -1429,7 +1429,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       clearRealtimeSyncTimer();
       realtimeSyncTimerRef.current = window.setTimeout(() => {
         realtimeSyncTimerRef.current = null;
-        void syncRecords(true);
+        void syncRecords(true, force);
       }, delayMs);
     };
 
@@ -1458,7 +1458,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        scheduleSync(220);
+        const eventType = String(payload?.eventType ?? "").trim();
+        const forceIndicatorSync = entity === "indicators" && [
+          "indicators.scopes_submitted",
+          "indicators.scope_verified",
+          "indicators.scope_returned",
+        ].includes(eventType);
+
+        scheduleSync(220, forceIndicatorSync);
         return;
       }
 

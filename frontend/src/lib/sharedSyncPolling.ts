@@ -2,8 +2,12 @@ export type SharedSyncTrigger = "interval" | "focus" | "online" | "realtime";
 
 export interface SharedSyncPayload {
   entity?: string;
+  eventType?: string;
+  submissionId?: string | number;
   schoolId?: string | number;
   schoolCode?: string;
+  academicYearId?: string | number;
+  touchedScopes?: unknown[];
 }
 
 type SharedSyncListener = (trigger: SharedSyncTrigger, payload?: SharedSyncPayload) => void;

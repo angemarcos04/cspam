@@ -75,6 +75,19 @@ export function matchesDrawerSchool(
   );
 }
 
+export function matchesDrawerSubmission(
+  submissionId: string,
+  latestSubmissionId: string,
+  activeSubmissionIds: ReadonlySet<string>,
+): boolean {
+  const normalizedSubmissionId = submissionId.trim();
+  if (!normalizedSubmissionId) {
+    return false;
+  }
+
+  return normalizedSubmissionId === latestSubmissionId.trim() || activeSubmissionIds.has(normalizedSubmissionId);
+}
+
 export function isMissingSchoolRecordError(error: unknown): boolean {
   const message = error instanceof Error ? error.message.trim() : "";
   return message === "School record not found. It may have been archived or permanently deleted.";
@@ -183,11 +196,13 @@ export function useSchoolDrawer({
   const [syncedCountsError, setSyncedCountsError] = useState("");
   const [submissionRefreshTick, setSubmissionRefreshTick] = useState(0);
   const [countsRefreshTick, setCountsRefreshTick] = useState(0);
+  const [realtimeSubmissionDetailId, setRealtimeSubmissionDetailId] = useState("");
   const schoolDetailCountsCacheRef = useRef<Map<string, SchoolDetailCountsCacheEntry>>(
     new Map(),
   );
   const accurateSyncedCountsRef = useRef<Record<string, SchoolDetailCounts>>({});
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
+  const schoolDrawerSubmissionIdsRef = useRef<Set<string>>(new Set());
   const fetchSubmissionRef = useRef(fetchSubmission);
   const listSubmissionsForSchoolRef = useRef(listSubmissionsForSchool);
 
@@ -212,18 +227,28 @@ export function useSchoolDrawer({
     listSubmissionsForSchoolRef.current = listSubmissionsForSchool;
   }, [listSubmissionsForSchool]);
 
+  useEffect(() => {
+    schoolDrawerSubmissionIdsRef.current = new Set(
+      schoolDrawerSubmissions
+        .map((submission) => String(submission.id ?? "").trim())
+        .filter((submissionId) => submissionId !== ""),
+    );
+  }, [schoolDrawerSubmissions]);
+
   const openSchoolDrawer = useCallback((schoolKey: string) => {
     setSchoolDrawerKey(schoolKey);
     setActiveSchoolDrawerTab("submissions");
     setSelectedSchoolDrawerYear(null);
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
+    setRealtimeSubmissionDetailId("");
   }, []);
 
   const closeSchoolDrawer = useCallback(() => {
     setSchoolDrawerKey(null);
     setSelectedSchoolDrawerYear(null);
     setHighlightedDrawerIndicatorKey(null);
+    setRealtimeSubmissionDetailId("");
   }, []);
 
   const refreshSchoolDrawer = useCallback(() => {
@@ -256,6 +281,7 @@ export function useSchoolDrawer({
     setSyncedCountsError("");
     setSubmissionRefreshTick(0);
     setCountsRefreshTick(0);
+    setRealtimeSubmissionDetailId("");
   }, [authSessionKey]);
 
   useEffect(() => {
@@ -280,12 +306,27 @@ export function useSchoolDrawer({
     }
 
     const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
-    const hasMatchingIndicatorUpdate = latestRealtimeBatch.updates.some(
-      (update) =>
-        update.entity === "indicators" &&
-        matchesDrawerSchool(update.schoolId, update.schoolCode, schoolDrawerRecordId, normalizedSchoolCode),
-    );
-    if (hasMatchingIndicatorUpdate) {
+    const activeSubmissionIds = schoolDrawerSubmissionIdsRef.current;
+    const matchingIndicatorUpdates = latestRealtimeBatch.updates.filter((update) => (
+      update.entity === "indicators" &&
+      (
+        matchesDrawerSchool(update.schoolId, update.schoolCode, schoolDrawerRecordId, normalizedSchoolCode) ||
+        matchesDrawerSubmission(update.submissionId, schoolDrawerLatestSubmissionId, activeSubmissionIds)
+      )
+    ));
+
+    if (matchingIndicatorUpdates.length > 0) {
+      const directHydrationUpdate = matchingIndicatorUpdates.find((update) => (
+        Boolean(update.submissionId) &&
+        [
+          "indicators.scopes_submitted",
+          "indicators.scope_verified",
+          "indicators.scope_returned",
+        ].includes(update.eventType)
+      ));
+      if (directHydrationUpdate?.submissionId) {
+        setRealtimeSubmissionDetailId(directHydrationUpdate.submissionId);
+      }
       setSubmissionRefreshTick((current) => current + 1);
     }
 
@@ -297,11 +338,12 @@ export function useSchoolDrawer({
     if (hasMatchingCountUpdate) {
       setCountsRefreshTick((current) => current + 1);
     }
-  }, [latestRealtimeBatch, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
+  }, [latestRealtimeBatch, schoolDrawerKey, schoolDrawerLatestSubmissionId, schoolDrawerRecordId, schoolDrawerSchoolCode]);
 
   useEffect(() => {
     const schoolSubmissionLookupKey = schoolDrawerSchoolCode || schoolDrawerRecordId;
-    if ((!schoolSubmissionLookupKey && !schoolDrawerLatestSubmissionId) || !isAuthenticated) {
+    const preferredSubmissionDetailId = realtimeSubmissionDetailId || schoolDrawerLatestSubmissionId;
+    if ((!schoolSubmissionLookupKey && !preferredSubmissionDetailId) || !isAuthenticated) {
       setSchoolDrawerSubmissions([]);
       setIsSchoolDrawerSubmissionsLoading(false);
       setSchoolDrawerSubmissionsError("");
@@ -317,9 +359,9 @@ export function useSchoolDrawer({
 
       let latestSubmission: IndicatorSubmission | null = null;
 
-      if (schoolDrawerLatestSubmissionId) {
+      if (preferredSubmissionDetailId) {
         try {
-          latestSubmission = await fetchSubmissionRef.current(schoolDrawerLatestSubmissionId);
+          latestSubmission = await fetchSubmissionRef.current(preferredSubmissionDetailId);
           if (!active) {
             return;
           }
@@ -396,6 +438,7 @@ export function useSchoolDrawer({
   }, [
     closeSchoolDrawer,
     isAuthenticated,
+    realtimeSubmissionDetailId,
     schoolDrawerLatestSubmissionId,
     schoolDrawerRecordId,
     schoolDrawerSchoolCode,

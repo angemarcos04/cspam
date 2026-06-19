@@ -10,8 +10,12 @@ export interface MonitorUiRealtimeBatch {
 
 export interface MonitorUiRealtimeTarget {
   entity: string;
+  eventType: string;
+  submissionId: string;
   schoolId: string;
   schoolCode: string;
+  academicYearId: string;
+  touchedScopes: string[];
 }
 
 export interface UseMonitorUiRefreshResult {
@@ -32,6 +36,20 @@ interface PendingRealtimeState {
 }
 
 const UI_REFRESH_DEBOUNCE_MS = 120;
+
+function normalizeString(value: unknown): string {
+  return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function normalizeStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => normalizeString(item))
+    .filter((item) => item !== "");
+}
 
 export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
   const [studentLookupTick, setStudentLookupTick] = useState(0);
@@ -89,12 +107,20 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
     };
 
     const handleRealtimeUpdate = (event: Event) => {
-      const payload = (event as CustomEvent<{ entity?: string; schoolId?: string; schoolCode?: string }>).detail;
+      const payload = (event as CustomEvent<{
+        entity?: string;
+        eventType?: string;
+        submissionId?: string | number;
+        schoolId?: string | number;
+        schoolCode?: string;
+        academicYearId?: string | number;
+        touchedScopes?: unknown[];
+      }>).detail;
       if (!payload?.entity) {
         return;
       }
 
-      const entity = String(payload.entity).trim();
+      const entity = normalizeString(payload.entity);
       if (!entity) {
         return;
       }
@@ -112,12 +138,20 @@ export function useMonitorUiRefresh(): UseMonitorUiRefreshResult {
 
       pending.entities.add(entity);
 
-      const schoolId = String(payload.schoolId ?? "").trim();
-      const schoolCode = String(payload.schoolCode ?? "").trim().toUpperCase();
-      pending.updates.set(`${entity}|${schoolId}|${schoolCode}`, {
+      const eventType = normalizeString(payload.eventType);
+      const submissionId = normalizeString(payload.submissionId);
+      const schoolId = normalizeString(payload.schoolId);
+      const schoolCode = normalizeString(payload.schoolCode).toUpperCase();
+      const academicYearId = normalizeString(payload.academicYearId);
+      const touchedScopes = normalizeStringList(payload.touchedScopes);
+      pending.updates.set(`${entity}|${eventType}|${submissionId}|${schoolId}|${schoolCode}`, {
         entity,
+        eventType,
+        submissionId,
         schoolId,
         schoolCode,
+        academicYearId,
+        touchedScopes,
       });
       if (schoolId) {
         pending.schoolIds.add(schoolId);

@@ -741,6 +741,30 @@ export function MonitorDashboard() {
       refreshRecords,
     });
   }, [refreshRecords, refreshSchoolDrawer, refreshSubmissions]);
+
+  useEffect(() => {
+    if (!latestRealtimeBatch) {
+      return;
+    }
+
+    const hasMonitorVisibleIndicatorEvent = latestRealtimeBatch.updates.some((update) => (
+      update.entity === "indicators" &&
+      [
+        "indicators.scopes_submitted",
+        "indicators.scope_verified",
+        "indicators.scope_returned",
+      ].includes(update.eventType)
+    ));
+    if (!hasMonitorVisibleIndicatorEvent) {
+      return;
+    }
+
+    void refreshMonitorReviewData({
+      refreshSchoolDrawer,
+      refreshSubmissions,
+      refreshRecords,
+    });
+  }, [latestRealtimeBatch, refreshRecords, refreshSchoolDrawer, refreshSubmissions]);
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
     focusedSectionId,

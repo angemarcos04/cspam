@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitorDashboard } from "@/pages/MonitorDashboard";
@@ -87,6 +87,8 @@ vi.mock("@/components/students/StudentRecordsPanel", () => ({
 const issueSchoolHeadSetupLinkMock = vi.fn();
 const sendReminderMock = vi.fn();
 const bulkImportRecordsMock = vi.fn();
+const refreshRecordsMock = vi.fn();
+const refreshSubmissionsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 
 describe("MonitorDashboard School Head delivery flows", () => {
@@ -95,6 +97,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
     bulkImportRecordsMock.mockReset();
+    refreshRecordsMock.mockReset();
+    refreshSubmissionsMock.mockReset();
     monitorIndicatorPanelMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
@@ -256,7 +260,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       lastSyncedAt: "2026-03-27T09:00:00.000Z",
       syncScope: "division",
       syncStatus: "updated",
-      refreshRecords: vi.fn(),
+      refreshRecords: refreshRecordsMock,
       addRecord: vi.fn(),
       updateRecord: vi.fn(),
       deleteRecord: vi.fn(),
@@ -287,7 +291,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       isSaving: false,
       error: "",
       lastSyncedAt: null,
-      refreshSubmissions: vi.fn(),
+      refreshSubmissions: refreshSubmissionsMock,
       refreshAllSubmissions: vi.fn(),
       listSubmissions: vi.fn(),
       loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
@@ -411,6 +415,36 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     const openReviewsButtons = screen.getAllByRole("button", { name: "Open Reviews" });
     expect(openReviewsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
+  });
+
+  it("forces monitor review data refresh after a School Head sends a scope", async () => {
+    render(<MonitorDashboard />);
+
+    await waitFor(() => {
+      expect(refreshRecordsMock).toHaveBeenCalled();
+      expect(refreshSubmissionsMock).toHaveBeenCalled();
+    });
+    refreshRecordsMock.mockClear();
+    refreshSubmissionsMock.mockClear();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:update", {
+        detail: {
+          entity: "indicators",
+          eventType: "indicators.scopes_submitted",
+          submissionId: "submission-77",
+          schoolId: "1",
+          schoolCode: "900001",
+          academicYearId: "ay-2025",
+          touchedScopes: ["fm_qad_001"],
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(refreshRecordsMock).toHaveBeenCalledWith({ force: true });
+      expect(refreshSubmissionsMock).toHaveBeenCalled();
+    });
   });
 
   it("labels the Schools card status pill as school status to avoid account-state ambiguity", async () => {

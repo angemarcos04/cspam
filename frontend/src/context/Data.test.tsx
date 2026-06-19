@@ -204,6 +204,110 @@ describe("DataProvider school record sync recovery", () => {
     });
     expect(subscribeSharedSyncPolling).toHaveBeenCalled();
   });
+
+  it("forces record refresh after monitor-visible indicator realtime events", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:36:00.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({
+          "X-Sync-Etag": "\"etag-before-send\"",
+          "X-Sync-Scope": "division",
+          "X-Sync-Scope-Key": "division:all|filters:none",
+          "X-Synced-At": "2026-05-07T06:36:00.000Z",
+        }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [
+            {
+              id: "1",
+              schoolId: "401777",
+              schoolCode: "401777",
+              schoolName: "AMA Computer College-Santiago City",
+              level: "High School",
+              district: "Santiago City",
+              address: "Santiago City",
+              type: "private",
+              studentCount: 0,
+              teacherCount: 0,
+              region: "Region II",
+              status: "active",
+              submittedBy: "School Head",
+              lastUpdated: "2026-06-14T06:39:00.000Z",
+              deletedAt: null,
+              schoolHeadAccount: null,
+              indicatorLatest: {
+                id: "submission-77",
+                status: "submitted",
+                submittedAt: "2026-06-14T06:39:00.000Z",
+                reviewedAt: null,
+                createdAt: "2026-06-14T06:39:00.000Z",
+                updatedAt: "2026-06-14T06:39:00.000Z",
+              },
+            },
+          ],
+          meta: {
+            syncedAt: "2026-06-14T06:39:00.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 1,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({
+          "X-Sync-Etag": "\"etag-after-send\"",
+          "X-Sync-Scope": "division",
+          "X-Sync-Scope-Key": "division:all|filters:none",
+          "X-Synced-At": "2026-06-14T06:39:00.000Z",
+        }),
+      });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    const syncListener = vi.mocked(subscribeSharedSyncPolling).mock.calls[0]?.[0];
+    expect(syncListener).toBeTypeOf("function");
+
+    await act(async () => {
+      syncListener?.("realtime", {
+        entity: "indicators",
+        eventType: "indicators.scopes_submitted",
+        submissionId: "submission-77",
+        schoolCode: "401777",
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+    });
+
+    await waitFor(() => {
+      expect(result.current.records).toHaveLength(1);
+    });
+
+    expect(apiRequestRawMock).toHaveBeenCalledTimes(2);
+    expect(apiRequestRawMock.mock.calls[1]?.[1]).toMatchObject({
+      token: "test-token",
+      timeoutMs: 60_000,
+      extraHeaders: undefined,
+    });
+  });
 });
 
 describe("buildDataProviderSessionKey", () => {

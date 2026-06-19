@@ -379,6 +379,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolCode = (string) School::query()->whereKey($schoolHead->school_id)->value('school_code');
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
         $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
@@ -425,6 +426,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolCode = (string) School::query()->whereKey($schoolHead->school_id)->value('school_code');
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
         $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
         $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
@@ -452,9 +454,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ],
         ])->assertOk();
 
-        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($submissionId, $academicYearId): bool {
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($submissionId, $academicYearId, $schoolCode): bool {
             return $event->payload['eventType'] === 'indicators.updated'
                 && $event->payload['submissionId'] === $submissionId
+                && ($event->payload['schoolCode'] ?? null) === $schoolCode
                 && $event->payload['academicYearId'] === (string) $academicYearId
                 && $event->payload['status'] === 'draft'
                 && $event->payload['version'] === 1
@@ -1438,6 +1441,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
             ->assertOk();
 
+        Event::fake([CspamsUpdateBroadcast::class]);
+
         $scoped = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['fm_qad_001'],
         ]);
@@ -1446,6 +1451,18 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('fm_qad_001', $ids, true))
             ->assertJsonPath('data.scopeProgress.submittedRequiredScopeCount', 1);
+
+        $schoolCode = (string) School::query()->whereKey($schoolHead->school_id)->value('school_code');
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($submissionId, $academicYearId, $schoolCode): bool {
+            return ($event->payload['eventType'] ?? null) === 'indicators.scopes_submitted'
+                && ($event->payload['submissionId'] ?? null) === $submissionId
+                && ($event->payload['schoolCode'] ?? null) === $schoolCode
+                && ($event->payload['academicYearId'] ?? null) === (string) $academicYearId
+                && ($event->payload['touchedScopes'] ?? null) === ['fm_qad_001']
+                && ! array_key_exists('files', $event->payload)
+                && ! array_key_exists('indicators', $event->payload)
+                && ! array_key_exists('items', $event->payload);
+        });
 
         $finalSubmit = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
         $finalSubmit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)

@@ -1178,6 +1178,7 @@ class IndicatorSubmissionController extends Controller
             'eventType' => $eventType,
             'submissionId' => (string) $submission->id,
             'schoolId' => (string) $submission->school_id,
+            'schoolCode' => (string) ($submission->school?->school_code ?? ''),
             'academicYearId' => (string) $submission->academic_year_id,
             'status' => $extra['status'] ?? $this->statusValue($submission->status),
             'version' => (int) $submission->version,
