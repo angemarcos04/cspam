@@ -642,6 +642,42 @@ export interface FormSubmissionHistoryEntry {
   createdAt: string | null;
 }
 
+export interface AuditLogEntry {
+  id: string;
+  eventType: string;
+  eventLabel: string;
+  actor: {
+    id: string | null;
+    name: string | null;
+    role: string | null;
+  };
+  school: {
+    id: string | null;
+    code: string | null;
+    name: string | null;
+    type: string | null;
+  };
+  academicYear: {
+    id: string | null;
+    label: string | null;
+  };
+  submissionId: string | null;
+  scopeId: string | null;
+  scopeType: string | null;
+  scopeLabel: string | null;
+  fileType: string | null;
+  fileLabel: string | null;
+  status: {
+    from: string | null;
+    to: string | null;
+    decision: string | null;
+    previousDecision: string | null;
+  };
+  details: Record<string, unknown>;
+  ipAddress: string | null;
+  createdAt: string | null;
+}
+
 export interface AppNotification {
   id: string;
   type: string;

@@ -4,6 +4,7 @@ import { SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles"
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
@@ -538,6 +539,7 @@ export function MonitorSchoolDrawer({
                       {([
                         { id: "submissions", label: "Submissions" },
                         { id: "history", label: "Indicator History" },
+                        { id: "audit", label: "Audit Trail" },
                       ] as Array<{ id: SchoolDrawerTab; label: string }>).map((tab) => (
                         <button
                           key={`school-drawer-tab-${tab.id}`}
@@ -1002,6 +1004,16 @@ export function MonitorSchoolDrawer({
                   </div>
 
                 </article>
+              )}
+
+              {activeSchoolDrawerTab === "audit" && (
+                <MonitorAuditTrail
+                  compact
+                  title="School Audit Trail"
+                  description="Recent workflow activity for this school and selected academic year."
+                  schoolCode={schoolDetail.schoolCode}
+                  academicYearLabel={selectedSchoolDrawerYear}
+                />
               )}
             </div>
           ) : (

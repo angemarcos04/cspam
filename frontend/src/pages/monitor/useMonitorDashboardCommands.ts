@@ -128,11 +128,17 @@ export function useMonitorDashboardCommands({
           primaryLabel: "Open Selected School",
         };
       case "reviews":
-      default:
         return {
           title: "Reviews",
           description: "",
           primaryLabel: "Review",
+        };
+      case "audit":
+      default:
+        return {
+          title: "Audit Trail",
+          description: "",
+          primaryLabel: "Refresh",
         };
     }
   }, [activeTopNavigator]);
@@ -140,6 +146,8 @@ export function useMonitorDashboardCommands({
   const isPrimaryActionDisabled =
     activeTopNavigator === "schools"
       ? compactSchoolRows.length === 0
+      : activeTopNavigator === "audit"
+        ? true
       : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
 
   const handlePrimaryAction = useCallback(() => {
@@ -162,6 +170,11 @@ export function useMonitorDashboardCommands({
       }
 
       onToast("No school available to open in the current scope.", "warning");
+      return;
+    }
+
+    if (activeTopNavigator === "audit") {
+      onToast("Use the Audit Trail refresh button to reload audit events.", "info");
       return;
     }
 

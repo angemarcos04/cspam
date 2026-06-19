@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Filter,
   ListChecks,
+  ScrollText,
 } from "lucide-react";
 import type {
   MonitorTopNavigatorId,
@@ -36,6 +37,7 @@ export interface QuickJumpItem {
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "schools", label: "Schools" },
   { id: "reviews", label: "Reviews" },
+  { id: "audit", label: "Audit Trail" },
 ];
 
 export const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NAVIGATOR_ITEMS.map(
@@ -45,6 +47,7 @@ export const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NA
 export const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorId, NavigatorIcon> = {
   schools: Building2,
   reviews: ClipboardList,
+  audit: ScrollText,
 };
 
 export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
@@ -107,6 +110,7 @@ export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]>
     { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
   schools: [],
+  audit: [],
 };
 
 export const REQUIREMENT_PAGE_SIZE = 10;

@@ -25,6 +25,7 @@ interface UseMonitorDashboardGlobalCommandsResult {
 const TOP_NAV_TARGET_BY_ID: Record<MonitorTopNavigatorId, string> = {
   schools: "monitor-school-records",
   reviews: "monitor-action-queue",
+  audit: "monitor-audit-trail",
 };
 
 export function useMonitorDashboardGlobalCommands({

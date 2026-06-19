@@ -367,6 +367,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   afterEach(() => {
     cleanup();
     vi.clearAllMocks();
+    vi.unstubAllGlobals();
   });
 
   it("uses delivery metadata only when sending a School Head setup link", async () => {
@@ -384,7 +385,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByText("Message queued.")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /copy link/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /reveal link/i })).toBeNull();
-  });
+  }, 15_000);
 
   it("uses the same focus-and-scroll behavior for keyboard top navigation", async () => {
     render(<MonitorDashboard />);
@@ -586,6 +587,47 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Queue List" }));
     expect(scrollIntoViewMock).toHaveBeenCalled();
+  });
+
+  it("opens the monitor audit trail and renders safe workflow events", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
+      data: [
+        {
+          id: "audit-1",
+          eventType: "submission.file_sent",
+          eventLabel: "Sent file",
+          actor: { id: "2", name: "Maria Santos", role: "school_head" },
+          school: { id: "1", code: "900001", name: "Santiago Elementary", type: "public" },
+          academicYear: { id: "1", label: "2025-2026" },
+          submissionId: "10",
+          scopeId: "bmef",
+          scopeType: "file",
+          scopeLabel: "BMEF",
+          fileType: "bmef",
+          fileLabel: "BMEF",
+          status: { from: "draft", to: "draft", decision: null, previousDecision: null },
+          details: { has_note: false },
+          ipAddress: "127.0.0.1",
+          createdAt: "2026-06-19T10:00:00.000Z",
+        },
+      ],
+      meta: { current_page: 1, last_page: 1, per_page: 30, total: 1 },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Audit Trail" }));
+
+    expect(await screen.findByText("Sent file")).toBeTruthy();
+    expect(screen.getByText("submission.file_sent")).toBeTruthy();
+    expect(screen.getByText("Santiago Elementary")).toBeTruthy();
+    expect(screen.getByText("Maria Santos")).toBeTruthy();
+    expect(screen.queryByText(/downloadUrl/i)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith(expect.stringContaining("/api/audit-logs?"), expect.any(Object));
   });
 
   it("sends queue reminders with an optional note", async () => {

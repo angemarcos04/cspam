@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Api\AuthController;
+use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\MailDiagnosticsController;
 use App\Http\Controllers\Api\NotificationController;
@@ -55,6 +56,8 @@ Route::prefix('auth')->group(function (): void {
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->post('/broadcasting/auth', static function (Request $request) {
     return Broadcast::auth($request);
 });
+
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->get('/audit-logs', [AuditLogController::class, 'index']);
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
     Route::get('/records', [SchoolRecordController::class, 'index']);

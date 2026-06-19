@@ -20,6 +20,7 @@ use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\Audit\WorkflowAuditLogger;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
@@ -189,6 +190,12 @@ class IndicatorSubmissionController extends Controller
             'reviewedBy:id,name,email',
         ]);
 
+        if ($this->isMonitor($user)) {
+            $this->auditSubmissionEvent($request, 'monitor.report_viewed', $submission, $user, [
+                'status' => $this->statusValue($submission->status),
+            ]);
+        }
+
         return response()->json([
             'data' => (new IndicatorSubmissionResource($submission))->resolve(),
         ]);
@@ -275,6 +282,13 @@ class IndicatorSubmissionController extends Controller
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
+        ]);
+
+        $this->auditSubmissionEvent($request, 'workspace.section_saved', $submission, $user, [
+            'old_status' => null,
+            'new_status' => FormSubmissionStatus::DRAFT->value,
+            'scope_ids' => $this->auditScopeIdsForRows($indicatorRows),
+            'indicator_count' => $indicatorRows->count(),
         ]);
 
         return response()->json([
@@ -476,6 +490,17 @@ class IndicatorSubmissionController extends Controller
             ));
         });
 
+        $auditScopeIds = GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)
+            ? [$workspaceSection]
+            : $this->auditScopeIdsForRows($indicatorRows);
+        $this->auditSubmissionEvent($request, 'workspace.section_saved', $submission, $user, [
+            'old_status' => $currentStatus,
+            'new_status' => $currentStatus,
+            'scope_id' => count($auditScopeIds) === 1 ? $auditScopeIds[0] : null,
+            'scope_ids' => $auditScopeIds,
+            'indicator_count' => $indicatorRows->count(),
+        ]);
+
         return $this->lightweightSubmissionResponse($submission);
     }
 
@@ -573,6 +598,16 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
+        $this->auditSubmissionEvent($request, 'workspace.file_saved', $submission, $user, [
+            'old_status' => $currentStatus,
+            'new_status' => $currentStatus ?? FormSubmissionStatus::DRAFT->value,
+            'scope_id' => $fileType,
+            'scope_type' => 'file',
+            'file_type' => $fileType,
+            'original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+            'file_size_bytes' => $sizeBytes,
+        ]);
+
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload($submission, 'indicators.file_uploaded', [
                 'fileType' => $fileType,
@@ -601,6 +636,15 @@ class IndicatorSubmissionController extends Controller
             abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
         }
 
+        if ($this->isMonitor($user)) {
+            $this->auditSubmissionEvent($request, 'monitor.file_downloaded', $submission, $user, [
+                'scope_id' => $fileType,
+                'scope_type' => 'file',
+                'file_type' => $fileType,
+                'original_filename' => $originalFilename,
+            ]);
+        }
+
         $fallbackFilename = basename($path);
         $downloadFilename = is_string($originalFilename) && trim($originalFilename) !== ''
             ? trim($originalFilename)
@@ -625,6 +669,15 @@ class IndicatorSubmissionController extends Controller
         $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
         if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
             abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
+        }
+
+        if ($this->isMonitor($user)) {
+            $this->auditSubmissionEvent($request, 'monitor.file_previewed', $submission, $user, [
+                'scope_id' => $fileType,
+                'scope_type' => 'file',
+                'file_type' => $fileType,
+                'original_filename' => $originalFilename,
+            ]);
         }
 
         $absolutePath = Storage::disk('local')->path($path);
@@ -685,6 +738,12 @@ class IndicatorSubmissionController extends Controller
             actorId: $user->id,
             notes: 'Indicator package submitted to monitor.',
         );
+
+        $this->auditSubmissionEvent($request, 'submission.final_submitted', $submission, $user, [
+            'old_status' => $fromStatus,
+            'new_status' => FormSubmissionStatus::SUBMITTED->value,
+            'submitted_scope_count' => count(app(SubmissionScopeProgressResolver::class)->buildScopeProgressForSubmission($submission)['requiredScopeIds'] ?? []),
+        ]);
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload($submission, 'indicators.submitted', [
@@ -753,6 +812,29 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
+        foreach ($targets as $target) {
+            $previousDecision = $this->latestScopeDecisionForAudit($submission, $target);
+            $isResend = $previousDecision === 'returned';
+            $scopeType = $this->scopeTypeFor($target);
+            $this->auditSubmissionEvent(
+                $request,
+                $isResend
+                    ? 'submission.scope_resent'
+                    : ($scopeType === 'file' ? 'submission.file_sent' : 'submission.scope_sent'),
+                $submission,
+                $user,
+                [
+                    'old_status' => $fromStatus,
+                    'new_status' => $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+                    'scope_id' => $target,
+                    'scope_type' => $scopeType,
+                    'scope_label' => $scopeProgressResolver->scopeLabel($target),
+                    'file_type' => $scopeType === 'file' ? $target : null,
+                    'previous_decision' => $previousDecision,
+                ],
+            );
+        }
+
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload($submission, 'indicators.scopes_submitted', [
                 'targets' => $targets,
@@ -798,6 +880,19 @@ class IndicatorSubmissionController extends Controller
             toStatus: $decision,
             actorId: $user->id,
             notes: $notes,
+        );
+
+        $this->auditSubmissionEvent(
+            $request,
+            $decision === FormSubmissionStatus::VALIDATED->value ? 'monitor.package_validated' : 'monitor.package_returned',
+            $submission,
+            $user,
+            [
+                'old_status' => $fromStatus,
+                'new_status' => $decision,
+                'decision' => $decision,
+                'has_note' => $notes !== null && $notes !== '',
+            ],
         );
 
         $schoolHeadsQuery = User::query()
@@ -910,6 +1005,23 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
+        $this->auditSubmissionEvent(
+            $request,
+            $decision === 'verified' ? 'monitor.scope_verified' : 'monitor.scope_returned',
+            $submission,
+            $user,
+            [
+                'old_status' => $fromStatus,
+                'new_status' => $fromStatus,
+                'scope_id' => $scopeId,
+                'scope_type' => $this->scopeTypeFor($scopeId),
+                'scope_label' => $scopeLabel,
+                'file_type' => $this->scopeTypeFor($scopeId) === 'file' ? $scopeId : null,
+                'decision' => $decision,
+                'has_note' => $notes !== null && $notes !== '',
+            ],
+        );
+
         $schoolHeads = $this->schoolHeadsForSubmission($submission);
         Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
             $submission,
@@ -988,6 +1100,20 @@ class IndicatorSubmissionController extends Controller
             metadata: [
                 ...$metadata,
                 'touchedScopes' => [$workspace],
+            ],
+        );
+
+        $this->auditSubmissionEvent(
+            $request,
+            SubmissionFileDefinition::isValidType($workspace) ? 'workspace.file_reset' : 'workspace.section_reset',
+            $submission,
+            $user,
+            [
+                'old_status' => $fromStatus,
+                'new_status' => $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+                'scope_id' => $workspace,
+                'scope_type' => SubmissionFileDefinition::isValidType($workspace) ? 'file' : 'section',
+                'file_type' => SubmissionFileDefinition::isValidType($workspace) ? $workspace : null,
             ],
         );
 
@@ -1152,6 +1278,80 @@ class IndicatorSubmissionController extends Controller
             'reviewedAt' => optional($review->reviewed_at)->toISOString(),
             'updatedAt' => optional($review->updated_at)->toISOString(),
         ])->values()->all();
+    }
+
+    /**
+     * @param array<string, mixed> $metadata
+     */
+    private function auditSubmissionEvent(
+        Request $request,
+        string $action,
+        IndicatorSubmission $submission,
+        User $actor,
+        array $metadata = [],
+    ): void {
+        app(WorkflowAuditLogger::class)->recordSubmissionEvent(
+            $request,
+            $action,
+            $submission,
+            $actor,
+            $metadata,
+        );
+    }
+
+    /**
+     * @param Collection<int, array<string, mixed>> $indicatorRows
+     * @return list<string>
+     */
+    private function auditScopeIdsForRows(Collection $indicatorRows): array
+    {
+        $metricIds = $indicatorRows
+            ->pluck('performance_metric_id')
+            ->filter(static fn (mixed $value): bool => is_numeric($value) && (int) $value > 0)
+            ->map(static fn (mixed $value): int => (int) $value)
+            ->unique()
+            ->values();
+
+        if ($metricIds->isEmpty()) {
+            return [];
+        }
+
+        $metricCodes = PerformanceMetric::query()
+            ->whereIn('id', $metricIds->all())
+            ->pluck('code')
+            ->map(static fn (mixed $code): string => strtoupper(trim((string) $code)))
+            ->filter(static fn (string $code): bool => $code !== '')
+            ->values()
+            ->all();
+
+        $scopeIds = [];
+        foreach ([GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS, GroupBWorkspaceDefinition::KEY_PERFORMANCE] as $workspace) {
+            $workspaceCodes = array_flip(array_map(
+                static fn (string $code): string => strtoupper(trim($code)),
+                GroupBWorkspaceDefinition::metricCodesFor($workspace),
+            ));
+
+            foreach ($metricCodes as $code) {
+                if (isset($workspaceCodes[$code])) {
+                    $scopeIds[] = $workspace;
+                    break;
+                }
+            }
+        }
+
+        return array_values(array_unique($scopeIds));
+    }
+
+    private function latestScopeDecisionForAudit(IndicatorSubmission $submission, string $scopeId): ?string
+    {
+        $submission->loadMissing('scopeReviews');
+
+        $review = $submission->scopeReviews
+            ->first(static fn (IndicatorSubmissionScopeReview $candidate): bool => $candidate->scope_id === $scopeId);
+
+        $decision = trim((string) ($review?->decision ?? ''));
+
+        return $decision !== '' ? $decision : null;
     }
 
     /**

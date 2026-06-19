@@ -10,6 +10,7 @@ import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
 import { runRefreshBatches } from "@/lib/runRefreshBatches";
 import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
+import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import { MonitorDashboardToolbar } from "@/pages/monitor/MonitorDashboardToolbar";
 import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
@@ -495,6 +496,7 @@ export function MonitorDashboard() {
         urgency: requirementCounts.missing > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
       },
       schools: { urgency: "none" },
+      audit: { urgency: "none" },
     }),
     [needsActionCount, requirementCounts.missing, returnedCount],
   );
@@ -1189,6 +1191,10 @@ export function MonitorDashboard() {
               totalRequirementPages={totalRequirementPages}
               setRequirementsPage={setRequirementsPage}
             />
+          )}
+
+          {!showNavigatorManual && activeTopNavigator === "audit" && (
+            <MonitorAuditTrail />
           )}
 
           {!showNavigatorManual && activeTopNavigator === "schools" && (
