@@ -229,6 +229,40 @@ function revokeBlobUrl(blobUrl: string | null): void {
   }
 }
 
+type LocalScopeReviewOverride = {
+  decision: "verified" | "returned";
+  notes: string | null;
+};
+
+function scopeReviewOverrideKey(row: MonitorDrawerPackageRow): string | null {
+  return row.submissionId ? `${row.submissionId}:${row.id}` : null;
+}
+
+function applyLocalScopeReviewOverride(
+  row: MonitorDrawerPackageRow,
+  override: LocalScopeReviewOverride | null | undefined,
+): MonitorDrawerPackageRow {
+  if (!override) {
+    return row;
+  }
+
+  const isReturned = override.decision === "returned";
+  return {
+    ...row,
+    statusLabel: isReturned ? "Returned" : "Verified",
+    tone: isReturned ? "warning" : "success",
+    detail: isReturned
+      ? "Returned by monitor. Waiting for School Head correction and resend."
+      : row.detail,
+    viewUrl: isReturned ? null : row.viewUrl,
+    downloadUrl: isReturned ? null : row.downloadUrl,
+    actionTarget: isReturned ? null : row.actionTarget,
+    canReview: false,
+    reviewDecision: override.decision,
+    reviewNotes: override.notes,
+  };
+}
+
 export function MonitorSchoolDrawer({
   viewState,
   loadingState,
@@ -248,6 +282,7 @@ export function MonitorSchoolDrawer({
   const [activeFilePreviewUrl, setActiveFilePreviewUrl] = useState<string | null>(null);
   const [activeFilePreviewError, setActiveFilePreviewError] = useState("");
   const [downloadingFileRowId, setDownloadingFileRowId] = useState<string | null>(null);
+  const [localScopeReviewOverrides, setLocalScopeReviewOverrides] = useState<Record<string, LocalScopeReviewOverride>>({});
   const {
     isOpen,
     showNavigatorManual,
@@ -277,6 +312,10 @@ export function MonitorSchoolDrawer({
     onReviewDataChanged,
   } = actions;
   const { workflowTone, workflowLabel, formatDateTime } = formatting;
+
+  useEffect(() => {
+    setLocalScopeReviewOverrides({});
+  }, [isOpen, selectedSchoolDrawerYear, schoolDetail?.schoolKey]);
 
   const closeFilePreview = () => {
     revokeBlobUrl(activeFilePreviewUrl);
@@ -381,17 +420,27 @@ export function MonitorSchoolDrawer({
         decision,
         notes: notes?.trim() || null,
       });
+      const overrideKey = scopeReviewOverrideKey(row);
+      if (overrideKey) {
+        setLocalScopeReviewOverrides((current) => ({
+          ...current,
+          [overrideKey]: {
+            decision,
+            notes: decision === "returned" ? notes?.trim() || null : null,
+          },
+        }));
+      }
+      if (decision === "returned") {
+        setReturnReviewRow(null);
+        setReturnReviewNotes("");
+        setIncludeReturnNote(false);
+      }
       await onReviewDataChanged?.({
         reason: "scope-review",
         submission: updatedSubmission,
         decision,
         row,
       });
-      if (decision === "returned") {
-        setReturnReviewRow(null);
-        setReturnReviewNotes("");
-        setIncludeReturnNote(false);
-      }
     } catch (error) {
       setScopeReviewError(errorMessageFromUnknown(error));
     } finally {
@@ -577,34 +626,39 @@ export function MonitorSchoolDrawer({
                           </thead>
                           <tbody className="divide-y divide-slate-200">
                             {schoolDrawerYearDetail.packageRows.map((row) => {
-                              const canPreviewFile = row.kind === "file" && Boolean(row.viewUrl);
-                              const canViewSection = row.kind === "section" && Boolean(row.actionTarget) && row.canReview;
+                              const overrideKey = scopeReviewOverrideKey(row);
+                              const displayRow = applyLocalScopeReviewOverride(
+                                row,
+                                overrideKey ? localScopeReviewOverrides[overrideKey] : null,
+                              );
+                              const canPreviewFile = displayRow.kind === "file" && Boolean(displayRow.viewUrl);
+                              const canViewSection = displayRow.kind === "section" && Boolean(displayRow.actionTarget) && displayRow.canReview;
 
                               return (
-                              <tr key={`monitor-package-row-${row.id}`} className="bg-white">
+                              <tr key={`monitor-package-row-${displayRow.id}`} className="bg-white">
                                 <td className="px-3 py-3 align-top">
-                                  <p className="font-semibold text-slate-900">{row.label}</p>
-                                  <p className="mt-0.5 text-xs text-slate-500">{row.detail}</p>
-                                  {row.reviewDecision === "returned" && row.reviewNotes && (
+                                  <p className="font-semibold text-slate-900">{displayRow.label}</p>
+                                  <p className="mt-0.5 text-xs text-slate-500">{displayRow.detail}</p>
+                                  {displayRow.reviewDecision === "returned" && displayRow.reviewNotes && (
                                     <p className="mt-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
-                                      Return note: {row.reviewNotes}
+                                      Return note: {displayRow.reviewNotes}
                                     </p>
                                   )}
                                 </td>
                                 <td className="px-3 py-3 align-top">
-                                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${packageRowStatusClass(row.tone)}`}>
-                                    {row.statusLabel}
+                                  <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${packageRowStatusClass(displayRow.tone)}`}>
+                                    {displayRow.statusLabel}
                                   </span>
                                 </td>
                                 <td className="px-3 py-3 align-top text-xs text-slate-600">
-                                  {row.submittedAt ? formatDateTime(row.submittedAt) : "-"}
+                                  {displayRow.submittedAt ? formatDateTime(displayRow.submittedAt) : "-"}
                                 </td>
                                 <td className="px-3 py-3 text-right align-top">
                                   <div className="flex flex-wrap justify-end gap-1.5">
                                     {canPreviewFile ? (
                                       <button
                                         type="button"
-                                        onClick={() => void openFilePreview(row)}
+                                        onClick={() => void openFilePreview(displayRow)}
                                         className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                                       >
                                         View
@@ -612,7 +666,7 @@ export function MonitorSchoolDrawer({
                                     ) : canViewSection ? (
                                       <button
                                         type="button"
-                                        onClick={() => viewSectionReport(row)}
+                                        onClick={() => viewSectionReport(displayRow)}
                                         className="inline-flex items-center rounded-sm border border-primary-200 bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700 transition hover:bg-primary-100"
                                       >
                                         View
@@ -622,7 +676,7 @@ export function MonitorSchoolDrawer({
                                       <button
                                         type="button"
                                         disabled
-                                        title={disabledPackageActionTitle(row)}
+                                        title={disabledPackageActionTitle(displayRow)}
                                         className="inline-flex items-center rounded-sm border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-400"
                                       >
                                         View
@@ -630,9 +684,9 @@ export function MonitorSchoolDrawer({
                                     )}
                                     <button
                                       type="button"
-                                      onClick={() => void saveScopeReview(row, "verified")}
-                                      disabled={!row.canReview || scopeReviewSavingKey !== null}
-                                      title={row.canReview ? "Verify this requirement." : disabledPackageActionTitle(row)}
+                                      onClick={() => void saveScopeReview(displayRow, "verified")}
+                                      disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
+                                      title={displayRow.canReview ? "Verify this requirement." : disabledPackageActionTitle(displayRow)}
                                       className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
                                     >
                                       <CheckCircle2 className="h-3.5 w-3.5" />
@@ -641,16 +695,16 @@ export function MonitorSchoolDrawer({
                                     <button
                                       type="button"
                                       onClick={() => {
-                                        if (!row.canReview) {
+                                        if (!displayRow.canReview) {
                                           return;
                                         }
                                         setScopeReviewError("");
                                         setReturnReviewNotes("");
                                         setIncludeReturnNote(false);
-                                        setReturnReviewRow(row);
+                                        setReturnReviewRow(displayRow);
                                       }}
-                                      disabled={!row.canReview || scopeReviewSavingKey !== null}
-                                      title={row.canReview ? "Return this requirement." : disabledPackageActionTitle(row)}
+                                      disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
+                                      title={displayRow.canReview ? "Return this requirement." : disabledPackageActionTitle(displayRow)}
                                       className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
                                     >
                                       <RotateCcw className="h-3.5 w-3.5" />

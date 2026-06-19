@@ -5,12 +5,13 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build && node scripts/write-build-info.mjs",
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
     "e2e": "playwright test",
-    "e2e:headed": "playwright test --headed"
+    "e2e:headed": "playwright test --headed",
+    "e2e:live": "playwright test --config playwright.live.config.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

@@ -7,7 +7,7 @@ Use this checklist when the browser still shows older monitor dashboard behavior
    cd C:\Users\Angie\Desktop\cspam-git
    .\scripts\verify-cspams-runtime.ps1
    ```
-   The script prints the current Git commit, newest frontend build assets, and running `node.exe` / `php.exe` command lines. Stop any process that references `C:\Users\Angie\Desktop\cspam-main`.
+   The script prints the current Git commit, newest frontend build assets, `frontend\dist\cspams-build-info.json`, and running `node.exe` / `php.exe` command lines. Stop any process that references `C:\Users\Angie\Desktop\cspam-main`, and rebuild if the built commit does not match the current checkout.
 
 2. Confirm the working repo is the real checkout:
    ```powershell
@@ -32,6 +32,7 @@ Use this checklist when the browser still shows older monitor dashboard behavior
    Confirm the generated bundle timestamp is newer than the latest commit you expect to test:
    ```powershell
    Get-ChildItem .\dist\assets | Sort-Object LastWriteTime -Descending | Select-Object -First 5 Name,LastWriteTime
+   Get-Content .\dist\cspams-build-info.json
    ```
 
 5. Restart the backend/frontend process that serves the app from `C:\Users\Angie\Desktop\cspam-git`, then hard-refresh the browser.
@@ -49,3 +50,17 @@ Use this checklist when the browser still shows older monitor dashboard behavior
    npm.cmd run e2e
    ```
    This runs a mocked Playwright monitor review flow that confirms file rows do not have a row-level Download, the preview modal still has Download, Verify refreshes the visible queue/school state, and Return keeps notes optional.
+
+9. Optional live browser/API smoke check:
+   ```powershell
+   cd C:\Users\Angie\Desktop\cspam-git\frontend
+   npm.cmd run e2e:live
+   ```
+   This starts Laravel in `APP_ENV=testing` with an isolated SQLite database, starts Vite against that local backend, and verifies the real monitor review flow through the browser, API, database, and file endpoint.
+
+10. Backend workflow test timing:
+   ```powershell
+   cd C:\Users\Angie\Desktop\cspam-git
+   php artisan test --filter=IndicatorSubmissionWorkflowTest
+   ```
+   This test suite can take several minutes locally. Treat short command timeouts as an operational timeout, not a workflow failure.

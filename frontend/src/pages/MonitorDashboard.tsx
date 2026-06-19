@@ -74,12 +74,123 @@ import {
   formatDateTime,
   statusLabel,
 } from "@/utils/analytics";
+import type { IndicatorSubmission, SchoolRecord, WorkflowStatus } from "@/types";
+
+type MonitorReviewStatusOverride = {
+  schoolCode: string;
+  submissionId: string;
+  status: WorkflowStatus;
+  reviewedAt: string | null;
+  updatedAt: string | null;
+};
+
+function normalizeMonitorScopeId(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function latestIsoTimestamp(...values: Array<string | null | undefined>): string | null {
+  let latestTime = 0;
+  let latestValue: string | null = null;
+
+  for (const value of values) {
+    const time = new Date(value ?? 0).getTime();
+    if (Number.isFinite(time) && time > latestTime) {
+      latestTime = time;
+      latestValue = value ?? null;
+    }
+  }
+
+  return latestValue;
+}
+
+function buildMonitorReviewStatusOverride(
+  submission: IndicatorSubmission | null | undefined,
+  decision: "verified" | "returned" | undefined,
+): MonitorReviewStatusOverride | null {
+  if (!submission || !decision) {
+    return null;
+  }
+
+  const schoolCode = String(submission.school?.schoolCode ?? "").trim().toUpperCase();
+  if (!schoolCode) {
+    return null;
+  }
+
+  const submittedScopeIds = (submission.scopeProgress?.submittedScopeIds ?? [])
+    .map(normalizeMonitorScopeId)
+    .filter(Boolean);
+  const reviewsByScope = new Map(
+    (submission.scopeReviews ?? []).map((review) => [
+      normalizeMonitorScopeId(review.scopeId),
+      review,
+    ]),
+  );
+  const reviewedAt = latestIsoTimestamp(
+    submission.reviewedAt,
+    ...submittedScopeIds.map((scopeId) => reviewsByScope.get(scopeId)?.reviewedAt ?? null),
+    ...submittedScopeIds.map((scopeId) => reviewsByScope.get(scopeId)?.updatedAt ?? null),
+  );
+  const updatedAt = latestIsoTimestamp(reviewedAt, submission.updatedAt, submission.createdAt);
+
+  if (decision === "returned") {
+    return {
+      schoolCode,
+      submissionId: submission.id,
+      status: "returned",
+      reviewedAt,
+      updatedAt,
+    };
+  }
+
+  const allSentScopesVerified = submittedScopeIds.length > 0
+    && submittedScopeIds.every((scopeId) => reviewsByScope.get(scopeId)?.decision === "verified");
+
+  return {
+    schoolCode,
+    submissionId: submission.id,
+    status: allSentScopesVerified ? "validated" : "submitted",
+    reviewedAt,
+    updatedAt,
+  };
+}
+
+function applyMonitorReviewStatusOverrides(
+  records: SchoolRecord[],
+  overrides: Record<string, MonitorReviewStatusOverride>,
+): SchoolRecord[] {
+  if (Object.keys(overrides).length === 0) {
+    return records;
+  }
+
+  return records.map((record) => {
+    const schoolCode = String(record.schoolCode ?? record.schoolId ?? "").trim().toUpperCase();
+    const override = schoolCode ? overrides[schoolCode] : null;
+    if (!override) {
+      return record;
+    }
+
+    const current = record.indicatorLatest ?? null;
+    return {
+      ...record,
+      lastUpdated: latestIsoTimestamp(override.updatedAt, override.reviewedAt, record.lastUpdated) ?? record.lastUpdated,
+      indicatorLatest: {
+        id: override.submissionId,
+        status: override.status,
+        submittedAt: current?.submittedAt ?? null,
+        reviewedAt: override.reviewedAt ?? current?.reviewedAt ?? null,
+        createdAt: current?.createdAt ?? null,
+        updatedAt: override.updatedAt ?? current?.updatedAt ?? null,
+      },
+    };
+  });
+}
 
 export function MonitorDashboard() {
   const { user } = useAuth();
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
   const [reviewWorkspaceSchoolKey, setReviewWorkspaceSchoolKey] = useState<string | null>(null);
+  const [reviewStatusOverrides, setReviewStatusOverrides] = useState<Record<string, MonitorReviewStatusOverride>>({});
   const {
     records,
     recordCount,
@@ -112,8 +223,10 @@ export function MonitorDashboard() {
     bulkImportRecords,
   } = useData();
   const {
+    allSubmissions,
     isLoading: isIndicatorDataLoading,
     lastSyncedAt: indicatorLastSyncedAt,
+    fetchSubmission,
     listSubmissionsForSchool,
     refreshSubmissions,
   } = useIndicatorData();
@@ -251,17 +364,62 @@ export function MonitorDashboard() {
     ]);
   }, [refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
 
-  const scopedRecords = useMemo(() => {
-    if (!scopedSchoolKeys) {
-      return records;
+  useEffect(() => {
+    setReviewStatusOverrides({});
+  }, [authSessionKey]);
+
+  useEffect(() => {
+    if (Object.keys(reviewStatusOverrides).length === 0) {
+      return;
     }
 
-    return records.filter((record) =>
+    setReviewStatusOverrides((current) => {
+      let changed = false;
+      const next = { ...current };
+      for (const record of records) {
+        const schoolCode = String(record.schoolCode ?? record.schoolId ?? "").trim().toUpperCase();
+        const override = schoolCode ? next[schoolCode] : null;
+        if (!override) {
+          continue;
+        }
+
+        const latest = record.indicatorLatest ?? null;
+        const latestUpdatedAt = new Date(latest?.updatedAt ?? latest?.reviewedAt ?? record.lastUpdated ?? 0).getTime();
+        const overrideUpdatedAt = new Date(override.updatedAt ?? override.reviewedAt ?? 0).getTime();
+        const serverMatchesOverride = latest?.id === override.submissionId && latest.status === override.status;
+        const serverMovedPastOverride =
+          Number.isFinite(latestUpdatedAt)
+          && Number.isFinite(overrideUpdatedAt)
+          && latestUpdatedAt > 0
+          && overrideUpdatedAt > 0
+          && latestUpdatedAt > overrideUpdatedAt;
+
+        if (serverMatchesOverride || serverMovedPastOverride) {
+          delete next[schoolCode];
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, [records, reviewStatusOverrides]);
+
+  const recordsWithReviewStatusOverrides = useMemo(
+    () => applyMonitorReviewStatusOverrides(records, reviewStatusOverrides),
+    [records, reviewStatusOverrides],
+  );
+
+  const scopedRecords = useMemo(() => {
+    if (!scopedSchoolKeys) {
+      return recordsWithReviewStatusOverrides;
+    }
+
+    return recordsWithReviewStatusOverrides.filter((record) =>
       scopedSchoolKeys.has(
         normalizeSchoolKey(record.schoolId ?? record.schoolCode ?? null, record.schoolName),
       ),
     );
-  }, [records, scopedSchoolKeys]);
+  }, [recordsWithReviewStatusOverrides, scopedSchoolKeys]);
 
   const {
     schoolRequirementByKey,
@@ -289,7 +447,7 @@ export function MonitorDashboard() {
     safeRecordsPage,
     paginatedCompactSchoolRows,
   } = useMonitorRequirementData({
-    records,
+    records: recordsWithReviewStatusOverrides,
     scopedRecords,
     scopedSchoolKeys,
     selectedSchoolScopeKey,
@@ -382,15 +540,44 @@ export function MonitorDashboard() {
     return map;
   }, [students]);
 
-  const resolveSchoolDrawerRecordId = useCallback(
+  const resolveSchoolDrawerRecord = useCallback(
     (schoolKey: string | null) => {
       if (!schoolKey) {
-        return "";
+        return null;
       }
 
-      return (recordBySchoolKey.get(schoolKey)?.id ?? "").trim();
+      const directRecord = recordBySchoolKey.get(schoolKey) ?? null;
+      if (directRecord) {
+        return directRecord;
+      }
+
+      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const normalizedKey = schoolKey.trim().toLowerCase();
+      const keyCode = normalizedKey.startsWith("code:") ? normalizedKey.slice("code:".length).trim().toUpperCase() : "";
+      const keyName = normalizedKey.startsWith("name:") ? normalizedKey.slice("name:".length).trim() : "";
+      const summaryCode = String(summary?.schoolCode ?? "").trim().toUpperCase();
+      const summaryName = String(summary?.schoolName ?? "").trim().toLowerCase();
+
+      return recordsWithReviewStatusOverrides.find((record) => {
+        const recordCode = String(record.schoolCode ?? record.schoolId ?? "").trim().toUpperCase();
+        const recordName = String(record.schoolName ?? "").trim().toLowerCase();
+
+        return (
+          (Boolean(summaryCode) && recordCode === summaryCode) ||
+          (Boolean(keyCode) && recordCode === keyCode) ||
+          (Boolean(summaryName) && recordName === summaryName) ||
+          (Boolean(keyName) && recordName === keyName)
+        );
+      }) ?? null;
     },
-    [recordBySchoolKey],
+    [recordBySchoolKey, recordsWithReviewStatusOverrides, schoolRequirementByKey],
+  );
+
+  const resolveSchoolDrawerRecordId = useCallback(
+    (schoolKey: string | null) => {
+      return String(resolveSchoolDrawerRecord(schoolKey)?.id ?? "").trim();
+    },
+    [resolveSchoolDrawerRecord],
   );
 
   const resolveSchoolDrawerCode = useCallback(
@@ -400,15 +587,56 @@ export function MonitorDashboard() {
       }
 
       const summary = schoolRequirementByKey.get(schoolKey) ?? null;
-      const record = recordBySchoolKey.get(schoolKey) ?? null;
+      const record = resolveSchoolDrawerRecord(schoolKey);
       return (summary?.schoolCode ?? record?.schoolId ?? record?.schoolCode ?? "").trim();
     },
-    [recordBySchoolKey, schoolRequirementByKey],
+    [resolveSchoolDrawerRecord, schoolRequirementByKey],
+  );
+
+  const resolveSchoolDrawerLatestIndicatorSubmissionId = useCallback(
+    (schoolKey: string | null) => {
+      if (!schoolKey) {
+        return "";
+      }
+
+      const record = resolveSchoolDrawerRecord(schoolKey);
+      const latestRecordSubmissionId = String(record?.indicatorLatest?.id ?? "").trim();
+      if (latestRecordSubmissionId) {
+        return latestRecordSubmissionId;
+      }
+
+      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const normalizedSchoolCode = String(summary?.schoolCode ?? record?.schoolCode ?? record?.schoolId ?? "")
+        .trim()
+        .toUpperCase();
+      const normalizedSchoolName = String(summary?.schoolName ?? record?.schoolName ?? "")
+        .trim()
+        .toLowerCase();
+      const matchingSubmissions = allSubmissions
+        .filter((submission) => {
+          const submissionSchoolCode = String(submission.school?.schoolCode ?? "").trim().toUpperCase();
+          const submissionSchoolName = String(submission.school?.name ?? "").trim().toLowerCase();
+
+          return (
+            (Boolean(normalizedSchoolCode) && submissionSchoolCode === normalizedSchoolCode) ||
+            (Boolean(normalizedSchoolName) && submissionSchoolName === normalizedSchoolName)
+          );
+        })
+        .sort((left, right) => {
+          const leftTime = new Date(left.updatedAt ?? left.submittedAt ?? left.createdAt ?? 0).getTime();
+          const rightTime = new Date(right.updatedAt ?? right.submittedAt ?? right.createdAt ?? 0).getTime();
+          return (Number.isFinite(rightTime) ? rightTime : 0) - (Number.isFinite(leftTime) ? leftTime : 0);
+        });
+
+      return String(matchingSubmissions[0]?.id ?? "").trim();
+    },
+    [allSubmissions, resolveSchoolDrawerRecord, schoolRequirementByKey],
   );
 
   const {
     schoolDrawerKey,
     schoolDrawerRecordId,
+    schoolDrawerSchoolCode,
     activeSchoolDrawerTab,
     selectedSchoolDrawerYear,
     availableSchoolDrawerYears,
@@ -433,12 +661,35 @@ export function MonitorDashboard() {
     latestRealtimeBatch,
     resolveRecordId: resolveSchoolDrawerRecordId,
     resolveSchoolCode: resolveSchoolDrawerCode,
+    resolveLatestIndicatorSubmissionId: resolveSchoolDrawerLatestIndicatorSubmissionId,
+    fetchSubmission,
     listSubmissionsForSchool,
     queryStudents,
     listTeachers,
   });
 
-  const schoolDrawerIndicatorSubmissions = schoolDrawerSubmissions;
+  const schoolDrawerIndicatorSubmissions = useMemo(() => {
+    const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
+    if (!normalizedSchoolCode) {
+      return schoolDrawerSubmissions;
+    }
+
+    const scopedDrawerSubmissions = schoolDrawerSubmissions.filter((submission) => {
+      const rowSchoolCode = String(submission.school?.schoolCode ?? "")
+        .trim()
+        .toUpperCase();
+      return rowSchoolCode === "" || rowSchoolCode === normalizedSchoolCode;
+    });
+    if (scopedDrawerSubmissions.length > 0) {
+      return scopedDrawerSubmissions;
+    }
+
+    return allSubmissions.filter((submission) => (
+      String(submission.school?.schoolCode ?? "")
+        .trim()
+        .toUpperCase() === normalizedSchoolCode
+    ));
+  }, [allSubmissions, schoolDrawerSchoolCode, schoolDrawerSubmissions]);
   const {
     schoolIndicatorMatrix,
     schoolIndicatorRowsByCategory,
@@ -469,7 +720,21 @@ export function MonitorDashboard() {
     activeSchoolDrawerKey: schoolDrawerKey,
     onRefreshActiveDrawer: refreshSchoolDrawer,
   });
-  const handleSchoolDrawerReviewDataChanged = useCallback(async () => {
+  const handleSchoolDrawerReviewDataChanged = useCallback(async (payload?: {
+    reason: "scope-review" | "file-preview-stale";
+    submission?: IndicatorSubmission;
+    decision?: "verified" | "returned";
+  }) => {
+    if (payload?.reason === "scope-review") {
+      const override = buildMonitorReviewStatusOverride(payload.submission, payload.decision);
+      if (override) {
+        setReviewStatusOverrides((current) => ({
+          ...current,
+          [override.schoolCode]: override,
+        }));
+      }
+    }
+
     await refreshMonitorReviewData({
       refreshSchoolDrawer,
       refreshSubmissions,

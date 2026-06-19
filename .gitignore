@@ -2,6 +2,7 @@
 /node_modules
 /frontend/node_modules
 /frontend/dist
+/frontend/test-results
 /frontend/*.tsbuildinfo
 /frontend/vite.config.js
 /frontend/vite.config.d.ts
@@ -41,6 +42,7 @@ yarn-error.log
 # Local runtime artifacts
 /storage/logs/*
 /database/*.sqlite
+/database/*.sqlite-*
 
 # Stray / accidental file (from earlier submodule issue)
 cspam

@@ -43,6 +43,7 @@ export interface IndicatorListParams {
   page?: number;
   perPage?: number;
   schoolId?: string | number | null;
+  schoolCode?: string | number | null;
   academicYearId?: string | number | null;
   status?: string | null;
   reportingPeriod?: string | null;
@@ -65,6 +66,7 @@ export interface IndicatorListResult {
 export interface LoadAllSubmissionsOptions {
   signal?: AbortSignal;
   force?: boolean;
+  schoolCode?: string | number | null;
 }
 
 interface IndicatorSubmissionsMeta {
@@ -223,6 +225,7 @@ interface NormalizedIndicatorListParams {
   page: number;
   perPage: number;
   schoolId: string;
+  schoolCode: string;
   academicYearId: string;
   status: string;
   reportingPeriod: string;
@@ -257,6 +260,7 @@ function sanitizeIndicatorListParams(params?: IndicatorListParams): NormalizedIn
     page: toPositiveInt(params?.page, 1),
     perPage: Math.min(toPositiveInt(params?.perPage, DEFAULT_LIST_PER_PAGE), MAX_LIST_PER_PAGE),
     schoolId: normalizeFilterValue(params?.schoolId),
+    schoolCode: normalizeFilterValue(params?.schoolCode),
     academicYearId: normalizeFilterValue(params?.academicYearId),
     status: normalizeFilterValue(params?.status),
     reportingPeriod: normalizeFilterValue(params?.reportingPeriod),
@@ -270,6 +274,10 @@ function buildSubmissionsPath(params: NormalizedIndicatorListParams): string {
 
   if (params.schoolId) {
     query.set("school_id", params.schoolId);
+  }
+
+  if (params.schoolCode) {
+    query.set("school_code", params.schoolCode);
   }
 
   if (params.academicYearId) {
@@ -1115,22 +1123,26 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       }
 
       const normalizedSchoolId = normalizeFilterValue(schoolId);
-      if (!normalizedSchoolId) {
+      const normalizedSchoolCode = normalizeFilterValue(options?.schoolCode);
+      if (!normalizedSchoolId && !normalizedSchoolCode) {
         return [];
       }
+      const shouldLookupBySchoolCode = Boolean(normalizedSchoolCode);
 
       const signal = options?.signal;
       throwIfAborted(signal);
 
-      const versionKey = `${buildAllSubmissionsVersionKey()}|school:${normalizedSchoolId}`;
-      const cached = schoolSubmissionsCacheRef.current.get(normalizedSchoolId);
+      const cacheKey = shouldLookupBySchoolCode ? `code:${normalizedSchoolCode}` : `id:${normalizedSchoolId}`;
+      const versionKey = `${buildAllSubmissionsVersionKey()}|school:${cacheKey}`;
+      const cached = schoolSubmissionsCacheRef.current.get(cacheKey);
       if (!options?.force && cached && cached.versionKey === versionKey) {
         return cached.rows;
       }
 
       const rows = await collectPaginatedSubmissionRows(
         (page) => listSubmissions({
-          schoolId: normalizedSchoolId,
+          schoolId: shouldLookupBySchoolCode ? null : normalizedSchoolId,
+          schoolCode: shouldLookupBySchoolCode ? normalizedSchoolCode : null,
           page,
           perPage: MAX_LIST_PER_PAGE,
           signal,
@@ -1142,7 +1154,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),
         user,
       );
-      schoolSubmissionsCacheRef.current.set(normalizedSchoolId, {
+      schoolSubmissionsCacheRef.current.set(cacheKey, {
         versionKey,
         rows: sortedRows,
       });

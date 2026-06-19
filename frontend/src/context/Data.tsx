@@ -150,7 +150,7 @@ interface DataContextType {
   lastSyncedAt: string | null;
   syncScope: SyncScope;
   syncStatus: SyncStatus;
-  refreshRecords: () => Promise<void>;
+  refreshRecords: (options?: { force?: boolean }) => Promise<void>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
@@ -267,6 +267,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const syncQueuedForceRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const previousSessionKeyRef = useRef<string>("");
@@ -300,6 +301,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
+    syncQueuedForceRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     clearRealtimeSyncTimer();
@@ -339,9 +341,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const syncRecords = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false) => {
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
+        syncQueuedForceRef.current = syncQueuedForceRef.current || force;
         return;
       }
 
@@ -358,11 +361,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncStatus("idle");
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        syncQueuedForceRef.current = false;
         return;
       }
 
       syncInFlightRef.current = true;
       syncQueuedRef.current = false;
+      syncQueuedForceRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -374,7 +379,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequestRaw<SchoolRecordsResponse>("/api/dashboard/records", {
           token,
           timeoutMs: SCHOOL_RECORDS_SYNC_TIMEOUT_MS,
-          extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+          extraHeaders: !force && etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
         const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
@@ -469,16 +474,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          const queuedForce = syncQueuedForceRef.current;
           syncQueuedRef.current = false;
-          void syncRecords(true);
+          syncQueuedForceRef.current = false;
+          void syncRecords(true, queuedForce);
         }
       }
     },
     [token, handleApiError],
   );
 
-  const refreshRecords = useCallback(async () => {
-    await syncRecords(false);
+  const refreshRecords = useCallback(async (options?: { force?: boolean }) => {
+    await syncRecords(false, Boolean(options?.force));
   }, [syncRecords]);
 
   useEffect(() => {

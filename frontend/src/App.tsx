@@ -1,5 +1,5 @@
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
-import { useEffect, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, type ReactNode } from "react";
 import { LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
 import { DataProvider } from "@/context/Data";
@@ -9,14 +9,15 @@ import { StudentDataProvider } from "@/context/StudentData";
 import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
-import { ForgotPassword } from "@/pages/ForgotPassword";
-import { MfaResetComplete } from "@/pages/MfaResetComplete";
-import { MfaResetRequest } from "@/pages/MfaResetRequest";
-import { MonitorDashboard } from "@/pages/MonitorDashboard";
-import { ResetPassword } from "@/pages/ResetPassword";
-import { SchoolAdminDashboard } from "@/pages/SchoolAdminDashboard";
-import { SetupAccount } from "@/pages/SetupAccount";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
+
+const ForgotPassword = lazy(() => import("@/pages/ForgotPassword").then((module) => ({ default: module.ForgotPassword })));
+const MfaResetComplete = lazy(() => import("@/pages/MfaResetComplete").then((module) => ({ default: module.MfaResetComplete })));
+const MfaResetRequest = lazy(() => import("@/pages/MfaResetRequest").then((module) => ({ default: module.MfaResetRequest })));
+const MonitorDashboard = lazy(() => import("@/pages/MonitorDashboard").then((module) => ({ default: module.MonitorDashboard })));
+const ResetPassword = lazy(() => import("@/pages/ResetPassword").then((module) => ({ default: module.ResetPassword })));
+const SchoolAdminDashboard = lazy(() => import("@/pages/SchoolAdminDashboard").then((module) => ({ default: module.SchoolAdminDashboard })));
+const SetupAccount = lazy(() => import("@/pages/SetupAccount").then((module) => ({ default: module.SetupAccount })));
 
 function FullscreenLoader() {
   return (
@@ -70,18 +71,20 @@ function AppRoutes() {
         path="/"
         element={role ? <Navigate to={role === "school_head" ? "/school-admin" : "/monitor"} replace /> : <Login />}
       />
-      <Route path="/forgot-password" element={<ForgotPassword />} />
-      <Route path="/reset-password" element={<ResetPassword />} />
-      <Route path="/mfa-reset" element={<MfaResetRequest />} />
-      <Route path="/mfa-reset/complete" element={<MfaResetComplete />} />
-      <Route path="/setup-account" element={<SetupAccount />} />
+      <Route path="/forgot-password" element={<LazyRoute><ForgotPassword /></LazyRoute>} />
+      <Route path="/reset-password" element={<LazyRoute><ResetPassword /></LazyRoute>} />
+      <Route path="/mfa-reset" element={<LazyRoute><MfaResetRequest /></LazyRoute>} />
+      <Route path="/mfa-reset/complete" element={<LazyRoute><MfaResetComplete /></LazyRoute>} />
+      <Route path="/setup-account" element={<LazyRoute><SetupAccount /></LazyRoute>} />
       <Route
         path="/school-admin"
         element={
           <ProtectedRoute allowedRole="school_head">
             <AuthenticatedAppProviders>
               <DashboardDataProviders>
-                <SchoolAdminDashboard />
+                <LazyRoute>
+                  <SchoolAdminDashboard />
+                </LazyRoute>
               </DashboardDataProviders>
             </AuthenticatedAppProviders>
           </ProtectedRoute>
@@ -94,7 +97,9 @@ function AppRoutes() {
           <ProtectedRoute allowedRole="monitor">
             <AuthenticatedAppProviders>
               <DashboardDataProviders>
-                <MonitorDashboard />
+                <LazyRoute>
+                  <MonitorDashboard />
+                </LazyRoute>
               </DashboardDataProviders>
             </AuthenticatedAppProviders>
           </ProtectedRoute>
@@ -103,6 +108,10 @@ function AppRoutes() {
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
+}
+
+function LazyRoute({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<FullscreenLoader />}>{children}</Suspense>;
 }
 
 function RealtimeBridge() {

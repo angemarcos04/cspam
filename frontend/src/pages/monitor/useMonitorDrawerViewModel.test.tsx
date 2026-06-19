@@ -483,6 +483,69 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(resolveMonitorSchoolDetailYearSelection([], "2027-2028").effectiveSelectedYear).toBe("2027-2028");
     expect(resolveMonitorSchoolDetailYearSelection([], "2030-2031").effectiveSelectedYear).toBe("2026-2027");
   });
+
+  it("prefers the latest package year over the calendar year when no year was manually selected", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
+
+    const selection = resolveMonitorSchoolDetailYearSelection([
+      {
+        id: "sent-draft-1",
+        status: "draft",
+        version: 1,
+        academicYear: { id: "ay-2025", name: "2025-2026" },
+        scopeProgress: { submittedScopeIds: ["fm_qad_001"] },
+        createdAt: "2026-06-01T08:00:00.000Z",
+        updatedAt: "2026-06-01T08:30:00.000Z",
+        submittedAt: null,
+      } as never,
+    ], null);
+
+    expect(selection.effectiveSelectedYear).toBe("2025-2026");
+    expect(selection.latestYearSubmission?.id).toBe("sent-draft-1");
+  });
+
+  it("falls back from an empty selected drawer year to the latest submitted package year", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
+
+    const selection = resolveMonitorSchoolDetailYearSelection([
+      {
+        id: "sent-draft-2025",
+        status: "draft",
+        version: 1,
+        academicYear: { id: "ay-2025", name: "2025-2026" },
+        scopeProgress: { submittedScopeIds: ["fm_qad_001"] },
+        createdAt: "2026-06-01T08:00:00.000Z",
+        updatedAt: "2026-06-01T08:30:00.000Z",
+        submittedAt: null,
+      } as never,
+    ], "2026-2027");
+
+    expect(selection.effectiveSelectedYear).toBe("2025-2026");
+    expect(selection.latestYearSubmission?.id).toBe("sent-draft-2025");
+  });
+
+  it("uses a single sent draft with no explicit year label for the selected drawer year", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
+
+    const selection = resolveMonitorSchoolDetailYearSelection([
+      {
+        id: "sent-draft-unlabeled",
+        status: "draft",
+        version: 1,
+        academicYear: { id: "ay-2025", name: "" },
+        scopeProgress: { submittedScopeIds: ["fm_qad_001"] },
+        createdAt: "2026-06-01T08:00:00.000Z",
+        updatedAt: "2026-06-01T08:30:00.000Z",
+        submittedAt: null,
+      } as never,
+    ], "2025-2026");
+
+    expect(selection.effectiveSelectedYear).toBe("2025-2026");
+    expect(selection.latestYearSubmission?.id).toBe("sent-draft-unlabeled");
+  });
 });
 
 describe("buildMonitorDrawerHistorySummary", () => {

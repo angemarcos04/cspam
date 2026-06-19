@@ -122,7 +122,7 @@ class IndicatorSubmissionController extends Controller
             : 'division:all';
         $filtersKey = $this->filterService->buildCacheKey(
             $filters,
-            ['school_id', 'academic_year_id', 'status', 'category', 'date_from', 'date_to', 'search', 'reporting_period'],
+            ['school_id', 'school_code', 'academic_year_id', 'status', 'category', 'date_from', 'date_to', 'search', 'reporting_period'],
         );
         $scopeKey = $baseScopeKey . '|' . $filtersKey;
 
@@ -1284,6 +1284,11 @@ class IndicatorSubmissionController extends Controller
             $filters['reporting_period'] = $reportingPeriod === '' ? null : $reportingPeriod;
         }
 
+        if ($request->has('school_code')) {
+            $schoolCode = trim((string) $request->input('school_code'));
+            $filters['school_code'] = $schoolCode === '' ? null : $schoolCode;
+        }
+
         return $filters;
     }
 
@@ -1296,6 +1301,13 @@ class IndicatorSubmissionController extends Controller
             'date_column' => 'submitted_at',
             'search_columns' => ['reporting_period', 'notes'],
         ]);
+
+        $schoolCode = trim((string) ($filters['school_code'] ?? ''));
+        if ($schoolCode !== '') {
+            $query->whereHas('school', static function (Builder $schoolQuery) use ($schoolCode): void {
+                $schoolQuery->where('school_code', $schoolCode);
+            });
+        }
 
         if (! array_key_exists('reporting_period', $filters)) {
             return;

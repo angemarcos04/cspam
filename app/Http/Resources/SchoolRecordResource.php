@@ -4,8 +4,10 @@ namespace App\Http\Resources;
 
 use App\Models\School;
 use App\Models\User;
+use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\AccountStatus;
+use App\Support\Indicators\SubmissionScopeProgressResolver;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
@@ -42,14 +44,14 @@ class SchoolRecordResource extends JsonResource
             'lastUpdated' => ($this->submitted_at ?? $this->updated_at)?->toISOString(),
             'deletedAt' => $this->deleted_at?->toISOString(),
             'schoolHeadAccount' => $this->serializeSchoolHeadAccount(),
-            'indicatorLatest' => $this->serializeIndicatorLatest(),
+            'indicatorLatest' => $this->serializeIndicatorLatest($request),
         ];
     }
 
     /**
      * @return array<string, mixed>|null
      */
-    private function serializeIndicatorLatest(): ?array
+    private function serializeIndicatorLatest(Request $request): ?array
     {
         $monitorRelevantLoaded = $this->relationLoaded('latestMonitorRelevantIndicatorSubmission');
         $latestLoaded = $this->relationLoaded('latestIndicatorSubmission');
@@ -74,15 +76,81 @@ class SchoolRecordResource extends JsonResource
         $statusValue = $status instanceof FormSubmissionStatus
             ? $status->value
             : (is_string($status) && $status !== '' ? $status : null);
+        $reviewedAt = $submission->reviewed_at;
+
+        if ($request->user() instanceof User && UserRoleResolver::has($request->user(), UserRoleResolver::MONITOR)) {
+            [$statusValue, $reviewedAt] = $this->monitorEffectiveIndicatorStatus($submission, $statusValue, $reviewedAt);
+        }
 
         return [
             'id' => (string) $submission->id,
             'status' => $statusValue,
             'submittedAt' => $submission->submitted_at?->toISOString(),
-            'reviewedAt' => $submission->reviewed_at?->toISOString(),
+            'reviewedAt' => $reviewedAt?->toISOString(),
             'createdAt' => $submission->created_at?->toISOString(),
             'updatedAt' => $submission->updated_at?->toISOString(),
         ];
+    }
+
+    /**
+     * @return array{0:string|null,1:\Carbon\CarbonInterface|null}
+     */
+    private function monitorEffectiveIndicatorStatus($submission, ?string $statusValue, $reviewedAt): array
+    {
+        if (in_array($statusValue, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+            FormSubmissionStatus::RETURNED->value,
+        ], true)) {
+            return [$statusValue, $reviewedAt];
+        }
+
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+        $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
+            ? array_values(array_filter(array_map(
+                static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)),
+                $scopeProgress['submittedScopeIds'],
+            )))
+            : [];
+
+        if ($submittedScopeIds !== []) {
+            $reviews = $submission->scopeReviews()
+                ->whereIn('scope_id', $submittedScopeIds)
+                ->get(['scope_id', 'decision', 'reviewed_at'])
+                ->keyBy(static fn ($review): string => strtolower(trim((string) $review->scope_id)));
+
+            $allSentScopesVerified = true;
+            $latestReviewedAt = $reviewedAt;
+
+            foreach ($submittedScopeIds as $scopeId) {
+                $review = $reviews->get($scopeId);
+                if (! $review || strtolower(trim((string) $review->decision)) !== 'verified') {
+                    $allSentScopesVerified = false;
+                }
+
+                if ($review?->reviewed_at && (! $latestReviewedAt || $review->reviewed_at->gt($latestReviewedAt))) {
+                    $latestReviewedAt = $review->reviewed_at;
+                }
+            }
+
+            return [
+                $allSentScopesVerified ? FormSubmissionStatus::VALIDATED->value : FormSubmissionStatus::SUBMITTED->value,
+                $latestReviewedAt,
+            ];
+        }
+
+        $returnedReview = $submission->scopeReviews()
+            ->where('decision', 'returned')
+            ->latest('reviewed_at')
+            ->first(['decision', 'reviewed_at']);
+
+        if ($returnedReview) {
+            return [FormSubmissionStatus::RETURNED->value, $returnedReview->reviewed_at ?? $reviewedAt];
+        }
+
+        return [$statusValue, $reviewedAt];
     }
 
     /**

@@ -16,6 +16,7 @@ describe("refreshMonitorReviewData", () => {
     expect(refreshSchoolDrawer).toHaveBeenCalledTimes(1);
     expect(refreshSubmissions).toHaveBeenCalledTimes(1);
     expect(refreshRecords).toHaveBeenCalledTimes(1);
+    expect(refreshRecords).toHaveBeenCalledWith({ force: true });
     expect(results.every((result) => result.status === "fulfilled")).toBe(true);
   });
 
@@ -33,6 +34,7 @@ describe("refreshMonitorReviewData", () => {
     expect(refreshSchoolDrawer).toHaveBeenCalledTimes(1);
     expect(refreshSubmissions).toHaveBeenCalledTimes(1);
     expect(refreshRecords).toHaveBeenCalledTimes(1);
+    expect(refreshRecords).toHaveBeenCalledWith({ force: true });
     expect(results.some((result) => result.status === "rejected")).toBe(true);
     expect(results.some((result) => result.status === "fulfilled")).toBe(true);
   });

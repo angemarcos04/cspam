@@ -26,6 +26,8 @@ interface UseSchoolDrawerOptions {
   latestRealtimeBatch: MonitorUiRealtimeBatch | null;
   resolveRecordId: (schoolKey: string | null) => string;
   resolveSchoolCode: (schoolKey: string | null) => string;
+  resolveLatestIndicatorSubmissionId: (schoolKey: string | null) => string;
+  fetchSubmission: IndicatorDataContextType["fetchSubmission"];
   listSubmissionsForSchool: IndicatorDataContextType["listSubmissionsForSchool"];
   queryStudents: StudentDataContextType["queryStudents"];
   listTeachers: TeacherDataContextType["listTeachers"];
@@ -135,12 +137,33 @@ export function shouldForceSchoolSubmissionReload(submissionRefreshTick: number)
   return submissionRefreshTick > 0;
 }
 
+export function mergeLatestSchoolDrawerSubmission(
+  latestSubmission: IndicatorSubmission | null,
+  listRows: IndicatorSubmission[],
+): IndicatorSubmission[] {
+  if (!latestSubmission) {
+    return listRows;
+  }
+
+  const latestId = String(latestSubmission.id ?? "").trim();
+  if (!latestId) {
+    return [latestSubmission, ...listRows];
+  }
+
+  return [
+    latestSubmission,
+    ...listRows.filter((row) => String(row.id ?? "").trim() !== latestId),
+  ];
+}
+
 export function useSchoolDrawer({
   authSessionKey,
   isAuthenticated,
   latestRealtimeBatch,
   resolveRecordId,
   resolveSchoolCode,
+  resolveLatestIndicatorSubmissionId,
+  fetchSubmission,
   listSubmissionsForSchool,
   queryStudents,
   listTeachers,
@@ -165,6 +188,8 @@ export function useSchoolDrawer({
   );
   const accurateSyncedCountsRef = useRef<Record<string, SchoolDetailCounts>>({});
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
+  const fetchSubmissionRef = useRef(fetchSubmission);
+  const listSubmissionsForSchoolRef = useRef(listSubmissionsForSchool);
 
   const schoolDrawerRecordId = useMemo(
     () => resolveRecordId(schoolDrawerKey),
@@ -174,6 +199,18 @@ export function useSchoolDrawer({
     () => resolveSchoolCode(schoolDrawerKey),
     [resolveSchoolCode, schoolDrawerKey],
   );
+  const schoolDrawerLatestSubmissionId = useMemo(
+    () => resolveLatestIndicatorSubmissionId(schoolDrawerKey).trim(),
+    [resolveLatestIndicatorSubmissionId, schoolDrawerKey],
+  );
+
+  useEffect(() => {
+    fetchSubmissionRef.current = fetchSubmission;
+  }, [fetchSubmission]);
+
+  useEffect(() => {
+    listSubmissionsForSchoolRef.current = listSubmissionsForSchool;
+  }, [listSubmissionsForSchool]);
 
   const openSchoolDrawer = useCallback((schoolKey: string) => {
     setSchoolDrawerKey(schoolKey);
@@ -226,7 +263,7 @@ export function useSchoolDrawer({
       return;
     }
 
-    if (schoolDrawerRecordId || schoolDrawerSchoolCode) {
+    if (schoolDrawerRecordId || schoolDrawerSchoolCode || schoolDrawerLatestSubmissionId) {
       return;
     }
 
@@ -235,7 +272,7 @@ export function useSchoolDrawer({
     setSchoolDrawerSubmissionsError("");
     setSyncedCountsLoadingSchoolKey(null);
     setSyncedCountsError("");
-  }, [closeSchoolDrawer, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
+  }, [closeSchoolDrawer, schoolDrawerKey, schoolDrawerLatestSubmissionId, schoolDrawerRecordId, schoolDrawerSchoolCode]);
 
   useEffect(() => {
     if (!schoolDrawerKey || !latestRealtimeBatch) {
@@ -263,7 +300,8 @@ export function useSchoolDrawer({
   }, [latestRealtimeBatch, schoolDrawerKey, schoolDrawerRecordId, schoolDrawerSchoolCode]);
 
   useEffect(() => {
-    if (!schoolDrawerRecordId || !isAuthenticated) {
+    const schoolSubmissionLookupKey = schoolDrawerSchoolCode || schoolDrawerRecordId;
+    if ((!schoolSubmissionLookupKey && !schoolDrawerLatestSubmissionId) || !isAuthenticated) {
       setSchoolDrawerSubmissions([]);
       setIsSchoolDrawerSubmissionsLoading(false);
       setSchoolDrawerSubmissionsError("");
@@ -277,15 +315,52 @@ export function useSchoolDrawer({
       setIsSchoolDrawerSubmissionsLoading(true);
       setSchoolDrawerSubmissionsError("");
 
+      let latestSubmission: IndicatorSubmission | null = null;
+
+      if (schoolDrawerLatestSubmissionId) {
+        try {
+          latestSubmission = await fetchSubmissionRef.current(schoolDrawerLatestSubmissionId);
+          if (!active) {
+            return;
+          }
+          const latestSubmissionYear = String(latestSubmission.academicYear?.name ?? "").trim();
+          if (latestSubmissionYear) {
+            setSelectedSchoolDrawerYear(latestSubmissionYear);
+          }
+          setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, []));
+          setSchoolDrawerSubmissionsError("");
+          setIsSchoolDrawerSubmissionsLoading(false);
+          return;
+        } catch (err) {
+          if (!active) {
+            return;
+          }
+          if (!schoolSubmissionLookupKey) {
+            setSchoolDrawerSubmissions([]);
+            setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+            setIsSchoolDrawerSubmissionsLoading(false);
+            return;
+          }
+        }
+      }
+
+      if (!schoolSubmissionLookupKey) {
+        if (active) {
+          setIsSchoolDrawerSubmissionsLoading(false);
+        }
+        return;
+      }
+
       try {
-        const allRows = await listSubmissionsForSchool(schoolDrawerRecordId, {
+        const allRows = await listSubmissionsForSchoolRef.current(schoolSubmissionLookupKey, {
           signal: abortController.signal,
           force: shouldForceSchoolSubmissionReload(submissionRefreshTick),
+          schoolCode: schoolDrawerSchoolCode || null,
         });
         if (!active) {
           return;
         }
-        setSchoolDrawerSubmissions(allRows);
+        setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, allRows));
       } catch (err) {
         if (!active) {
           return;
@@ -294,13 +369,17 @@ export function useSchoolDrawer({
           return;
         }
         if (isMissingSchoolRecordError(err)) {
-          setSchoolDrawerSubmissions([]);
+          setSchoolDrawerSubmissions(latestSubmission ? [latestSubmission] : []);
           setSchoolDrawerSubmissionsError("");
-          closeSchoolDrawer();
+          if (!latestSubmission) {
+            closeSchoolDrawer();
+          }
           return;
         }
-        setSchoolDrawerSubmissions([]);
-        setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+        if (!latestSubmission) {
+          setSchoolDrawerSubmissions([]);
+          setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+        }
       } finally {
         if (active) {
           setIsSchoolDrawerSubmissionsLoading(false);
@@ -314,7 +393,14 @@ export function useSchoolDrawer({
       active = false;
       abortController.abort();
     };
-  }, [closeSchoolDrawer, isAuthenticated, listSubmissionsForSchool, schoolDrawerRecordId, submissionRefreshTick]);
+  }, [
+    closeSchoolDrawer,
+    isAuthenticated,
+    schoolDrawerLatestSubmissionId,
+    schoolDrawerRecordId,
+    schoolDrawerSchoolCode,
+    submissionRefreshTick,
+  ]);
 
   const availableSchoolDrawerYears = useMemo(
     () => deriveAvailableSchoolDrawerYears(schoolDrawerSubmissions),
@@ -345,6 +431,13 @@ export function useSchoolDrawer({
 
     const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
     if (!normalizedSchoolCode) {
+      schoolDetailCountsAbortRef.current?.abort();
+      schoolDetailCountsAbortRef.current = null;
+      setSyncedCountsLoadingSchoolKey(null);
+      setSyncedCountsError("");
+      return;
+    }
+    if (import.meta.env.VITE_E2E_SKIP_DRAWER_COUNTS === "true") {
       schoolDetailCountsAbortRef.current?.abort();
       schoolDetailCountsAbortRef.current = null;
       setSyncedCountsLoadingSchoolKey(null);
@@ -466,6 +559,8 @@ export function useSchoolDrawer({
     schoolDrawerSchoolCode,
   ]);
 
+  const hasResolvedSchoolDrawerSubmissions = schoolDrawerSubmissions.length > 0;
+
   return {
     schoolDrawerKey,
     schoolDrawerRecordId,
@@ -476,7 +571,7 @@ export function useSchoolDrawer({
     expandedDrawerIndicatorRows,
     highlightedDrawerIndicatorKey,
     schoolDrawerSubmissions,
-    isSchoolDrawerSubmissionsLoading,
+    isSchoolDrawerSubmissionsLoading: isSchoolDrawerSubmissionsLoading && !hasResolvedSchoolDrawerSubmissions,
     schoolDrawerSubmissionsError,
     accurateSyncedCountsBySchoolKey,
     syncedCountsLoadingSchoolKey,

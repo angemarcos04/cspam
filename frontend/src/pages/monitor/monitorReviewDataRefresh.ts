@@ -3,7 +3,7 @@ import { runRefreshBatches } from "@/lib/runRefreshBatches";
 interface RefreshMonitorReviewDataArgs {
   refreshSchoolDrawer: () => void;
   refreshSubmissions: () => Promise<unknown>;
-  refreshRecords: () => Promise<unknown>;
+  refreshRecords: (options?: { force?: boolean }) => Promise<unknown>;
 }
 
 export async function refreshMonitorReviewData({
@@ -14,6 +14,6 @@ export async function refreshMonitorReviewData({
   refreshSchoolDrawer();
   return runRefreshBatches([
     [refreshSubmissions],
-    [refreshRecords],
+    [() => refreshRecords({ force: true })],
   ]);
 }

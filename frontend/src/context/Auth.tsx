@@ -205,6 +205,7 @@ interface StoredAuthSession {
 }
 
 interface StatefulAuthEntryRequestOptions {
+  token?: string;
   credentialsMode?: RequestCredentials;
   extraHeaders?: Record<string, string>;
 }
@@ -245,6 +246,7 @@ function statefulAuthEntryRequestOptions(): StatefulAuthEntryRequestOptions {
   }
 
   return {
+    token: COOKIE_SESSION_TOKEN,
     credentialsMode: "include",
     extraHeaders: {
       "X-CSPAMS-Auth-Mode": "stateful",

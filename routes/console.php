@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schedule;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
@@ -377,3 +378,320 @@ Artisan::command('app:check-verification-delivery', function (): int {
 
     return self::FAILURE;
 })->purpose('Report whether monitor verification emails are configured for real delivery.');
+
+Artisan::command('e2e:seed-monitor-review', function (): int {
+    if (! app()->environment('testing')) {
+        $this->error('Refusing to seed monitor review E2E data outside APP_ENV=testing.');
+        return self::FAILURE;
+    }
+
+    $requiredTables = [
+        'academic_years',
+        'form_submission_histories',
+        'indicator_submission_files',
+        'indicator_submissions',
+        'schools',
+        'users',
+    ];
+
+    foreach ($requiredTables as $table) {
+        if (! Schema::hasTable($table)) {
+            $this->error("Required table is missing: {$table}. Run migrations first.");
+            return self::FAILURE;
+        }
+    }
+
+    $monitorEmail = strtolower(trim((string) env('CSPAMS_E2E_MONITOR_EMAIL', 'monitor-e2e@cspams.local')));
+    $monitorPassword = (string) env('CSPAMS_E2E_MONITOR_PASSWORD', 'E2eMonitor@2026!');
+    $schoolCode = '401777';
+    $schoolHeadEmail = 'school-head-e2e@cspams.local';
+    $returnSchoolCode = '401778';
+    $returnSchoolHeadEmail = 'school-head-return-e2e@cspams.local';
+    $fileType = 'fm_qad_001';
+    $filePath = 'e2e-monitor-review/fm-qad-001.pdf';
+    $returnFilePath = 'e2e-monitor-review/fm-qad-001-return.pdf';
+    $now = now();
+
+    Storage::disk('local')->put($filePath, "%PDF-1.4\n% CSPAMS live E2E monitor review file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+    Storage::disk('local')->put($returnFilePath, "%PDF-1.4\n% CSPAMS live E2E monitor return file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+
+    DB::transaction(function () use ($monitorEmail, $monitorPassword, $schoolCode, $schoolHeadEmail, $returnSchoolCode, $returnSchoolHeadEmail, $fileType, $filePath, $returnFilePath, $now): void {
+        \Spatie\Permission\Models\Role::query()->firstOrCreate([
+            'name' => \App\Support\Auth\UserRoleResolver::MONITOR,
+            'guard_name' => 'web',
+        ]);
+        \Spatie\Permission\Models\Role::query()->firstOrCreate([
+            'name' => \App\Support\Auth\UserRoleResolver::SCHOOL_HEAD,
+            'guard_name' => 'web',
+        ]);
+        app(\Spatie\Permission\PermissionRegistrar::class)->forgetCachedPermissions();
+
+        $academicYear = \App\Models\AcademicYear::query()->updateOrCreate(
+            ['name' => '2025-2026'],
+            [
+                'start_date' => '2025-06-01',
+                'end_date' => '2026-03-31',
+                'is_current' => true,
+            ],
+        );
+
+        /** @var \App\Models\School $school */
+        $school = \App\Models\School::withTrashed()->updateOrCreate(
+            ['school_code' => $schoolCode],
+            [
+                'name' => 'AMA Computer College-Santiago City',
+                'level' => 'High School',
+                'district' => 'Santiago City',
+                'address' => 'Santiago City',
+                'region' => 'Region II',
+                'type' => 'private',
+                'status' => 'active',
+                'reported_student_count' => 0,
+                'reported_teacher_count' => 0,
+            ],
+        );
+        if ($school->trashed()) {
+            $school->restore();
+        }
+
+        /** @var \App\Models\User $monitor */
+        $monitor = \App\Models\User::query()->updateOrCreate(
+            ['email' => $monitorEmail],
+            [
+                'name' => 'Division Monitor E2E',
+                'password' => \Illuminate\Support\Facades\Hash::make($monitorPassword),
+                'must_reset_password' => false,
+                'password_changed_at' => $now,
+                'school_id' => null,
+            ],
+        );
+        $monitor->forceFill([
+            'account_status' => \App\Support\Domain\AccountStatus::ACTIVE->value,
+            'account_type' => \App\Support\Auth\UserRoleResolver::MONITOR,
+            'email_verified_at' => $now,
+        ])->save();
+        $monitor->syncRoles([\App\Support\Auth\UserRoleResolver::MONITOR]);
+
+        /** @var \App\Models\User $schoolHead */
+        $schoolHead = \App\Models\User::query()->updateOrCreate(
+            ['email' => $schoolHeadEmail],
+            [
+                'name' => 'School Head E2E',
+                'password' => \Illuminate\Support\Facades\Hash::make('E2eSchoolHead@2026!'),
+                'must_reset_password' => false,
+                'password_changed_at' => $now,
+                'school_id' => $school->id,
+            ],
+        );
+        $schoolHead->forceFill([
+            'account_status' => \App\Support\Domain\AccountStatus::ACTIVE->value,
+            'account_type' => \App\Support\Auth\UserRoleResolver::SCHOOL_HEAD,
+            'email_verified_at' => $now,
+        ])->save();
+        $schoolHead->syncRoles([\App\Support\Auth\UserRoleResolver::SCHOOL_HEAD]);
+
+        $existingSubmissionIds = \App\Models\IndicatorSubmission::query()
+            ->where('school_id', $school->id)
+            ->pluck('id');
+
+        if ($existingSubmissionIds->isNotEmpty()) {
+            \App\Models\IndicatorSubmissionScopeReview::query()
+                ->whereIn('indicator_submission_id', $existingSubmissionIds)
+                ->delete();
+            \App\Models\IndicatorSubmissionFile::query()
+                ->whereIn('indicator_submission_id', $existingSubmissionIds)
+                ->delete();
+            \App\Models\FormSubmissionHistory::query()
+                ->where('form_type', \App\Models\IndicatorSubmission::FORM_TYPE)
+                ->whereIn('submission_id', $existingSubmissionIds)
+                ->delete();
+            \App\Models\IndicatorSubmission::query()
+                ->whereIn('id', $existingSubmissionIds)
+                ->delete();
+        }
+
+        /** @var \App\Models\IndicatorSubmission $submission */
+        $submission = \App\Models\IndicatorSubmission::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => null,
+            'version' => 1,
+            'status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'notes' => 'Live E2E monitor review package.',
+            'created_by' => $schoolHead->id,
+            'submitted_by' => $schoolHead->id,
+        ]);
+
+        \App\Models\IndicatorSubmissionFile::query()->create([
+            'indicator_submission_id' => $submission->id,
+            'type' => $fileType,
+            'path' => $filePath,
+            'original_filename' => 'Profile-1.pdf',
+            'size_bytes' => strlen((string) Storage::disk('local')->get($filePath)),
+            'uploaded_at' => $now,
+        ]);
+
+        \App\Models\FormSubmissionHistory::query()->create([
+            'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $submission->id,
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'action' => "{$fileType}_uploaded",
+            'from_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'to_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'actor_id' => $schoolHead->id,
+            'notes' => 'FM-QAD file uploaded for live E2E.',
+            'metadata' => [
+                'type' => $fileType,
+                'touchedScopes' => [$fileType],
+            ],
+            'created_at' => $now->copy()->subMinute(),
+        ]);
+
+        \App\Models\FormSubmissionHistory::query()->create([
+            'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $submission->id,
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'action' => 'scope_submitted',
+            'from_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'to_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'actor_id' => $schoolHead->id,
+            'notes' => 'FM-QAD scope sent for live E2E.',
+            'metadata' => [
+                'targets' => [$fileType],
+                'touchedScopes' => [$fileType],
+            ],
+            'created_at' => $now,
+        ]);
+
+        $school->forceFill([
+            'submitted_by' => $schoolHead->id,
+            'submitted_at' => $now,
+        ])->save();
+
+        /** @var \App\Models\School $returnSchool */
+        $returnSchool = \App\Models\School::withTrashed()->updateOrCreate(
+            ['school_code' => $returnSchoolCode],
+            [
+                'name' => 'CSPAMS Return Flow School',
+                'level' => 'High School',
+                'district' => 'Santiago City',
+                'address' => 'Santiago City',
+                'region' => 'Region II',
+                'type' => 'private',
+                'status' => 'active',
+                'reported_student_count' => 0,
+                'reported_teacher_count' => 0,
+            ],
+        );
+        if ($returnSchool->trashed()) {
+            $returnSchool->restore();
+        }
+
+        /** @var \App\Models\User $returnSchoolHead */
+        $returnSchoolHead = \App\Models\User::query()->updateOrCreate(
+            ['email' => $returnSchoolHeadEmail],
+            [
+                'name' => 'Return Flow School Head E2E',
+                'password' => \Illuminate\Support\Facades\Hash::make('E2eSchoolHead@2026!'),
+                'must_reset_password' => false,
+                'password_changed_at' => $now,
+                'school_id' => $returnSchool->id,
+            ],
+        );
+        $returnSchoolHead->forceFill([
+            'account_status' => \App\Support\Domain\AccountStatus::ACTIVE->value,
+            'account_type' => \App\Support\Auth\UserRoleResolver::SCHOOL_HEAD,
+            'email_verified_at' => $now,
+        ])->save();
+        $returnSchoolHead->syncRoles([\App\Support\Auth\UserRoleResolver::SCHOOL_HEAD]);
+
+        $existingReturnSubmissionIds = \App\Models\IndicatorSubmission::query()
+            ->where('school_id', $returnSchool->id)
+            ->pluck('id');
+
+        if ($existingReturnSubmissionIds->isNotEmpty()) {
+            \App\Models\IndicatorSubmissionScopeReview::query()
+                ->whereIn('indicator_submission_id', $existingReturnSubmissionIds)
+                ->delete();
+            \App\Models\IndicatorSubmissionFile::query()
+                ->whereIn('indicator_submission_id', $existingReturnSubmissionIds)
+                ->delete();
+            \App\Models\FormSubmissionHistory::query()
+                ->where('form_type', \App\Models\IndicatorSubmission::FORM_TYPE)
+                ->whereIn('submission_id', $existingReturnSubmissionIds)
+                ->delete();
+            \App\Models\IndicatorSubmission::query()
+                ->whereIn('id', $existingReturnSubmissionIds)
+                ->delete();
+        }
+
+        /** @var \App\Models\IndicatorSubmission $returnSubmission */
+        $returnSubmission = \App\Models\IndicatorSubmission::query()->create([
+            'school_id' => $returnSchool->id,
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => null,
+            'version' => 1,
+            'status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'notes' => 'Live E2E monitor return package.',
+            'created_by' => $returnSchoolHead->id,
+            'submitted_by' => $returnSchoolHead->id,
+        ]);
+
+        \App\Models\IndicatorSubmissionFile::query()->create([
+            'indicator_submission_id' => $returnSubmission->id,
+            'type' => $fileType,
+            'path' => $returnFilePath,
+            'original_filename' => 'Return-Profile-1.pdf',
+            'size_bytes' => strlen((string) Storage::disk('local')->get($returnFilePath)),
+            'uploaded_at' => $now,
+        ]);
+
+        \App\Models\FormSubmissionHistory::query()->create([
+            'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $returnSubmission->id,
+            'school_id' => $returnSchool->id,
+            'academic_year_id' => $academicYear->id,
+            'action' => "{$fileType}_uploaded",
+            'from_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'to_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'actor_id' => $returnSchoolHead->id,
+            'notes' => 'FM-QAD file uploaded for live E2E return flow.',
+            'metadata' => [
+                'type' => $fileType,
+                'touchedScopes' => [$fileType],
+            ],
+            'created_at' => $now->copy()->subMinute(),
+        ]);
+
+        \App\Models\FormSubmissionHistory::query()->create([
+            'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $returnSubmission->id,
+            'school_id' => $returnSchool->id,
+            'academic_year_id' => $academicYear->id,
+            'action' => 'scope_submitted',
+            'from_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'to_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'actor_id' => $returnSchoolHead->id,
+            'notes' => 'FM-QAD scope sent for live E2E return flow.',
+            'metadata' => [
+                'targets' => [$fileType],
+                'touchedScopes' => [$fileType],
+            ],
+            'created_at' => $now,
+        ]);
+
+        $returnSchool->forceFill([
+            'submitted_by' => $returnSchoolHead->id,
+            'submitted_at' => $now,
+        ])->save();
+    });
+
+    $this->info('Seeded monitor review live E2E data.');
+    $this->line('Monitor login: ' . $monitorEmail);
+    $this->line('Verify school: AMA Computer College-Santiago City');
+    $this->line('Return school: CSPAMS Return Flow School');
+
+    return self::SUCCESS;
+})->purpose('Seed isolated test-only monitor review data for live Playwright smoke tests.');

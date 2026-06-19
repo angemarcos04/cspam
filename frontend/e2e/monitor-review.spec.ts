@@ -263,6 +263,10 @@ async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState
       });
     }
 
+    if (path === "/api/indicators/submissions/sub-1") {
+      return jsonResponse(route, { data: buildSubmission(stateRef.value, stateRef.reviewNotes) });
+    }
+
     if (path === "/api/indicators/metrics") {
       return jsonResponse(route, { data: [] });
     }
@@ -404,7 +408,7 @@ test.describe("monitor review smoke flow", () => {
     await expect(returnSubmitButton).toBeEnabled();
     await returnSubmitButton.click();
 
-    await expect(fileRow.getByText("Returned")).toBeVisible();
+    await expect(fileRow.getByText("Returned", { exact: true })).toBeVisible();
     await expect(fileRow.getByText("Return note: Please upload the corrected FM-QAD file.")).toBeVisible();
     await expect(fileRow.getByRole("button", { name: "View" })).toBeDisabled();
     await expect(fileRow.getByRole("button", { name: "Verify" })).toBeDisabled();

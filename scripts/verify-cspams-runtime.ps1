@@ -3,6 +3,7 @@ $ErrorActionPreference = "Continue"
 
 $expectedRepo = "C:\Users\Angie\Desktop\cspam-git"
 $staleRepo = "C:\Users\Angie\Desktop\cspam-main"
+$currentCommit = $null
 
 Write-Host "CSPAMS runtime verification" -ForegroundColor Cyan
 Write-Host "Current directory: $(Get-Location)"
@@ -16,12 +17,14 @@ if (-not (Test-Path -LiteralPath $expectedRepo)) {
     try {
         git status --short --branch
         git log -1 --oneline
+        $currentCommit = (git rev-parse HEAD).Trim()
     } finally {
         Pop-Location
     }
 }
 
 $distAssets = Join-Path $expectedRepo "frontend\dist\assets"
+$buildInfoPath = Join-Path $expectedRepo "frontend\dist\cspams-build-info.json"
 Write-Host ""
 Write-Host "Frontend dist assets" -ForegroundColor Cyan
 if (Test-Path -LiteralPath $distAssets) {
@@ -31,6 +34,27 @@ if (Test-Path -LiteralPath $distAssets) {
         Format-Table -AutoSize
 } else {
     Write-Warning "No frontend dist assets found at $distAssets. Run npm.cmd run build from cspam-git\frontend."
+}
+
+Write-Host ""
+Write-Host "Frontend build metadata" -ForegroundColor Cyan
+if (Test-Path -LiteralPath $buildInfoPath) {
+    try {
+        $buildInfo = Get-Content -LiteralPath $buildInfoPath -Raw | ConvertFrom-Json
+        $buildCommit = [string] $buildInfo.commit
+        $buildShortCommit = [string] $buildInfo.shortCommit
+        $buildBuiltAt = [string] $buildInfo.builtAt
+        Write-Host "Built commit: $buildShortCommit"
+        Write-Host "Built at: $buildBuiltAt"
+
+        if ($currentCommit -and $buildCommit -and $buildCommit -ne $currentCommit) {
+            Write-Warning "Frontend dist was built from $buildShortCommit, but current checkout is $($currentCommit.Substring(0, [Math]::Min(7, $currentCommit.Length))). Rebuild from cspam-git\frontend."
+        }
+    } catch {
+        Write-Warning "Could not parse $buildInfoPath. Rebuild frontend assets from cspam-git\frontend."
+    }
+} else {
+    Write-Warning "No frontend build metadata found at $buildInfoPath. Run npm.cmd run build from cspam-git\frontend."
 }
 
 Write-Host ""

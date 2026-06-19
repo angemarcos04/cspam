@@ -172,6 +172,10 @@ final class SubmissionScopeProgressResolver
                 continue;
             }
 
+            if ($action === 'scope_verified') {
+                continue;
+            }
+
             foreach ($this->touchedScopeIdsForHistoryAction($submission, $action, $metadata) as $scopeId) {
                 unset($submittedScopeSet[$scopeId]);
             }
