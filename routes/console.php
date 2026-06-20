@@ -408,14 +408,17 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
     $returnSchoolCode = '401778';
     $returnSchoolHeadEmail = 'school-head-return-e2e@cspams.local';
     $fileType = 'fm_qad_001';
+    $schoolHeadSendFileType = 'fm_qad_002';
     $filePath = 'e2e-monitor-review/fm-qad-001.pdf';
+    $schoolHeadSendFilePath = 'e2e-monitor-review/fm-qad-002-send.pdf';
     $returnFilePath = 'e2e-monitor-review/fm-qad-001-return.pdf';
     $now = now();
 
     Storage::disk('local')->put($filePath, "%PDF-1.4\n% CSPAMS live E2E monitor review file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+    Storage::disk('local')->put($schoolHeadSendFilePath, "%PDF-1.4\n% CSPAMS live E2E School Head send file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
     Storage::disk('local')->put($returnFilePath, "%PDF-1.4\n% CSPAMS live E2E monitor return file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
 
-    DB::transaction(function () use ($monitorEmail, $monitorPassword, $schoolCode, $schoolHeadEmail, $returnSchoolCode, $returnSchoolHeadEmail, $fileType, $filePath, $returnFilePath, $now): void {
+    DB::transaction(function () use ($monitorEmail, $monitorPassword, $schoolCode, $schoolHeadEmail, $returnSchoolCode, $returnSchoolHeadEmail, $fileType, $schoolHeadSendFileType, $filePath, $schoolHeadSendFilePath, $returnFilePath, $now): void {
         \Spatie\Permission\Models\Role::query()->firstOrCreate([
             'name' => \App\Support\Auth\UserRoleResolver::MONITOR,
             'guard_name' => 'web',
@@ -535,6 +538,17 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
             'uploaded_at' => $now,
         ]);
 
+        // FIX: this saved file has no scope_submitted history. The realtime E2E
+        // sends it through the School Head workspace while Monitor is watching.
+        \App\Models\IndicatorSubmissionFile::query()->create([
+            'indicator_submission_id' => $submission->id,
+            'type' => $schoolHeadSendFileType,
+            'path' => $schoolHeadSendFilePath,
+            'original_filename' => 'Send-Profile-2.pdf',
+            'size_bytes' => strlen((string) Storage::disk('local')->get($schoolHeadSendFilePath)),
+            'uploaded_at' => $now,
+        ]);
+
         \App\Models\FormSubmissionHistory::query()->create([
             'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
             'submission_id' => $submission->id,
@@ -550,6 +564,23 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
                 'touchedScopes' => [$fileType],
             ],
             'created_at' => $now->copy()->subMinute(),
+        ]);
+
+        \App\Models\FormSubmissionHistory::query()->create([
+            'form_type' => \App\Models\IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $submission->id,
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'action' => "{$schoolHeadSendFileType}_uploaded",
+            'from_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'to_status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'actor_id' => $schoolHead->id,
+            'notes' => 'FM-QAD file saved for live School Head send E2E.',
+            'metadata' => [
+                'type' => $schoolHeadSendFileType,
+                'touchedScopes' => [$schoolHeadSendFileType],
+            ],
+            'created_at' => $now->copy()->subSeconds(30),
         ]);
 
         \App\Models\FormSubmissionHistory::query()->create([
@@ -720,8 +751,9 @@ Artisan::command('e2e:verify-monitor-review-fixture', function (): int {
     /** @var \App\Support\Indicators\SubmissionScopeProgressResolver $scopeProgressResolver */
     $scopeProgressResolver = app(\App\Support\Indicators\SubmissionScopeProgressResolver::class);
     $fixtures = [
-        ['schoolCode' => '401777', 'label' => 'Verify school'],
-        ['schoolCode' => '401778', 'label' => 'Return school'],
+        ['schoolCode' => '401777', 'label' => 'Verify school', 'scopeId' => 'fm_qad_001', 'sent' => true],
+        ['schoolCode' => '401778', 'label' => 'Return school', 'scopeId' => 'fm_qad_001', 'sent' => true],
+        ['schoolCode' => '401777', 'label' => 'School Head Send file', 'scopeId' => 'fm_qad_002', 'sent' => false],
     ];
     $issues = [];
 
@@ -747,11 +779,15 @@ Artisan::command('e2e:verify-monitor-review-fixture', function (): int {
             continue;
         }
 
-        $fileType = 'fm_qad_001';
+        $fileType = $fixture['scopeId'];
         $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
         $hasSentScope = in_array($fileType, $scopeProgress['submittedScopeIds'] ?? [], true);
-        if (! $scopeProgressResolver->isScopeComplete($submission, $fileType) || ! $hasSentScope) {
-            $issues[] = "{$fixture['label']} does not have a complete sent {$fileType} scope.";
+        if (! $scopeProgressResolver->isScopeComplete($submission, $fileType)) {
+            $issues[] = "{$fixture['label']} does not have a complete {$fileType} scope.";
+        } elseif ($fixture['sent'] && ! $hasSentScope) {
+            $issues[] = "{$fixture['label']} does not have a sent {$fileType} scope.";
+        } elseif (! $fixture['sent'] && $hasSentScope) {
+            $issues[] = "{$fixture['label']} unexpectedly has a sent {$fileType} scope.";
         }
     }
 

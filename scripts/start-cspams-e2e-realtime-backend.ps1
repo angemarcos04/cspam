@@ -8,6 +8,7 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Resolve-Path -LiteralPath (Join-Path $PSScriptRoot "..")
 $dbPath = Join-Path $repoRoot "database\cspams_e2e_realtime.sqlite"
+$configCachePath = Join-Path $repoRoot "bootstrap\cache\cspams_e2e_realtime_config.php"
 $reverbProcess = $null
 $queueProcess = $null
 
@@ -15,10 +16,18 @@ Push-Location $repoRoot
 try {
     # FIX: this isolated server is the only E2E path allowed to start real Reverb and queue workers.
     $env:APP_ENV = "testing"
+    # FIX: do not inherit a cached developer/production configuration. The
+    # realtime E2E must use this process's isolated URL, CORS, SQLite, and
+    # Reverb settings.
+    $env:APP_CONFIG_CACHE = $configCachePath
     $env:APP_KEY = "base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     $env:APP_DEBUG = "true"
     $env:APP_URL = "http://127.0.0.1:$Port"
     $env:FRONTEND_URL = "http://127.0.0.1:4179"
+    # FIX: the isolated browser app runs on Vite's port while Laravel runs on
+    # this script's port. Make that test-only cross-origin contract explicit.
+    $env:CORS_ALLOWED_ORIGINS = "http://127.0.0.1:4179"
+    $env:SANCTUM_STATEFUL_DOMAINS = "127.0.0.1:4179,localhost:4179"
     $env:DB_CONNECTION = "sqlite"
     $env:DB_DATABASE = $dbPath
     $env:CACHE_STORE = "array"
@@ -42,6 +51,9 @@ try {
     if (Test-Path -LiteralPath $dbPath) {
         Remove-Item -LiteralPath $dbPath -Force
     }
+    if (Test-Path -LiteralPath $configCachePath) {
+        Remove-Item -LiteralPath $configCachePath -Force
+    }
     New-Item -ItemType File -Path $dbPath -Force | Out-Null
 
     php artisan migrate:fresh --force
@@ -51,7 +63,6 @@ try {
 
     $reverbProcess = Start-Process -FilePath "php" -ArgumentList "artisan", "reverb:start", "--host=127.0.0.1", "--port=$ReverbPort" -PassThru -NoNewWindow
     $queueProcess = Start-Process -FilePath "php" -ArgumentList "artisan", "queue:work", "database", "--queue=broadcasts", "--sleep=1", "--tries=1", "--timeout=60" -PassThru -NoNewWindow
-
     for ($attempt = 0; $attempt -lt 30; $attempt++) {
         if (Test-NetConnection -ComputerName "127.0.0.1" -Port $ReverbPort -InformationLevel Quiet) {
             break

@@ -2456,4 +2456,57 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(refreshAllSubmissionsMock).toHaveBeenCalledTimes(1);
     });
   });
+
+  it("keeps the School Head dashboard focused on reports and the workspace without audit panels", async () => {
+    const submission = buildSubmission({
+      id: "focused-workspace-101",
+      status: "draft",
+      statusLabel: "Draft",
+      submittedAt: null,
+      indicators: [buildEnrollmentIndicator(1515)],
+      items: [],
+    });
+
+    useAuthMock.mockReturnValue({
+      user: {
+        id: 7,
+        role: "school_head",
+        schoolId: "school-1",
+        schoolType: "private",
+        schoolName: "AMA CC - Santiago City",
+        schoolCode: "401777",
+        schoolAddress: "Herritage Bldg.",
+      },
+      apiToken: "token",
+    });
+    useDataMock.mockReturnValue({
+      records: [{ schoolId: "school-1", schoolName: "AMA CC - Santiago City", schoolCode: "401777", address: "Herritage Bldg." }],
+      error: "",
+      lastSyncedAt: "2026-05-17T00:00:00.000Z",
+      syncScope: "records",
+      syncStatus: "up_to_date",
+      refreshRecords: refreshRecordsMock,
+    });
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [],
+      allSubmissions: [submission],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      downloadSubmissionFile: vi.fn(),
+      fetchSubmission: vi.fn(async () => submission),
+      loadSubmissionsForYear: vi.fn(async () => [submission]),
+      refreshAllSubmissions: refreshAllSubmissionsMock,
+      refreshSubmissions: refreshSubmissionsMock,
+    });
+
+    const view = render(<SchoolAdminDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("workspace-panel")).not.toBeNull();
+      expect(screen.getByText("TARGETS-MET")).not.toBeNull();
+    });
+    expect(view.container.querySelector("#school-head-recent-activity")).toBeNull();
+    expect(view.container.querySelector("#school-head-security-activity")).toBeNull();
+    expect(screen.queryByText("Recent Activity")).toBeNull();
+    expect(screen.queryByText("Security Activity")).toBeNull();
+  });
 });
