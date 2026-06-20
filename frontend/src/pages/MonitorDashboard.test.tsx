@@ -693,6 +693,52 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("requests School Head security activity for the current actor without an academic-year filter", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: [
+        {
+          id: "audit-security-1",
+          eventType: "auth.login.success",
+          eventLabel: "auth.login.success",
+          actor: { id: "42", name: "School Head", role: "school_head" },
+          school: { id: "1", code: "900001", name: "Santiago Elementary", type: "public" },
+          academicYear: { id: null, label: null },
+          submissionId: null,
+          scopeId: null,
+          scopeType: null,
+          scopeLabel: null,
+          fileType: null,
+          fileLabel: null,
+          status: { from: null, to: null, decision: null, previousDecision: null },
+          details: { outcome: "success" },
+          ipAddress: "127.0.0.1",
+          createdAt: "2026-06-20T10:00:00.000Z",
+        },
+      ],
+      meta: { current_page: 1, last_page: 1, per_page: 12, total: 1 },
+    }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <AuditTrailPanel
+        compact
+        title="Security Activity"
+        eventPrefix="auth."
+        ownEventsOnly
+      />,
+    );
+
+    expect((await screen.findAllByText("auth.login.success")).length).toBeGreaterThan(0);
+    const requestUrl = String(fetchMock.mock.calls[0]?.[0] ?? "");
+    expect(requestUrl).toContain("mine=true");
+    expect(requestUrl).toContain("event_prefix=auth.");
+    expect(requestUrl).not.toContain("academic_year_label");
+    expect(screen.queryByText("127.0.0.1")).toBeNull();
+  });
+
   it("sends queue reminders with an optional note", async () => {
     render(<MonitorDashboard />);
 

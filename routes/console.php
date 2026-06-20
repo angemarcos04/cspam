@@ -434,6 +434,10 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
                 'is_current' => true,
             ],
         );
+        // FIX: the browser suite must never inherit an ambiguous active academic year.
+        \App\Models\AcademicYear::query()
+            ->whereKeyNot($academicYear->id)
+            ->update(['is_current' => false]);
 
         /** @var \App\Models\School $school */
         $school = \App\Models\School::withTrashed()->updateOrCreate(
@@ -695,3 +699,72 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
 
     return self::SUCCESS;
 })->purpose('Seed isolated test-only monitor review data for live Playwright smoke tests.');
+
+Artisan::command('e2e:verify-monitor-review-fixture', function (): int {
+    if (! app()->environment('testing')) {
+        $this->error('Refusing to verify monitor review E2E data outside APP_ENV=testing.');
+
+        return self::FAILURE;
+    }
+
+    $academicYear = \App\Models\AcademicYear::query()
+        ->where('name', '2025-2026')
+        ->where('is_current', true)
+        ->first();
+    if (! $academicYear) {
+        $this->error('Active E2E academic year 2025-2026 is missing.');
+
+        return self::FAILURE;
+    }
+
+    /** @var \App\Support\Indicators\SubmissionScopeProgressResolver $scopeProgressResolver */
+    $scopeProgressResolver = app(\App\Support\Indicators\SubmissionScopeProgressResolver::class);
+    $fixtures = [
+        ['schoolCode' => '401777', 'label' => 'Verify school'],
+        ['schoolCode' => '401778', 'label' => 'Return school'],
+    ];
+    $issues = [];
+
+    foreach ($fixtures as $fixture) {
+        $school = \App\Models\School::query()
+            ->where('school_code', $fixture['schoolCode'])
+            ->first();
+        if (! $school) {
+            $issues[] = "{$fixture['label']} is missing.";
+
+            continue;
+        }
+
+        $submission = \App\Models\IndicatorSubmission::query()
+            ->with('submissionFiles')
+            ->where('school_id', $school->id)
+            ->where('academic_year_id', $academicYear->id)
+            ->latest('id')
+            ->first();
+        if (! $submission) {
+            $issues[] = "{$fixture['label']} submission is missing.";
+
+            continue;
+        }
+
+        $fileType = 'fm_qad_001';
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+        $hasSentScope = in_array($fileType, $scopeProgress['submittedScopeIds'] ?? [], true);
+        if (! $scopeProgressResolver->isScopeComplete($submission, $fileType) || ! $hasSentScope) {
+            $issues[] = "{$fixture['label']} does not have a complete sent {$fileType} scope.";
+        }
+    }
+
+    if ($issues !== []) {
+        $this->error('Monitor review E2E fixture is invalid:');
+        foreach ($issues as $issue) {
+            $this->line("  - {$issue}");
+        }
+
+        return self::FAILURE;
+    }
+
+    $this->info('Monitor review E2E fixture is ready for Verify and Return scenarios.');
+
+    return self::SUCCESS;
+})->purpose('Verify isolated test-only monitor review fixtures before Playwright starts.');

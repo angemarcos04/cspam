@@ -22,6 +22,8 @@ interface AuditTrailPanelProps {
   schoolId?: string | number | null;
   schoolCode?: string | number | null;
   academicYearLabel?: string | null;
+  eventPrefix?: string | null;
+  ownEventsOnly?: boolean;
   compact?: boolean;
   enableRealtime?: boolean;
 }
@@ -124,6 +126,8 @@ export function AuditTrailPanel({
   schoolId = null,
   schoolCode = null,
   academicYearLabel = null,
+  eventPrefix = null,
+  ownEventsOnly = false,
   compact = false,
   enableRealtime = true,
 }: AuditTrailPanelProps) {
@@ -137,6 +141,7 @@ export function AuditTrailPanel({
   const [lastLoadedAt, setLastLoadedAt] = useState<string | null>(null);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
   const token = apiToken ?? COOKIE_SESSION_TOKEN;
+  const effectiveActionPrefix = eventPrefix ?? actionPrefix;
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -151,8 +156,11 @@ export function AuditTrailPanel({
     if (academicYearLabel) {
       params.set("academic_year_label", academicYearLabel);
     }
-    if (actionPrefix) {
-      params.set("event_prefix", actionPrefix);
+    if (effectiveActionPrefix) {
+      params.set("event_prefix", effectiveActionPrefix);
+    }
+    if (ownEventsOnly) {
+      params.set("mine", "true");
     }
     if (dateFrom) {
       params.set("date_from", dateFrom);
@@ -162,7 +170,7 @@ export function AuditTrailPanel({
     }
 
     return params.toString();
-  }, [academicYearLabel, actionPrefix, compact, dateFrom, dateTo, schoolCode, schoolId]);
+  }, [academicYearLabel, compact, dateFrom, dateTo, effectiveActionPrefix, ownEventsOnly, schoolCode, schoolId]);
 
   const loadAuditTrail = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
@@ -206,7 +214,7 @@ export function AuditTrailPanel({
         schoolId,
         schoolCode,
         academicYearLabel,
-        actionPrefix,
+        actionPrefix: effectiveActionPrefix,
       })) {
         return;
       }
@@ -230,7 +238,7 @@ export function AuditTrailPanel({
       }
       window.removeEventListener("cspams:update", handleRealtimeAuditEvent);
     };
-  }, [academicYearLabel, actionPrefix, enableRealtime, loadAuditTrail, schoolCode, schoolId]);
+  }, [academicYearLabel, effectiveActionPrefix, enableRealtime, loadAuditTrail, schoolCode, schoolId]);
 
   return (
     <section id={id ?? (compact ? "monitor-school-audit-trail" : "monitor-audit-trail")} className="rounded-sm border border-slate-200 bg-white">
@@ -258,8 +266,9 @@ export function AuditTrailPanel({
           <label className="text-xs font-semibold text-slate-600">
             Action
             <select
-              value={actionPrefix}
+              value={eventPrefix ?? actionPrefix}
               onChange={(event) => setActionPrefix(event.target.value)}
+              disabled={eventPrefix !== null}
               className="mt-1 w-full rounded-sm border border-slate-300 bg-white px-2 py-2 text-sm text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary-100"
             >
               {ACTION_OPTIONS.map((option) => (

@@ -74,6 +74,11 @@ class AuditLogController extends Controller
 
     private function applyFilters(Builder $query, Request $request, User $user): void
     {
+        // FIX: security history must be restricted to the authenticated account.
+        if ($request->boolean('mine')) {
+            $query->where('user_id', $user->id);
+        }
+
         $action = trim((string) $request->query('action', ''));
         if ($action !== '') {
             $query->where('action', $action);

@@ -26,11 +26,19 @@ async function signInAsMonitor(page: Page) {
   await page.locator("#passcode").fill(monitorPassword);
   const loginRequestPromise = page.waitForRequest((request) => request.url().includes("/api/auth/login"));
   const loginResponsePromise = page.waitForResponse((response) => response.url().includes("/api/auth/login"));
+  // FIX: the monitor queue needs both records and submission data before it can render For Review rows.
+  const recordsResponsePromise = page.waitForResponse((response) => (
+    response.ok() && new URL(response.url()).pathname === "/api/dashboard/records"
+  ), { timeout: 60_000 });
+  const submissionsResponsePromise = page.waitForResponse((response) => (
+    response.ok() && new URL(response.url()).pathname === "/api/indicators/submissions"
+  ), { timeout: 60_000 });
   await page.getByRole("button", { name: "Sign In" }).click();
   const loginRequest = await loginRequestPromise;
   expect(loginRequest.headers()["x-xsrf-token"]).toBeTruthy();
   const loginResponse = await loginResponsePromise;
   expect(loginResponse.status()).not.toBe(419);
+  await Promise.all([recordsResponsePromise, submissionsResponsePromise]);
   await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 }
@@ -106,17 +114,12 @@ test.describe("live monitor review flow", () => {
     await expect(page.getByText("A note is optional.")).toBeVisible();
     await expect(page.getByLabel("Return note")).toHaveCount(0);
     await expect(returnSubmitButton).toBeEnabled();
-
-    await page.getByLabel("Include a note to the School Head").check();
-    await expect(returnSubmitButton).toBeDisabled();
-    await page.getByLabel("Return note").fill("Please upload the corrected FM-QAD file.");
-    await expect(returnSubmitButton).toBeEnabled();
+    // The mocked suite covers the optional-note toggle. Live E2E proves the no-note return contract.
     const returnResponsePromise = waitForSuccessfulScopeReview(page);
     await returnSubmitButton.click();
     await returnResponsePromise;
 
     await expect(fileRow.locator("span").filter({ hasText: /^Returned$/ })).toBeVisible();
-    await expect(fileRow.getByText("Return note: Please upload the corrected FM-QAD file.")).toBeVisible();
     await expect(fileRow.getByRole("button", { name: "View" })).toBeDisabled();
     await expect(fileRow.getByRole("button", { name: "Verify" })).toBeDisabled();
     await expect(fileRow.getByRole("button", { name: "Return" })).toBeDisabled();

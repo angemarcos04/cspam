@@ -64,3 +64,28 @@ Use this checklist when the browser still shows older monitor dashboard behavior
    php artisan test --filter=IndicatorSubmissionWorkflowTest
    ```
    This test suite can take several minutes locally. Treat short command timeouts as an operational timeout, not a workflow failure.
+
+## Realtime Operations
+
+Immediate School Head, Monitor, and Audit Trail updates require both the database queue worker and Reverb. A connected browser alone is not enough: `CspamsUpdateBroadcast` uses the `broadcasts` queue.
+
+1. Validate the runtime services from the real checkout:
+   ```powershell
+   cd C:\Users\Angie\Desktop\cspam-git
+   .\scripts\verify-cspams-runtime.ps1 -RequireRealtimeServices -ReverbPort 8080
+   ```
+   The command checks for a PHP worker serving `broadcasts`, a `reverb:start` process, and a listener on the configured Reverb port. It does not print secrets or application payloads.
+
+2. Run these processes under the host's process supervisor. Do not rely on an interactive terminal:
+   ```powershell
+   php artisan queue:work database --queue=broadcasts,default --sleep=1 --tries=3 --timeout=90
+   php artisan reverb:start --host=0.0.0.0 --port=8080
+   ```
+   Use your deployment platform's restart policy, log retention, and alerting to restart either process after failure. Configure Reverb app keys and database credentials through the deployment environment, never this document.
+
+3. Local proof of realtime audit delivery uses a separate test-only stack:
+   ```powershell
+   cd C:\Users\Angie\Desktop\cspam-git\frontend
+   npm.cmd run e2e:realtime
+   ```
+   It creates an isolated SQLite database, starts Reverb and a `broadcasts` queue worker, performs a real Monitor scope review, and verifies that a second Monitor Audit Trail refreshes without pressing Refresh.

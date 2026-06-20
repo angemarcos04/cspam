@@ -35,7 +35,15 @@ try {
     php artisan migrate:fresh --force
     php artisan db:seed --class=Database\Seeders\RolesAndPermissionsSeeder --force
     php artisan e2e:seed-monitor-review
-    php artisan serve --host=127.0.0.1 --port=$Port
+    php artisan e2e:verify-monitor-review-fixture
+    # The isolated SQLite fixture can take longer than the local CLI default while Laravel builds dashboard summaries.
+    $router = Join-Path $repoRoot "vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php"
+    Push-Location (Join-Path $repoRoot "public")
+    try {
+        php -d max_execution_time=180 -S 127.0.0.1:$Port $router
+    } finally {
+        Pop-Location
+    }
 } finally {
     Pop-Location
 }

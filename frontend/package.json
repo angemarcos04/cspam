@@ -11,7 +11,8 @@
     "test:watch": "vitest",
     "e2e": "playwright test",
     "e2e:headed": "playwright test --headed",
-    "e2e:live": "playwright test --config playwright.live.config.ts"
+    "e2e:live": "playwright test --config playwright.live.config.ts",
+    "e2e:realtime": "playwright test --config playwright.realtime.config.ts"
   },
   "dependencies": {
     "clsx": "^2.1.1",

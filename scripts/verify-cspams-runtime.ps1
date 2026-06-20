@@ -1,3 +1,8 @@
+param(
+    [int] $ReverbPort = 8080,
+    [switch] $RequireRealtimeServices
+)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Continue"
 
@@ -82,6 +87,48 @@ if ($processInspectionAvailable -and $processes) {
     }
 } elseif ($processInspectionAvailable) {
     Write-Host "No node.exe or php.exe processes are currently visible."
+}
+
+Write-Host ""
+Write-Host "Realtime operational checks" -ForegroundColor Cyan
+if (-not $processInspectionAvailable) {
+    Write-Warning "Cannot verify queue worker or Reverb process health without process inspection."
+} else {
+    $queueWorkers = @($processes | Where-Object {
+        $_.CommandLine -and $_.CommandLine -match '(?i)artisan\s+queue:(work|listen).*broadcasts'
+    })
+    $reverbWorkers = @($processes | Where-Object {
+        $_.CommandLine -and $_.CommandLine -match '(?i)artisan\s+reverb:start'
+    })
+
+    if ($queueWorkers.Count -gt 0) {
+        Write-Host "Broadcasts queue worker detected." -ForegroundColor Green
+    } elseif ($RequireRealtimeServices) {
+        Write-Warning "No queue worker serving the broadcasts queue was detected. Immediate audit/realtime updates may be delayed."
+    } else {
+        Write-Host "No broadcasts queue worker detected. Use -RequireRealtimeServices when validating a realtime deployment." -ForegroundColor Yellow
+    }
+
+    if ($reverbWorkers.Count -gt 0) {
+        Write-Host "Reverb process detected." -ForegroundColor Green
+    } elseif ($RequireRealtimeServices) {
+        Write-Warning "No Reverb process was detected. Clients cannot receive realtime updates."
+    } else {
+        Write-Host "No Reverb process detected. Use -RequireRealtimeServices when validating a realtime deployment." -ForegroundColor Yellow
+    }
+
+    try {
+        $reverbListening = @(Get-NetTCPConnection -State Listen -LocalPort $ReverbPort -ErrorAction Stop).Count -gt 0
+        if ($reverbListening) {
+            Write-Host "Reverb port $ReverbPort is listening." -ForegroundColor Green
+        } elseif ($RequireRealtimeServices) {
+            Write-Warning "No listener is available on Reverb port $ReverbPort."
+        } else {
+            Write-Host "No listener is available on Reverb port $ReverbPort." -ForegroundColor Yellow
+        }
+    } catch {
+        Write-Warning "Could not inspect Reverb port $ReverbPort. Verify it with your deployment supervisor or host diagnostics."
+    }
 }
 
 Write-Host ""

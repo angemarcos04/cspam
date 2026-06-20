@@ -1,8 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 import { fileURLToPath } from "node:url";
 
-const E2E_FRONTEND_PORT = Number(process.env.CSPAMS_E2E_LIVE_FRONTEND_PORT ?? 4178);
-const E2E_BACKEND_PORT = Number(process.env.CSPAMS_E2E_LIVE_BACKEND_PORT ?? 8097);
+const E2E_FRONTEND_PORT = Number(process.env.CSPAMS_E2E_REALTIME_FRONTEND_PORT ?? 4179);
+const E2E_BACKEND_PORT = Number(process.env.CSPAMS_E2E_REALTIME_BACKEND_PORT ?? 8098);
+const E2E_REVERB_PORT = Number(process.env.CSPAMS_E2E_REALTIME_REVERB_PORT ?? 8086);
 const E2E_HOST = "127.0.0.1";
 const frontendURL = `http://${E2E_HOST}:${E2E_FRONTEND_PORT}`;
 const backendURL = `http://${E2E_HOST}:${E2E_BACKEND_PORT}`;
@@ -10,11 +11,12 @@ const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 
 export default defineConfig({
-  testDir: "./e2e-live",
-  // The isolated Laravel/SQLite workflow is intentionally comprehensive and can exceed the local CLI default.
+  testDir: "./e2e-realtime",
+  globalTeardown: "./e2e-realtime/global-teardown.ts",
+  // Reverb delivery follows a real database queue job in this isolated stack.
   timeout: 240_000,
   expect: {
-    timeout: 10_000,
+    timeout: 20_000,
   },
   fullyParallel: false,
   reporter: process.env.CI ? "github" : "list",
@@ -26,11 +28,12 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cspams-e2e-backend.ps1 -Port ${E2E_BACKEND_PORT}`,
+      // FIX: this harness owns an isolated Laravel, Reverb, and broadcasts queue stack.
+      command: `powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\start-cspams-e2e-realtime-backend.ps1 -Port ${E2E_BACKEND_PORT} -ReverbPort ${E2E_REVERB_PORT}`,
       cwd: repoRoot,
       url: `${backendURL}/up`,
       reuseExistingServer: false,
-      timeout: 180_000,
+      timeout: 240_000,
     },
     {
       command: `npm.cmd run dev -- --host ${E2E_HOST} --port ${E2E_FRONTEND_PORT}`,
@@ -43,7 +46,12 @@ export default defineConfig({
         VITE_DEV_BACKEND_URL: backendURL,
         VITE_ENABLE_STATEFUL_SPA_API: "true",
         VITE_E2E_SKIP_DRAWER_COUNTS: "true",
-        VITE_REALTIME_ENABLED: "false",
+        VITE_REALTIME_ENABLED: "true",
+        VITE_REVERB_APP_KEY: "cspams-e2e-key",
+        VITE_REVERB_HOST: E2E_HOST,
+        VITE_REVERB_PORT: String(E2E_REVERB_PORT),
+        VITE_REVERB_SCHEME: "http",
+        VITE_REVERB_TLS: "false",
       },
     },
   ],

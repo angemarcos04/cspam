@@ -6,6 +6,8 @@ declare global {
   interface Window {
     Pusher: typeof Pusher;
     echoDisconnected?: boolean;
+    echoConnected?: boolean;
+    echoSubscriptionReady?: boolean;
   }
 }
 
@@ -62,7 +64,20 @@ function dispatchRealtimeDisconnected() {
   }
 
   window.echoDisconnected = true;
+  window.echoConnected = false;
+  window.echoSubscriptionReady = false;
   window.dispatchEvent(new CustomEvent("reverb:disconnected"));
+}
+
+function dispatchRealtimeConnected() {
+  window.echoDisconnected = false;
+  window.echoConnected = true;
+  window.dispatchEvent(new CustomEvent("reverb:connected"));
+}
+
+function dispatchRealtimeSubscribed() {
+  window.echoSubscriptionReady = true;
+  window.dispatchEvent(new CustomEvent("reverb:subscribed"));
 }
 
 function bindRealtimeConnectionEvents(echo: Echo<"reverb">) {
@@ -74,6 +89,7 @@ function bindRealtimeConnectionEvents(echo: Echo<"reverb">) {
 
   connection.bind("disconnected", dispatchRealtimeDisconnected);
   connection.bind("unavailable", dispatchRealtimeDisconnected);
+  connection.bind("connected", dispatchRealtimeConnected);
 }
 
 function boolFromEnv(value: string | undefined, fallback: boolean): boolean {
@@ -276,8 +292,13 @@ export function startRealtimeBridge(token: string, scope: RealtimeBridgeScope) {
 
   bindRealtimeConnectionEvents(realtimeEcho);
 
+  // FIX: keep connection and private-channel readiness distinct. A WebSocket can
+  // connect before the authenticated subscription is ready to receive updates.
+  window.echoSubscriptionReady = false;
   realtimeEcho
     .private(channelName)
+    .subscribed(dispatchRealtimeSubscribed)
+    .error(dispatchRealtimeDisconnected)
     .listen(".cspams.update", (payload: CspamsRealtimePayload) => {
       dispatchRealtimePayload(payload);
     });
@@ -292,6 +313,8 @@ export function stopRealtimeBridge() {
     suppressDisconnectNoticeUntil = Date.now() + INTENTIONAL_DISCONNECT_SUPPRESSION_MS;
     realtimeEcho.disconnect();
   }
+  window.echoConnected = false;
+  window.echoSubscriptionReady = false;
   realtimeEcho = null;
   isStarted = false;
   activeToken = "";

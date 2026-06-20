@@ -2270,6 +2270,16 @@ export function SchoolAdminDashboard() {
                 academicYearLabel={selectedReportYearLabel}
               />
             </div>
+            <div className="border-t border-slate-200 p-4">
+              <AuditTrailPanel
+                id="school-head-security-activity"
+                compact
+                title="Security Activity"
+                description="Private sign-in and account security activity for your account."
+                eventPrefix="auth."
+                ownEventsOnly
+              />
+            </div>
           </div>
         </div>
       </section>

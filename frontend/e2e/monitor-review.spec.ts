@@ -408,7 +408,15 @@ async function signInAsMonitor(page: Page) {
   await page.getByRole("button", { name: "Division Monitor" }).click();
   await page.getByLabel("Login ID").fill("monitor@cspams.local");
   await page.locator("#passcode").fill("monitor-passcode");
+  // FIX: wait for the two data sources that render the monitor queue, not an arbitrary delay.
+  const recordsResponse = page.waitForResponse((response) => (
+    response.ok() && new URL(response.url()).pathname === "/api/dashboard/records"
+  ));
+  const submissionsResponse = page.waitForResponse((response) => (
+    response.ok() && new URL(response.url()).pathname === "/api/indicators/submissions"
+  ));
   await page.getByRole("button", { name: "Sign In" }).click();
+  await Promise.all([recordsResponse, submissionsResponse]);
   await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Review Workspace" })).toHaveCount(0);
   await expect(page.locator("#monitor-queue-workspace")).toHaveCount(0);

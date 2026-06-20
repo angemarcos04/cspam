@@ -208,6 +208,62 @@ class IndicatorAuditTrailTest extends TestCase
             });
     }
 
+    public function test_school_head_mine_filter_only_returns_own_security_activity(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHead->loadMissing('school');
+        $otherSchoolUser = User::query()->create([
+            'name' => 'Other School Audit User',
+            'email' => 'other-school-audit-user@cspams.local',
+            'password' => (string) $schoolHead->password,
+            'must_reset_password' => false,
+            'password_changed_at' => now(),
+            'account_status' => $schoolHead->getRawOriginal('account_status'),
+            'school_id' => $schoolHead->school_id,
+        ]);
+
+        AuditLog::query()->create([
+            'user_id' => $schoolHead->id,
+            'action' => 'auth.login.success',
+            'auditable_type' => 'auth',
+            'auditable_id' => $schoolHead->id,
+            'metadata' => [
+                'school_id' => (string) $schoolHead->school_id,
+                'school_code' => (string) $schoolHead->school?->school_code,
+                'actor_role' => 'school_head',
+                'outcome' => 'success',
+            ],
+            'created_at' => now(),
+        ]);
+        AuditLog::query()->create([
+            'user_id' => $otherSchoolUser->id,
+            'action' => 'auth.login.success',
+            'auditable_type' => 'auth',
+            'auditable_id' => $otherSchoolUser->id,
+            'metadata' => [
+                'school_id' => (string) $schoolHead->school_id,
+                'school_code' => (string) $schoolHead->school?->school_code,
+                'actor_role' => 'school_head',
+                'outcome' => 'success',
+            ],
+            'created_at' => now()->addSecond(),
+        ]);
+
+        $token = $schoolHead->createToken('audit-security-activity', ['role:school_head'])->plainTextToken;
+        $response = $this->withToken($token)->getJson('/api/audit-logs?mine=true&event_prefix=auth.&per_page=20');
+
+        $response->assertOk()
+            ->assertJsonPath('data', function (array $rows) use ($schoolHead, $otherSchoolUser): bool {
+                $actorIds = collect($rows)->pluck('actor.id')->filter()->unique()->values()->all();
+
+                return in_array((string) $schoolHead->id, $actorIds, true)
+                    && ! in_array((string) $otherSchoolUser->id, $actorIds, true);
+            });
+    }
+
     private function seedIndicatorFixtures(): void
     {
         $this->seed([
