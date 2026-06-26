@@ -572,7 +572,12 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByText("TARGETS-MET")).toBeTruthy();
     expect(screen.queryByText("Monitor-visible completion: 2/2 complete")).toBeNull();
     expect(screen.queryByText("Values appear here only after the School Head sends a section/file or submits the full package.")).toBeNull();
+    expect(screen.queryByText(/Viewing monitor-visible report data/)).toBeNull();
+    expect(screen.queryByText(/Source package:/)).toBeNull();
+    expect(screen.queryByText(/Sent workspace items:/)).toBeNull();
     expect(screen.queryByText("Submitted Report View")).toBeNull();
+    expect(screen.queryByText("History Summary")).toBeNull();
+    expect(screen.queryByText("Package History Context")).toBeNull();
     expect(screen.getByText("School's Achievement (SY 2025-2026)")).toBeTruthy();
     expect(screen.getByText("Key Performance Indicators (SY 2025-2026)")).toBeTruthy();
     expect(screen.getByText("Jane Doe")).toBeTruthy();

@@ -346,6 +346,112 @@ describe("useSchoolDrawer", () => {
     });
   });
 
+  it("does not override a manual academic-year selection during realtime hydration from another year", async () => {
+    let resolveSecondList: (rows: IndicatorSubmission[]) => void = () => undefined;
+    const secondListPromise = new Promise<IndicatorSubmission[]>((resolve) => {
+      resolveSecondList = resolve;
+    });
+    const yearA = {
+      id: "submission-year-a",
+      status: "draft",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-a", name: "2025-2026" },
+      scopeProgress: { submittedScopeIds: ["bmef"] },
+      submittedAt: null,
+      updatedAt: "2026-06-14T06:39:00.000Z",
+      createdAt: "2026-06-14T06:39:00.000Z",
+    } as unknown as IndicatorSubmission;
+    const yearB = {
+      id: "submission-year-b",
+      status: "draft",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-b", name: "2026-2027" },
+      scopeProgress: { submittedScopeIds: ["smea"] },
+      submittedAt: null,
+      updatedAt: "2027-06-14T06:39:00.000Z",
+      createdAt: "2027-06-14T06:39:00.000Z",
+    } as unknown as IndicatorSubmission;
+    const listSubmissionsForSchool = vi
+      .fn()
+      .mockResolvedValueOnce([yearA, yearB])
+      .mockReturnValueOnce(secondListPromise);
+    const fetchSubmission = vi.fn().mockResolvedValue(yearB);
+    const queryStudents = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+    const listTeachers = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+
+    const { result, rerender } = renderHook(
+      ({ latestRealtimeBatch }) =>
+        useSchoolDrawer({
+          authSessionKey: "monitor:1",
+          isAuthenticated: true,
+          latestRealtimeBatch,
+          resolveRecordId: () => "",
+          resolveSchoolCode: () => "401777",
+          resolveLatestIndicatorSubmissionId: () => "",
+          fetchSubmission,
+          listSubmissionsForSchool,
+          queryStudents,
+          listTeachers,
+        }),
+      {
+        initialProps: { latestRealtimeBatch: null as Parameters<typeof useSchoolDrawer>[0]["latestRealtimeBatch"] },
+      },
+    );
+
+    act(() => {
+      result.current.openSchoolDrawer("school-1");
+    });
+
+    await waitFor(() => {
+      expect(result.current.availableSchoolDrawerYears.map((year) => year.id)).toEqual(["ay-b", "ay-a"]);
+    });
+
+    act(() => {
+      result.current.setSelectedSchoolDrawerYear("ay-a");
+    });
+
+    expect(result.current.selectedSchoolDrawerYear).toBe("ay-a");
+
+    rerender({
+      latestRealtimeBatch: {
+        updates: [
+          {
+            entity: "indicators",
+            eventType: "indicators.scopes_submitted",
+            submissionId: "submission-year-b",
+            schoolId: "12",
+            schoolCode: "401777",
+            academicYearId: "ay-b",
+            touchedScopes: ["smea"],
+          },
+        ],
+        entities: ["indicators"],
+        schoolIds: ["12"],
+        schoolCodes: ["401777"],
+        occurredAt: Date.now(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("submission-year-b");
+      expect(result.current.schoolDrawerSubmissions).toEqual([yearB]);
+      expect(result.current.selectedSchoolDrawerYear).toBe("ay-a");
+    });
+
+    act(() => {
+      resolveSecondList([yearA, yearB]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isSchoolDrawerSubmissionsLoading).toBe(false);
+      expect(result.current.selectedSchoolDrawerYear).toBe("ay-a");
+      expect(result.current.schoolDrawerSubmissions.map((submission) => submission.id)).toEqual([
+        "submission-year-b",
+        "submission-year-a",
+      ]);
+    });
+  });
+
   it("hydrates an open drawer after a scope unverified realtime event", async () => {
     const realtimeSubmission = {
       id: "submission-sent",

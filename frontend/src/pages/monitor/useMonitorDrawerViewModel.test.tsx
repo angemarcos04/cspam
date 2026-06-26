@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 describe("buildMonitorDrawerYearDetail", () => {
-  it("uses academic-year ids to keep sent file actions isolated between years", () => {
+  it("uses academic-year ids to keep sent file actions isolated between years with the same label", () => {
     const schoolDetail = {
       schoolKey: "school-1",
       schoolCode: "401777",
@@ -82,7 +82,7 @@ describe("buildMonitorDrawerYearDetail", () => {
         scopeProgress: { submittedScopeIds: ["smea"] },
         scopeReviews: [],
         indicators: [],
-        academicYear: { id: "ay-2026", name: "2026-2027" },
+        academicYear: { id: "ay-2026", name: "2025-2026" },
         createdAt: "2027-06-05T00:00:00.000Z",
         updatedAt: "2027-06-05T00:00:00.000Z",
         submittedAt: null,
@@ -101,7 +101,7 @@ describe("buildMonitorDrawerYearDetail", () => {
     const yearBDetail = buildMonitorDrawerYearDetail(schoolDetail, "ay-2026", submissions, []);
     const yearBRows = new Map(yearBDetail?.packageRows.map((row) => [row.id, row]));
 
-    expect(yearBDetail?.selectedYearLabel).toBe("2026-2027");
+    expect(yearBDetail?.selectedYearLabel).toBe("2025-2026");
     expect(yearBRows.get("smea")?.canReview).toBe(true);
     expect(yearBRows.get("smea")?.viewUrl).toBe("/view/year-b/smea");
     expect(yearBRows.get("bmef")?.canReview).toBe(false);
@@ -237,7 +237,7 @@ describe("buildMonitorDrawerYearDetail", () => {
       "BMEF:For Review",
       "SMEA:For Review",
     ]);
-    expect(detail?.reportSourceContext[0]).toContain("2025-2026");
+    expect(detail?.reportSourceContext).toEqual([]);
     expect(detail?.schoolAchievementRows[0]?.label).toBe("NAME OF SCHOOL HEAD");
     expect(detail?.schoolAchievementRows[1]?.label).toBe("TOTAL NUMBER OF ENROLMENT");
     expect(detail?.schoolAchievementRows[0]?.value).toBe("Jane Doe");

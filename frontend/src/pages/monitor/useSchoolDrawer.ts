@@ -184,7 +184,7 @@ export function useSchoolDrawer({
 }: UseSchoolDrawerOptions): UseSchoolDrawerResult {
   const [schoolDrawerKey, setSchoolDrawerKey] = useState<string | null>(null);
   const [activeSchoolDrawerTab, setActiveSchoolDrawerTab] = useState<SchoolDrawerTab>("submissions");
-  const [selectedSchoolDrawerYear, setSelectedSchoolDrawerYear] = useState<string | null>(null);
+  const [selectedSchoolDrawerYear, setSelectedSchoolDrawerYearState] = useState<string | null>(null);
   const [expandedDrawerIndicatorRows, setExpandedDrawerIndicatorRows] = useState<Record<string, boolean>>({});
   const [highlightedDrawerIndicatorKey, setHighlightedDrawerIndicatorKey] = useState<string | null>(null);
   const [schoolDrawerSubmissions, setSchoolDrawerSubmissions] = useState<IndicatorSubmission[]>([]);
@@ -204,6 +204,7 @@ export function useSchoolDrawer({
   const accurateSyncedCountsRef = useRef<Record<string, SchoolDetailCounts>>({});
   const schoolDetailCountsAbortRef = useRef<AbortController | null>(null);
   const schoolDrawerSubmissionIdsRef = useRef<Set<string>>(new Set());
+  const hasManuallySelectedSchoolDrawerYearRef = useRef(false);
   const fetchSubmissionRef = useRef(fetchSubmission);
   const listSubmissionsForSchoolRef = useRef(listSubmissionsForSchool);
 
@@ -237,19 +238,26 @@ export function useSchoolDrawer({
   }, [schoolDrawerSubmissions]);
 
   const openSchoolDrawer = useCallback((schoolKey: string) => {
+    hasManuallySelectedSchoolDrawerYearRef.current = false;
     setSchoolDrawerKey(schoolKey);
     setActiveSchoolDrawerTab("submissions");
-    setSelectedSchoolDrawerYear(null);
+    setSelectedSchoolDrawerYearState(null);
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
     setRealtimeSubmissionDetailId("");
   }, []);
 
   const closeSchoolDrawer = useCallback(() => {
+    hasManuallySelectedSchoolDrawerYearRef.current = false;
     setSchoolDrawerKey(null);
-    setSelectedSchoolDrawerYear(null);
+    setSelectedSchoolDrawerYearState(null);
     setHighlightedDrawerIndicatorKey(null);
     setRealtimeSubmissionDetailId("");
+  }, []);
+
+  const setSelectedSchoolDrawerYear: Dispatch<SetStateAction<string | null>> = useCallback((value) => {
+    hasManuallySelectedSchoolDrawerYearRef.current = true;
+    setSelectedSchoolDrawerYearState(value);
   }, []);
 
   const refreshSchoolDrawer = useCallback(() => {
@@ -270,7 +278,8 @@ export function useSchoolDrawer({
     schoolDetailCountsAbortRef.current = null;
     setSchoolDrawerKey(null);
     setActiveSchoolDrawerTab("submissions");
-    setSelectedSchoolDrawerYear(null);
+    hasManuallySelectedSchoolDrawerYearRef.current = false;
+    setSelectedSchoolDrawerYearState(null);
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
     setSchoolDrawerSubmissions([]);
@@ -369,7 +378,7 @@ export function useSchoolDrawer({
           }
           const latestSubmissionYearId = String(latestSubmission.academicYear?.id ?? latestSubmission.academicYearId ?? "").trim();
           if (latestSubmissionYearId) {
-            setSelectedSchoolDrawerYear((current) => current ?? latestSubmissionYearId);
+            setSelectedSchoolDrawerYearState((current) => current ?? latestSubmissionYearId);
           }
           setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, []));
           setSchoolDrawerSubmissionsError("");
@@ -452,17 +461,31 @@ export function useSchoolDrawer({
 
   useEffect(() => {
     if (availableSchoolDrawerYears.length === 0) {
-      setSelectedSchoolDrawerYear(null);
+      setSelectedSchoolDrawerYearState((current) => (
+        hasManuallySelectedSchoolDrawerYearRef.current && current
+          ? current
+          : null
+      ));
       return;
     }
 
     const availableYearIds = availableSchoolDrawerYears.map((year) => year.id);
-    setSelectedSchoolDrawerYear((current) => (
-      current && availableYearIds.includes(current)
-        ? current
-        : availableYearIds[0] ?? null
-    ));
-  }, [availableSchoolDrawerYears]);
+    setSelectedSchoolDrawerYearState((current) => {
+      if (current && availableYearIds.includes(current)) {
+        return current;
+      }
+
+      if (hasManuallySelectedSchoolDrawerYearRef.current && current && isSchoolDrawerSubmissionsLoading) {
+        return current;
+      }
+
+      if (hasManuallySelectedSchoolDrawerYearRef.current && current) {
+        hasManuallySelectedSchoolDrawerYearRef.current = false;
+      }
+
+      return availableYearIds[0] ?? null;
+    });
+  }, [availableSchoolDrawerYears, isSchoolDrawerSubmissionsLoading]);
 
   useEffect(() => {
     if (!schoolDrawerKey) {

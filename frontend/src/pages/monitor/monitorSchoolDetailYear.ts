@@ -325,37 +325,6 @@ function resolveSelectedYearMonitorReportSubmission(entries: IndicatorSubmission
   return visibleEntries[0] ?? null;
 }
 
-function buildMonitorSubmittedReportSourceContext(
-  submission: IndicatorSubmission | null | undefined,
-  selectedReportYearLabel: string,
-): string[] {
-  const lines = [`Viewing monitor-visible report data for SY ${selectedReportYearLabel}.`];
-
-  if (!submission?.id) {
-    lines.push("Source package: None yet.");
-    lines.push("Status: Reference only.");
-    return lines;
-  }
-
-  const packageId = String(submission.id ?? "").trim();
-  const statusLabel = String(submission.statusLabel ?? submission.status ?? "").trim() || "Submitted";
-  lines.push(`Source package: #${packageId} (${statusLabel}).`);
-
-  if (isFullMonitorReportStatus(submission.status)) {
-    const submittedAtLabel = submission.submittedAt
-      ? new Date(submission.submittedAt).toLocaleDateString()
-      : null;
-    if (submittedAtLabel) {
-      lines.push(`Submitted: ${submittedAtLabel}.`);
-    }
-    return lines;
-  }
-
-  const sentScopes = submittedScopeIdSet(submission).size;
-  lines.push(`Sent workspace items: ${sentScopes.toLocaleString()}.`);
-  return lines;
-}
-
 export function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSubmission | null | undefined): string {
   return (submission?.academicYear?.name ?? "").trim()
     || deriveSchoolYearLabel(submission?.submittedAt ?? submission?.updatedAt ?? submission?.createdAt);
@@ -368,11 +337,28 @@ function resolveMonitorSubmissionAcademicYearId(submission: IndicatorSubmission 
 function monitorYearOptionForSubmission(submission: IndicatorSubmission): MonitorDrawerYearOption {
   const yearId = resolveMonitorSubmissionAcademicYearId(submission);
   const label = resolveMonitorSubmissionSchoolYearLabel(submission);
+  const submissionId = String(submission.id ?? "").trim();
 
   return {
-    id: yearId || label,
+    id: yearId || (submissionId ? `legacy-submission:${submissionId}` : label),
     label,
   };
+}
+
+function resolveSelectedMonitorYearOptionId(
+  availableYears: MonitorDrawerYearOption[],
+  selectedSchoolDrawerYear: string | null,
+): string | null {
+  if (!selectedSchoolDrawerYear) {
+    return null;
+  }
+
+  if (availableYears.some((option) => option.id === selectedSchoolDrawerYear)) {
+    return selectedSchoolDrawerYear;
+  }
+
+  const matchingLabelOptions = availableYears.filter((option) => option.label === selectedSchoolDrawerYear);
+  return matchingLabelOptions.length === 1 ? matchingLabelOptions[0].id : null;
 }
 
 export function deriveAvailableMonitorSchoolDetailYears(submissions: IndicatorSubmission[]): MonitorDrawerYearOption[] {
@@ -417,11 +403,7 @@ export function resolveMonitorSchoolDetailYearSelection(
     .sort(compareMonitorPackagePriority)
     .map((submission) => monitorYearOptionForSubmission(submission).id)
     .find((yearId) => availableYears.some((option) => option.id === yearId)) ?? null;
-  const requestedSelectedYearId = selectedSchoolDrawerYear && availableYears.some((option) => option.id === selectedSchoolDrawerYear)
-    ? selectedSchoolDrawerYear
-    : selectedSchoolDrawerYear
-      ? availableYears.find((option) => option.label === selectedSchoolDrawerYear)?.id ?? null
-      : null;
+  const requestedSelectedYearId = resolveSelectedMonitorYearOptionId(availableYears, selectedSchoolDrawerYear);
   const requestedSelectedYearSubmissions = requestedSelectedYearId
     ? submissions.filter((submission) => monitorYearOptionForSubmission(submission).id === requestedSelectedYearId)
     : [];
@@ -650,10 +632,7 @@ export function buildMonitorDrawerYearDetail(
     selectedYearLatestSubmissionId: latestYearSubmission?.id ?? null,
     selectedYearLatestStatus: selectedYearWorkflowStatus ?? latestYearSubmission?.status ?? null,
     finalizedReportSubmission: selectedYearMonitorReportSubmission,
-    reportSourceContext: buildMonitorSubmittedReportSourceContext(
-      selectedYearMonitorReportSubmission,
-      effectiveSelectedYear ?? "N/A",
-    ),
+    reportSourceContext: [],
     reportBlankStateLines: buildSubmittedReportBlankStateLines(),
     schoolAchievementRows,
     kpiRows,

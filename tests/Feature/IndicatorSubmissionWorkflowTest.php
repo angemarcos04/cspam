@@ -1648,6 +1648,147 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.scopeProgress.pendingScopeIds', fn (array $ids): bool => in_array('smea', $ids, true));
     }
 
+    public function test_monitor_indicator_list_etag_changes_when_scope_submission_state_changes(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('indicator-list-etag-monitor', ['role:monitor'])->plainTextToken;
+        $schoolCode = (string) School::query()->whereKey($schoolHead->school_id)->value('school_code');
+        $listUrl = "/api/indicators/submissions?school_code={$schoolCode}&academic_year_id={$academicYearId}&per_page=100";
+
+        $initialList = $this->withToken($monitorToken)->getJson($listUrl);
+        $initialList->assertOk();
+        $initialEtag = trim((string) $initialList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame('', $initialEtag);
+
+        $this->travel(1)->second();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $afterSendList = $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $initialEtag])
+            ->getJson($listUrl);
+        $afterSendList->assertOk();
+        $afterSendEtag = trim((string) $afterSendList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame($initialEtag, $afterSendEtag);
+        $sentRow = collect($afterSendList->json('data', []))
+            ->firstWhere('id', $submissionId);
+        $this->assertIsArray($sentRow);
+        $this->assertContains('bmef', data_get($sentRow, 'scopeProgress.submittedScopeIds', []));
+        $this->assertTrue((bool) data_get($sentRow, 'files.bmef.uploaded'));
+        $this->assertSame("/api/submissions/{$submissionId}/view/bmef", data_get($sentRow, 'files.bmef.viewUrl'));
+
+        $this->travel(1)->second();
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'returned',
+            'notes' => 'Please revise the BMEF.',
+        ])->assertOk();
+
+        $afterReturnList = $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $afterSendEtag])
+            ->getJson($listUrl);
+        $afterReturnList->assertOk();
+        $afterReturnEtag = trim((string) $afterReturnList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame($afterSendEtag, $afterReturnEtag);
+        $returnedRow = collect($afterReturnList->json('data', []))
+            ->firstWhere('id', $submissionId);
+        $this->assertIsArray($returnedRow);
+        $this->assertNotContains('bmef', data_get($returnedRow, 'scopeProgress.submittedScopeIds', []));
+        $this->assertFalse((bool) data_get($returnedRow, 'files.bmef.uploaded'));
+        $this->assertNull(data_get($returnedRow, 'files.bmef.viewUrl'));
+    }
+
+    public function test_replacing_sent_file_removes_monitor_reviewability_until_resend(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-original.pdf', 'application/pdf')
+            ->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('sent-file-replace-monitor', ['role:monitor'])->plainTextToken;
+
+        $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}")
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-original.pdf');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
+            ->assertOk();
+        $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
+
+        $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}")
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.bmef.originalFilename', null)
+            ->assertJsonPath('data.files.bmef.viewUrl', null);
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission']);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}")
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf')
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef");
+    }
+
     public function test_monitor_can_review_sent_draft_scope_but_not_unsent_draft_scope(): void
     {
         Storage::fake('local');

@@ -537,6 +537,10 @@ class IndicatorSubmissionController extends Controller
                 ],
             );
 
+            if (GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)) {
+                $this->removeSubmittedScopes($submission, [$workspaceSection]);
+            }
+
             event(new CspamsUpdateBroadcast(
                 $this->indicatorBroadcastPayload($submission, 'indicators.updated', [
                     'status' => $currentStatus,
@@ -550,9 +554,6 @@ class IndicatorSubmissionController extends Controller
         $auditScopeIds = GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)
             ? [$workspaceSection]
             : $this->auditScopeIdsForRows($indicatorRows);
-        if (GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)) {
-            $this->removeSubmittedScopes($submission, [$workspaceSection]);
-        }
 
         $this->auditSubmissionEvent($request, 'workspace.section_saved', $submission, $user, [
             'old_status' => $currentStatus,
@@ -963,8 +964,10 @@ class IndicatorSubmissionController extends Controller
         ])->save();
 
         if ($decision === FormSubmissionStatus::RETURNED->value) {
-            $submission->scopeSubmissions()->delete();
-            $submission->unsetRelation('scopeSubmissions');
+            $deletedScopeCount = $submission->scopeSubmissions()->delete();
+            if ($deletedScopeCount > 0) {
+                $this->touchSubmissionScopeState($submission);
+            }
         }
 
         app(FormSubmissionHistoryLogger::class)->log(
@@ -1392,7 +1395,15 @@ class IndicatorSubmissionController extends Controller
             );
         }
 
+        $this->touchSubmissionScopeState($submission);
+    }
+
+    private function touchSubmissionScopeState(IndicatorSubmission $submission): void
+    {
+        $submission->touch();
+        $submission->refresh();
         $submission->unsetRelation('scopeSubmissions');
+        $submission->unsetRelation('scopeReviews');
     }
 
     /**
@@ -1409,10 +1420,15 @@ class IndicatorSubmissionController extends Controller
             return;
         }
 
-        IndicatorSubmissionScopeSubmission::query()
+        $deletedScopeCount = IndicatorSubmissionScopeSubmission::query()
             ->where('indicator_submission_id', $submission->id)
             ->whereIn('scope_id', $normalizedScopeIds)
             ->delete();
+
+        if ($deletedScopeCount > 0) {
+            $this->touchSubmissionScopeState($submission);
+            return;
+        }
 
         $submission->unsetRelation('scopeSubmissions');
     }
