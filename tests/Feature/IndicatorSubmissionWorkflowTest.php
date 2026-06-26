@@ -418,6 +418,99 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         });
     }
 
+    public function test_monitor_can_reverify_unverified_scope_without_losing_history_or_notifications(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+        Event::fake([CspamsUpdateBroadcast::class]);
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('scope-reverify-monitor', ['role:monitor'])->plainTextToken;
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'unverified',
+        ])->assertOk();
+
+        $verifiedNotificationCountBeforeFinal = $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorScopeReviewOutcomeNotification::class)
+            ->where('data->eventType', 'indicator_scope_verified')
+            ->count();
+
+        $finalVerified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+        $finalVerified->assertOk()
+            ->assertJsonPath('data.status', 'draft');
+
+        $bmefReview = collect($finalVerified->json('data.scopeReviews', []))
+            ->firstWhere('scopeId', 'bmef');
+        $this->assertSame('verified', $bmefReview['decision'] ?? null);
+        $this->assertNull($bmefReview['notes'] ?? null);
+
+        $this->assertDatabaseHas('indicator_submission_scope_reviews', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+            'decision' => 'verified',
+            'notes' => null,
+        ]);
+        $this->assertSame(2, FormSubmissionHistory::query()
+            ->where('form_type', IndicatorSubmission::FORM_TYPE)
+            ->where('submission_id', $submissionId)
+            ->where('action', 'scope_verified')
+            ->count());
+        $this->assertDatabaseHas('form_submission_histories', [
+            'form_type' => IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $submissionId,
+            'action' => 'scope_unverified',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'monitor.scope_verified',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'monitor.scope_unverified',
+        ]);
+        $this->assertSame($verifiedNotificationCountBeforeFinal + 1, $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorScopeReviewOutcomeNotification::class)
+            ->where('data->eventType', 'indicator_scope_verified')
+            ->count());
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event): bool {
+            return ($event->payload['eventType'] ?? null) === 'indicators.scope_verified'
+                && ($event->payload['scopeId'] ?? null) === 'bmef'
+                && ($event->payload['decision'] ?? null) === 'verified'
+                && ($event->payload['previousDecision'] ?? null) === 'unverified'
+                && ($event->payload['touchedScopes'] ?? null) === ['bmef'];
+        });
+    }
+
     public function test_school_head_can_bootstrap_minimal_indicator_draft_and_update_it_later(): void
     {
         $this->seedIndicatorFixtures();
@@ -1668,6 +1761,94 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'decision' => 'verified',
         ]);
         $resentReview->assertOk()
+            ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
+            ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
+    }
+
+    public function test_monitor_cannot_review_returned_full_package_revisions_until_school_head_resubmits(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYear = AcademicYear::query()->where('is_current', true)->firstOrFail();
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 1,
+                    'actual_value' => 1,
+                    'remarks' => 'Ready for review.',
+                ],
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [(string) $academicYear->name => 'Maria Santos']],
+                ],
+            ],
+        ]);
+        $created->assertCreated();
+
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionFiles($schoolHeadToken, $submissionId, ['bmef', 'smea']);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'submitted');
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('returned-full-package-monitor', ['role:monitor'])->plainTextToken;
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'returned',
+            'notes' => 'Please revise the package.',
+        ])->assertOk()
+            ->assertJsonPath('data.status', 'returned');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
+            ->assertOk();
+
+        $monitorShowReturnedRevision = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowReturnedRevision->assertOk()
+            ->assertJsonPath('data.status', 'returned')
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.bmef.originalFilename', null)
+            ->assertJsonPath('data.files.bmef.viewUrl', null)
+            ->assertJsonPath('data.files.bmef.downloadUrl', null);
+
+        $unsentRevisionReview = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+        $unsentRevisionReview->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'Only sent indicator scopes can be reviewed.');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk()
+            ->assertJsonPath('data.status', 'submitted');
+
+        $monitorShowResubmittedRevision = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowResubmittedRevision->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf')
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
+            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
+
+        $resubmittedRevisionReview = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ]);
+        $resubmittedRevisionReview->assertOk()
             ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
             ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
     }

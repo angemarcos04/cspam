@@ -1042,6 +1042,21 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByRole("button", { name: "Verify" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Return" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Unverify" })).toBeNull();
+    expect(screen.queryByText("Returned")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Verify" }));
+
+    await waitFor(() => {
+      expect(reviewSubmissionScopeMock).toHaveBeenLastCalledWith("sub-1", {
+        scopeId: "fm_qad_001",
+        decision: "verified",
+        notes: null,
+      });
+    });
+    expect(await screen.findByText("Verified")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unverify" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Return" })).toBeNull();
   });
 
   it("keeps section View available for verified rows", async () => {

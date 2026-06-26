@@ -58,7 +58,7 @@ function isMonitorRelevantPackageStatus(status: string | null | undefined): bool
 
 function isFullMonitorReportStatus(status: string | null | undefined): boolean {
   const normalizedStatus = String(status ?? "").trim().toLowerCase();
-  return normalizedStatus === "submitted" || normalizedStatus === "validated" || normalizedStatus === "returned";
+  return normalizedStatus === "submitted" || normalizedStatus === "validated";
 }
 
 function normalizeScopeId(value: string | null | undefined): string {
@@ -435,7 +435,8 @@ function buildMonitorPackageRows(
     (sourceSubmission?.scopeReviews ?? []).map((review) => [review.scopeId, review]),
   );
   const reviewableStatus = normalizeWorkflowStatus(sourceSubmission?.status);
-  const canReviewFullSubmission = reviewableStatus === "submitted" || reviewableStatus === "returned";
+  const canUseFullPackageForReview = reviewableStatus === "submitted";
+  const canUseFullPackageForVisibility = reviewableStatus === "submitted" || reviewableStatus === "validated";
   const sentScopeIds = submittedScopeIdSet(sourceSubmission);
 
   return checklistItems.map<MonitorDrawerPackageRow>((item) => {
@@ -460,8 +461,9 @@ function buildMonitorPackageRows(
     if (item.kind === "file") {
       const fileEntry = sourceSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
       const hasUploadedFile = Boolean(fileEntry?.uploaded);
+      const isScopeSent = sentScopeIds.has(normalizeScopeId(item.id));
       const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
-      const canExposeFile = hasUploadedFile && !isReturnedReview;
+      const canExposeFile = hasUploadedFile && !isReturnedReview && (canUseFullPackageForVisibility || isScopeSent);
       const fileViewUrl = canExposeFile ? (fileEntry?.viewUrl ?? null) : null;
       const fileDownloadUrl = canExposeFile ? (fileEntry?.downloadUrl ?? null) : null;
 
@@ -482,7 +484,7 @@ function buildMonitorPackageRows(
         downloadUrl: fileDownloadUrl,
         actionLabel: null,
         actionTarget: null,
-        canReview: hasUploadedFile && !isReviewed && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
+        canReview: hasUploadedFile && !isReviewed && (canUseFullPackageForReview || isScopeSent),
         reviewDecision,
         reviewNotes: review?.notes ?? null,
         reviewedAt: review?.reviewedAt ?? null,
@@ -490,6 +492,8 @@ function buildMonitorPackageRows(
     }
 
     const isComplete = item.statusLabel === "Complete" || item.statusLabel === "For Review" || item.statusLabel === "Returned";
+    const isScopeSent = sentScopeIds.has(normalizeScopeId(item.id));
+    const canShowSection = !(reviewableStatus === "returned" && !isScopeSent);
     const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
 
     return {
@@ -504,8 +508,8 @@ function buildMonitorPackageRows(
       viewUrl: null,
       downloadUrl: null,
       actionLabel: null,
-      actionTarget: isComplete && !isReturnedReview ? monitorSectionActionTarget(item.id) : null,
-      canReview: isComplete && !isReviewed && (canReviewFullSubmission || sentScopeIds.has(normalizeScopeId(item.id))),
+      actionTarget: isComplete && !isReturnedReview && canShowSection ? monitorSectionActionTarget(item.id) : null,
+      canReview: isComplete && !isReviewed && (canUseFullPackageForReview || isScopeSent),
       reviewDecision,
       reviewNotes: review?.notes ?? null,
       reviewedAt: review?.reviewedAt ?? null,

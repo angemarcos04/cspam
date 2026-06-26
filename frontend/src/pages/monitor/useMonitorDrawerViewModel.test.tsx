@@ -329,6 +329,100 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(returnedFileRow?.downloadUrl).toBeNull();
   });
 
+  it("does not expose returned full-package files for review until resubmission or resend", () => {
+    const detail = buildMonitorDrawerYearDetail(
+      {
+        schoolKey: "school-3",
+        schoolCode: "401779",
+        schoolName: "Returned Public School",
+        region: "II",
+        level: "Elementary",
+        type: "Public",
+        schoolTypeRaw: "public",
+        requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+        activePackageLabel: "BMEF and SMEA",
+        address: "N/A",
+        hasComplianceRecord: true,
+        indicatorStatus: "returned",
+        hasActivePackageSubmission: true,
+        missingCount: 0,
+        awaitingReviewCount: 0,
+        lastActivityAt: "2026-05-18T08:00:00.000Z",
+        reportedStudents: 0,
+        reportedTeachers: 0,
+        synchronizedStudents: 0,
+        synchronizedTeachers: 0,
+      },
+      "2025-2026",
+      [
+        {
+          id: "returned-package-1",
+          formType: "indicator",
+          status: "returned",
+          statusLabel: "Returned",
+          reportingPeriod: "ANNUAL",
+          version: 3,
+          notes: null,
+          reviewNotes: "Please revise and resubmit.",
+          submittedAt: "2026-05-17T08:00:00.000Z",
+          reviewedAt: "2026-05-18T08:00:00.000Z",
+          createdAt: "2026-05-17T07:00:00.000Z",
+          updatedAt: "2026-05-18T08:00:00.000Z",
+          summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+          files: {
+            bmef: {
+              type: "bmef",
+              uploaded: true,
+              path: null,
+              originalFilename: "bmef-revised.pdf",
+              sizeBytes: 10,
+              uploadedAt: "2026-05-18T08:00:00.000Z",
+              viewUrl: "/api/submissions/returned-package-1/view/bmef",
+              downloadUrl: "/api/submissions/returned-package-1/download/bmef",
+            },
+            smea: {
+              type: "smea",
+              uploaded: true,
+              path: null,
+              originalFilename: "smea.xlsx",
+              sizeBytes: 10,
+              uploadedAt: "2026-05-17T08:00:00.000Z",
+              viewUrl: "/api/submissions/returned-package-1/view/smea",
+              downloadUrl: "/api/submissions/returned-package-1/download/smea",
+            },
+          },
+          completion: {
+            hasImetaFormData: false,
+            hasBmefFile: false,
+            hasSmeaFile: false,
+            isComplete: false,
+            requiredFileTypes: ["bmef", "smea"],
+            uploadedFileTypes: [],
+            missingFileTypes: ["bmef", "smea"],
+          },
+          scopeProgress: {
+            requiredScopeIds: ["school_achievements_learning_outcomes", "key_performance_indicators", "bmef", "smea"],
+            submittedScopeIds: [],
+            pendingScopeIds: ["school_achievements_learning_outcomes", "key_performance_indicators", "bmef", "smea"],
+            submittedRequiredScopeCount: 0,
+            totalRequiredScopeCount: 4,
+          },
+          scopeReviews: [],
+          indicators: [],
+          academicYear: { id: "year-1", name: "2025-2026" },
+        } as never,
+      ],
+      [],
+    );
+
+    expect(detail?.finalizedReportSubmission).toBeNull();
+    const bmefRow = detail?.packageRows.find((row) => row.label === "BMEF");
+    expect(bmefRow?.statusLabel).toBe("Returned");
+    expect(bmefRow?.canReview).toBe(false);
+    expect(bmefRow?.viewUrl).toBeNull();
+    expect(bmefRow?.downloadUrl).toBeNull();
+  });
+
   it("renders unverified review decisions as pending review rows", () => {
     const detail = buildMonitorDrawerYearDetail(
       {

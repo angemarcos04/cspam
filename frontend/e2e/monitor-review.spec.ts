@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 
-type ReviewState = "forReview" | "verified" | "returned";
+type ReviewState = "forReview" | "verified" | "unverified" | "returned";
 
 const monitorUser = {
   id: 1,
@@ -91,7 +91,7 @@ function buildSubmission(state: ReviewState, reviewNotes: string | null = null) 
             id: `review-${state}`,
             scopeId: "fm_qad_001",
             scopeType: "file",
-            decision: state === "verified" ? "verified" : "returned",
+            decision: state,
             notes: state === "returned" ? reviewNotes : null,
             reviewedBy: {
               id: "1",
@@ -375,7 +375,11 @@ async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState
 
     if (path === "/api/indicators/submissions/sub-1/scope-review") {
       const payload = request.postDataJSON() as { decision?: string; notes?: string | null };
-      stateRef.value = payload.decision === "verified" ? "verified" : "returned";
+      stateRef.value = payload.decision === "verified"
+        ? "verified"
+        : payload.decision === "unverified"
+          ? "unverified"
+          : "returned";
       stateRef.reviewNotes = typeof payload.notes === "string" && payload.notes.trim() ? payload.notes.trim() : null;
       return jsonResponse(route, { data: buildSubmission(stateRef.value, stateRef.reviewNotes) });
     }
@@ -445,7 +449,7 @@ test.describe("monitor review smoke flow", () => {
     const fileRow = drawer.locator("tr", { hasText: "FM-QAD-001" }).first();
 
     await expect(fileRow.getByRole("button", { name: "View" })).toBeVisible();
-    await expect(fileRow.getByRole("button", { name: "Verify" })).toBeEnabled();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toBeEnabled();
     await expect(fileRow.getByRole("button", { name: "Return" })).toBeEnabled();
     await expect(fileRow.getByRole("button", { name: "Download" })).toHaveCount(0);
 
@@ -454,7 +458,7 @@ test.describe("monitor review smoke flow", () => {
     await expect(page.getByRole("button", { name: "Download" })).toBeVisible();
     await page.getByLabel("Close file preview").click();
 
-    await fileRow.getByRole("button", { name: "Verify" }).click();
+    await fileRow.getByRole("button", { name: "Verify", exact: true }).click();
 
     await expect(page.getByText("No Missing, Returned, or For Review schools found.")).toBeVisible();
     await page.getByRole("button", { name: "Open Schools" }).click();
@@ -463,6 +467,66 @@ test.describe("monitor review smoke flow", () => {
     await expect(schoolCard.getByText(/For review/i)).toHaveCount(0);
     await expect(schoolCard.getByText(/Returned/i)).toHaveCount(0);
     await expect(schoolCard.getByText(/Incomplete/i)).toHaveCount(0);
+  });
+
+  test("reopens a verified file with Unverify and can verify it again", async ({ page }) => {
+    const stateRef = { value: "forReview" as ReviewState, reviewNotes: null as string | null };
+    await installMonitorApiMocks(page, stateRef);
+    await signInAsMonitor(page);
+
+    const drawer = await openSchoolDetail(page);
+    const fileRow = drawer.locator("tr", { hasText: "FM-QAD-001" }).first();
+
+    await expect(fileRow.getByRole("button", { name: "View" })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toBeEnabled();
+    await expect(fileRow.getByRole("button", { name: "Return" })).toBeEnabled();
+
+    const firstVerifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/indicators/submissions/sub-1/scope-review"
+      && request.postDataJSON().decision === "verified",
+    );
+    await fileRow.getByRole("button", { name: "Verify", exact: true }).click();
+    expect((await firstVerifyRequest).postDataJSON()).toMatchObject({
+      scopeId: "fm_qad_001",
+      decision: "verified",
+    });
+
+    await expect(fileRow.getByText("Verified", { exact: true })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Unverify" })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toHaveCount(0);
+    await expect(fileRow.getByRole("button", { name: "Return" })).toHaveCount(0);
+
+    const unverifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/indicators/submissions/sub-1/scope-review"
+      && request.postDataJSON().decision === "unverified",
+    );
+    await fileRow.getByRole("button", { name: "Unverify" }).click();
+    expect((await unverifyRequest).postDataJSON()).toMatchObject({
+      scopeId: "fm_qad_001",
+      decision: "unverified",
+    });
+
+    await expect(fileRow.getByText("For Review", { exact: true })).toBeVisible();
+    await expect(fileRow.getByText("Returned", { exact: true })).toHaveCount(0);
+    await expect(fileRow.getByRole("button", { name: "View" })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toBeEnabled();
+    await expect(fileRow.getByRole("button", { name: "Return" })).toBeEnabled();
+    await expect(fileRow.getByRole("button", { name: "Unverify" })).toHaveCount(0);
+
+    const secondVerifyRequest = page.waitForRequest((request) =>
+      new URL(request.url()).pathname === "/api/indicators/submissions/sub-1/scope-review"
+      && request.postDataJSON().decision === "verified",
+    );
+    await fileRow.getByRole("button", { name: "Verify", exact: true }).click();
+    expect((await secondVerifyRequest).postDataJSON()).toMatchObject({
+      scopeId: "fm_qad_001",
+      decision: "verified",
+    });
+
+    await expect(fileRow.getByText("Verified", { exact: true })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Unverify" })).toBeVisible();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toHaveCount(0);
+    await expect(fileRow.getByRole("button", { name: "Return" })).toHaveCount(0);
   });
 
   test("returns a sent file with an optional note and disables returned review actions", async ({ page }) => {
@@ -488,8 +552,8 @@ test.describe("monitor review smoke flow", () => {
     await expect(fileRow.getByText("Returned", { exact: true })).toBeVisible();
     await expect(fileRow.getByText("Return note: Please upload the corrected FM-QAD file.")).toBeVisible();
     await expect(fileRow.getByRole("button", { name: "View" })).toBeDisabled();
-    await expect(fileRow.getByRole("button", { name: "Verify" })).toBeDisabled();
-    await expect(fileRow.getByRole("button", { name: "Return" })).toBeDisabled();
+    await expect(fileRow.getByRole("button", { name: "Verify", exact: true })).toHaveCount(0);
+    await expect(fileRow.getByRole("button", { name: "Return" })).toHaveCount(0);
     await expect(fileRow.getByRole("button", { name: "Download" })).toHaveCount(0);
 
     const queueRow = page.locator("tr", { hasText: "AMA Computer College-Santiago City" }).first();
