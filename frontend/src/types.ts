@@ -526,7 +526,7 @@ export interface IndicatorSubmissionScopeReview {
   id: string;
   scopeId: string;
   scopeType: "section" | "file" | string;
-  decision: "verified" | "returned" | string;
+  decision: "verified" | "returned" | "unverified" | string;
   notes: string | null;
   reviewedBy?: {
     id: string;

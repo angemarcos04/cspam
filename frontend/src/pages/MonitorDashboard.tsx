@@ -105,7 +105,7 @@ function latestIsoTimestamp(...values: Array<string | null | undefined>): string
 
 function buildMonitorReviewStatusOverride(
   submission: IndicatorSubmission | null | undefined,
-  decision: "verified" | "returned" | undefined,
+  decision: "verified" | "returned" | "unverified" | undefined,
 ): MonitorReviewStatusOverride | null {
   if (!submission || !decision) {
     return null;
@@ -705,7 +705,7 @@ export function MonitorDashboard() {
   const handleSchoolDrawerReviewDataChanged = useCallback(async (payload?: {
     reason: "scope-review" | "file-preview-stale";
     submission?: IndicatorSubmission;
-    decision?: "verified" | "returned";
+    decision?: "verified" | "returned" | "unverified";
   }) => {
     if (payload?.reason === "scope-review") {
       const override = buildMonitorReviewStatusOverride(payload.submission, payload.decision);
@@ -734,6 +734,7 @@ export function MonitorDashboard() {
       [
         "indicators.scopes_submitted",
         "indicators.scope_verified",
+        "indicators.scope_unverified",
         "indicators.scope_returned",
       ].includes(update.eventType)
     ));

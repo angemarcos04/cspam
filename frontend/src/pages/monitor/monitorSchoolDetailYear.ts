@@ -441,9 +441,11 @@ function buildMonitorPackageRows(
   return checklistItems.map<MonitorDrawerPackageRow>((item) => {
     const submittedAt = sourceSubmission?.submittedAt ?? sourceSubmission?.updatedAt ?? sourceSubmission?.createdAt ?? null;
     const review = reviewByScope.get(item.id) ?? null;
-    const reviewDecision = review?.decision === "verified" || review?.decision === "returned" ? review.decision : null;
+    const reviewDecision = review?.decision === "verified" || review?.decision === "returned" || review?.decision === "unverified"
+      ? review.decision
+      : null;
     const isReturnedReview = reviewDecision === "returned";
-    const isReviewed = reviewDecision !== null;
+    const isReviewed = reviewDecision === "verified" || reviewDecision === "returned";
     const overlayStatusLabel = reviewDecision === "verified"
       ? "Verified"
       : reviewDecision === "returned"

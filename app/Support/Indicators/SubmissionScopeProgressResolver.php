@@ -172,7 +172,7 @@ final class SubmissionScopeProgressResolver
                 continue;
             }
 
-            if ($action === 'scope_verified') {
+            if ($action === 'scope_verified' || $action === 'scope_unverified') {
                 continue;
             }
 

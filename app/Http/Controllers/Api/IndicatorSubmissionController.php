@@ -1023,6 +1023,35 @@ class IndicatorSubmissionController extends Controller
             ? trim($request->string('notes')->toString())
             : null;
         $scopeLabel = $scopeProgressResolver->scopeLabel($scopeId);
+        $scopeType = $this->scopeTypeFor($scopeId);
+
+        $currentReview = IndicatorSubmissionScopeReview::query()
+            ->where('indicator_submission_id', $submission->id)
+            ->where('scope_id', $scopeId)
+            ->first();
+        $previousDecision = trim((string) ($currentReview?->decision ?? '')) ?: null;
+
+        if ($decision === 'unverified' && $previousDecision !== 'verified') {
+            throw ValidationException::withMessages([
+                'decision' => 'Only verified requirements can be unverified.',
+            ]);
+        }
+
+        $historyAction = match ($decision) {
+            'verified' => 'scope_verified',
+            'unverified' => 'scope_unverified',
+            default => 'scope_returned',
+        };
+        $auditAction = match ($decision) {
+            'verified' => 'monitor.scope_verified',
+            'unverified' => 'monitor.scope_unverified',
+            default => 'monitor.scope_returned',
+        };
+        $broadcastEvent = match ($decision) {
+            'verified' => 'indicators.scope_verified',
+            'unverified' => 'indicators.scope_unverified',
+            default => 'indicators.scope_returned',
+        };
 
         $review = IndicatorSubmissionScopeReview::query()->updateOrCreate(
             [
@@ -1030,7 +1059,7 @@ class IndicatorSubmissionController extends Controller
                 'scope_id' => $scopeId,
             ],
             [
-                'scope_type' => $this->scopeTypeFor($scopeId),
+                'scope_type' => $scopeType,
                 'decision' => $decision,
                 'notes' => $decision === 'returned' ? $notes : null,
                 'reviewed_by' => $user->id,
@@ -1043,15 +1072,16 @@ class IndicatorSubmissionController extends Controller
             submissionId: $submission->id,
             schoolId: $submission->school_id,
             academicYearId: $submission->academic_year_id,
-            action: $decision === 'verified' ? 'scope_verified' : 'scope_returned',
+            action: $historyAction,
             fromStatus: $fromStatus,
             toStatus: $fromStatus,
             actorId: $user->id,
-            notes: $notes,
+            notes: $decision === 'returned' ? $notes : null,
             metadata: [
                 'scopeId' => $scopeId,
                 'scopeLabel' => $scopeLabel,
                 'decision' => $decision,
+                'previousDecision' => $previousDecision,
                 'touchedScopes' => [$scopeId],
                 'scopeReviewId' => (string) $review->id,
             ],
@@ -1059,40 +1089,44 @@ class IndicatorSubmissionController extends Controller
 
         $this->auditSubmissionEvent(
             $request,
-            $decision === 'verified' ? 'monitor.scope_verified' : 'monitor.scope_returned',
+            $auditAction,
             $submission,
             $user,
             [
                 'old_status' => $fromStatus,
                 'new_status' => $fromStatus,
                 'scope_id' => $scopeId,
-                'scope_type' => $this->scopeTypeFor($scopeId),
+                'scope_type' => $scopeType,
                 'scope_label' => $scopeLabel,
-                'file_type' => $this->scopeTypeFor($scopeId) === 'file' ? $scopeId : null,
+                'file_type' => $scopeType === 'file' ? $scopeId : null,
                 'decision' => $decision,
-                'has_note' => $notes !== null && $notes !== '',
+                'previous_decision' => $previousDecision,
+                'has_note' => $decision === 'returned' && $notes !== null && $notes !== '',
             ],
         );
 
-        $schoolHeads = $this->schoolHeadsForSubmission($submission);
-        Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
-            $submission,
-            $user,
-            $scopeId,
-            $scopeLabel,
-            $decision,
-            $notes,
-        ));
+        if ($decision !== 'unverified') {
+            $schoolHeads = $this->schoolHeadsForSubmission($submission);
+            Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
+                $submission,
+                $user,
+                $scopeId,
+                $scopeLabel,
+                $decision,
+                $notes,
+            ));
+        }
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload(
                 $submission,
-                $decision === 'verified' ? 'indicators.scope_verified' : 'indicators.scope_returned',
+                $broadcastEvent,
                 [
                     'scopeId' => $scopeId,
                     'scopeLabel' => $scopeLabel,
                     'decision' => $decision,
-                    'notes' => $notes,
+                    'previousDecision' => $previousDecision,
+                    'scopeReviewId' => (string) $review->id,
                     'status' => $this->statusValue($submission->status),
                     'touchedScopes' => [$scopeId],
                 ],

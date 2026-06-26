@@ -991,6 +991,102 @@ describe("MonitorSchoolDrawer", () => {
     }));
   });
 
+  it("shows Unverify for verified file rows and restores review actions after unverify", async () => {
+    const onReviewDataChanged = vi.fn().mockResolvedValue(undefined);
+    reviewSubmissionScopeMock.mockResolvedValue({ id: "sub-1", status: "draft" });
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "fm_qad_001",
+            submissionId: "sub-1",
+            label: "FM-QAD-001",
+            kind: "file",
+            statusLabel: "Verified",
+            tone: "success",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Profile-1.pdf",
+            viewUrl: "/api/submissions/sub-1/view/fm_qad_001",
+            downloadUrl: "/api/submissions/sub-1/download/fm_qad_001",
+            actionLabel: null,
+            actionTarget: null,
+            canReview: false,
+            reviewDecision: "verified",
+          },
+          { onReviewDataChanged },
+        )}
+      />,
+    );
+
+    expect(screen.getByText("Verified")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "View" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Unverify" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Verify" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Return" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Unverify" }));
+
+    await waitFor(() => {
+      expect(reviewSubmissionScopeMock).toHaveBeenCalledWith("sub-1", {
+        scopeId: "fm_qad_001",
+        decision: "unverified",
+        notes: null,
+      });
+    });
+    expect(onReviewDataChanged).toHaveBeenCalledWith(expect.objectContaining({
+      reason: "scope-review",
+      decision: "unverified",
+    }));
+    expect(await screen.findByText("For Review")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Verify" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Return" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Unverify" })).toBeNull();
+  });
+
+  it("keeps section View available for verified rows", async () => {
+    const setActiveSchoolDrawerTab = vi.fn();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { logged: true } }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps(
+          {
+            id: "school_achievements_learning_outcomes",
+            submissionId: "sub-1",
+            label: "School Achievements",
+            kind: "section",
+            statusLabel: "Verified",
+            tone: "success",
+            submittedAt: "2026-06-14T06:39:00.000Z",
+            detail: "Section values are available for this year.",
+            viewUrl: null,
+            downloadUrl: null,
+            actionLabel: null,
+            actionTarget: "school_achievements",
+            canReview: false,
+            reviewDecision: "verified",
+          },
+          { setActiveSchoolDrawerTab },
+        )}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+
+    expect(setActiveSchoolDrawerTab).toHaveBeenCalledWith("history");
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/api/indicators/submissions/sub-1/report-viewed"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
   it("logs an explicit monitor report view when a reviewable section View button is clicked", async () => {
     const setActiveSchoolDrawerTab = vi.fn();
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { logged: true } }), {

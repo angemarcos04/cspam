@@ -19,7 +19,7 @@ class ReviewIndicatorSubmissionScopeRequest extends FormRequest
     {
         return [
             'scopeId' => ['required', 'string', 'max:120'],
-            'decision' => ['required', 'string', Rule::in(['verified', 'returned'])],
+            'decision' => ['required', 'string', Rule::in(['verified', 'returned', 'unverified'])],
             'notes' => ['nullable', 'string', 'max:2000'],
         ];
     }

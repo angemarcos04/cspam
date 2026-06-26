@@ -51,7 +51,7 @@ export interface MonitorDrawerPackageRow {
   actionLabel: string | null;
   actionTarget?: "school_achievements" | "key_performance" | null;
   canReview?: boolean;
-  reviewDecision?: "verified" | "returned" | null;
+  reviewDecision?: "verified" | "returned" | "unverified" | null;
   reviewNotes?: string | null;
   reviewedAt?: string | null;
 }

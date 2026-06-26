@@ -64,7 +64,7 @@ interface MonitorSchoolDrawerActions {
   onReviewDataChanged?: (payload: {
     reason: "scope-review" | "file-preview-stale";
     submission?: IndicatorSubmission;
-    decision?: "verified" | "returned";
+    decision?: "verified" | "returned" | "unverified";
     row?: MonitorDrawerPackageRow;
   }) => void | Promise<void>;
 }
@@ -231,7 +231,7 @@ function revokeBlobUrl(blobUrl: string | null): void {
 }
 
 type LocalScopeReviewOverride = {
-  decision: "verified" | "returned";
+  decision: "verified" | "returned" | "unverified";
   notes: string | null;
 };
 
@@ -248,19 +248,20 @@ function applyLocalScopeReviewOverride(
   }
 
   const isReturned = override.decision === "returned";
+  const isUnverified = override.decision === "unverified";
   return {
     ...row,
-    statusLabel: isReturned ? "Returned" : "Verified",
-    tone: isReturned ? "warning" : "success",
+    statusLabel: isReturned ? "Returned" : isUnverified ? "For Review" : "Verified",
+    tone: isReturned ? "warning" : isUnverified ? "info" : "success",
     detail: isReturned
       ? "Returned by monitor. Waiting for School Head correction and resend."
       : row.detail,
     viewUrl: isReturned ? null : row.viewUrl,
     downloadUrl: isReturned ? null : row.downloadUrl,
     actionTarget: isReturned ? null : row.actionTarget,
-    canReview: false,
+    canReview: isUnverified ? true : false,
     reviewDecision: override.decision,
-    reviewNotes: override.notes,
+    reviewNotes: isReturned ? override.notes : null,
   };
 }
 
@@ -404,10 +405,13 @@ export function MonitorSchoolDrawer({
 
   const saveScopeReview = async (
     row: MonitorDrawerPackageRow,
-    decision: "verified" | "returned",
+    decision: "verified" | "returned" | "unverified",
     notes?: string | null,
   ) => {
-    if (!row.submissionId || !row.canReview) {
+    const canSendDecision = decision === "unverified"
+      ? row.reviewDecision === "verified"
+      : row.canReview;
+    if (!row.submissionId || !canSendDecision) {
       return;
     }
 
@@ -465,7 +469,7 @@ export function MonitorSchoolDrawer({
 
   const viewSectionReport = (row: MonitorDrawerPackageRow) => {
     const sectionId = reportSectionElementId(row.actionTarget ?? null);
-    if (!sectionId || !row.canReview) {
+    if (!sectionId) {
       return;
     }
 
@@ -646,7 +650,11 @@ export function MonitorSchoolDrawer({
                                 overrideKey ? localScopeReviewOverrides[overrideKey] : null,
                               );
                               const canPreviewFile = displayRow.kind === "file" && Boolean(displayRow.viewUrl);
-                              const canViewSection = displayRow.kind === "section" && Boolean(displayRow.actionTarget) && displayRow.canReview;
+                              const isVerifiedRow = displayRow.reviewDecision === "verified";
+                              const isReturnedRow = displayRow.reviewDecision === "returned";
+                              const canViewSection = displayRow.kind === "section"
+                                && Boolean(displayRow.actionTarget)
+                                && (displayRow.canReview || isVerifiedRow);
 
                               return (
                               <tr key={`monitor-package-row-${displayRow.id}`} className="bg-white">
@@ -696,34 +704,49 @@ export function MonitorSchoolDrawer({
                                         View
                                       </button>
                                     )}
-                                    <button
-                                      type="button"
-                                      onClick={() => void saveScopeReview(displayRow, "verified")}
-                                      disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
-                                      title={displayRow.canReview ? "Verify this requirement." : disabledPackageActionTitle(displayRow)}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
-                                    >
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
-                                      Verify
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (!displayRow.canReview) {
-                                          return;
-                                        }
-                                        setScopeReviewError("");
-                                        setReturnReviewNotes("");
-                                        setIncludeReturnNote(false);
-                                        setReturnReviewRow(displayRow);
-                                      }}
-                                      disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
-                                      title={displayRow.canReview ? "Return this requirement." : disabledPackageActionTitle(displayRow)}
-                                      className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
-                                    >
-                                      <RotateCcw className="h-3.5 w-3.5" />
-                                      Return
-                                    </button>
+                                    {isVerifiedRow ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => void saveScopeReview(displayRow, "unverified")}
+                                        disabled={scopeReviewSavingKey !== null}
+                                        title="Reopen this requirement for review."
+                                        className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
+                                      >
+                                        <RotateCcw className="h-3.5 w-3.5" />
+                                        Unverify
+                                      </button>
+                                    ) : !isReturnedRow ? (
+                                      <>
+                                        <button
+                                          type="button"
+                                          onClick={() => void saveScopeReview(displayRow, "verified")}
+                                          disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
+                                          title={displayRow.canReview ? "Verify this requirement." : disabledPackageActionTitle(displayRow)}
+                                          className="inline-flex items-center gap-1 rounded-sm border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
+                                        >
+                                          <CheckCircle2 className="h-3.5 w-3.5" />
+                                          Verify
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            if (!displayRow.canReview) {
+                                              return;
+                                            }
+                                            setScopeReviewError("");
+                                            setReturnReviewNotes("");
+                                            setIncludeReturnNote(false);
+                                            setReturnReviewRow(displayRow);
+                                          }}
+                                          disabled={!displayRow.canReview || scopeReviewSavingKey !== null}
+                                          title={displayRow.canReview ? "Return this requirement." : disabledPackageActionTitle(displayRow)}
+                                          className="inline-flex items-center gap-1 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-400 disabled:hover:bg-slate-50"
+                                        >
+                                          <RotateCcw className="h-3.5 w-3.5" />
+                                          Return
+                                        </button>
+                                      </>
+                                    ) : null}
                                   </div>
                                 </td>
                               </tr>

@@ -118,6 +118,7 @@ class AuditLogResource extends JsonResource
             'monitor.file_previewed' => 'Previewed file',
             'monitor.file_downloaded' => 'Downloaded file',
             'monitor.scope_verified' => 'Verified requirement',
+            'monitor.scope_unverified' => 'Unverified requirement',
             'monitor.scope_returned' => 'Returned requirement',
             'monitor.package_validated' => 'Verified package',
             'monitor.package_returned' => 'Returned package',

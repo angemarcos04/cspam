@@ -321,6 +321,7 @@ export function useSchoolDrawer({
         [
           "indicators.scopes_submitted",
           "indicators.scope_verified",
+          "indicators.scope_unverified",
           "indicators.scope_returned",
         ].includes(update.eventType)
       ));

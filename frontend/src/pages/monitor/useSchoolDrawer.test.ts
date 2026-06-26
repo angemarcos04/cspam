@@ -338,6 +338,68 @@ describe("useSchoolDrawer", () => {
     });
   });
 
+  it("hydrates an open drawer after a scope unverified realtime event", async () => {
+    const realtimeSubmission = {
+      id: "submission-sent",
+      status: "draft",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      scopeReviews: [{ scopeId: "fm_qad_001", decision: "unverified" }],
+    } as unknown as IndicatorSubmission;
+    const listSubmissionsForSchool = vi.fn().mockResolvedValue([]);
+    const fetchSubmission = vi.fn().mockResolvedValue(realtimeSubmission);
+    const queryStudents = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+    const listTeachers = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+
+    const { result, rerender } = renderHook(
+      ({ latestRealtimeBatch }) =>
+        useSchoolDrawer({
+          authSessionKey: "monitor:1",
+          isAuthenticated: true,
+          latestRealtimeBatch,
+          resolveRecordId: () => "",
+          resolveSchoolCode: () => "401777",
+          resolveLatestIndicatorSubmissionId: () => "",
+          fetchSubmission,
+          listSubmissionsForSchool,
+          queryStudents,
+          listTeachers,
+        }),
+      {
+        initialProps: { latestRealtimeBatch: null as Parameters<typeof useSchoolDrawer>[0]["latestRealtimeBatch"] },
+      },
+    );
+
+    act(() => {
+      result.current.openSchoolDrawer("school-1");
+    });
+
+    rerender({
+      latestRealtimeBatch: {
+        updates: [
+          {
+            entity: "indicators",
+            eventType: "indicators.scope_unverified",
+            submissionId: "submission-sent",
+            schoolId: "12",
+            schoolCode: "401777",
+            academicYearId: "ay-1",
+            touchedScopes: ["fm_qad_001"],
+          },
+        ],
+        entities: ["indicators"],
+        schoolIds: ["12"],
+        schoolCodes: ["401777"],
+        occurredAt: Date.now(),
+      },
+    });
+
+    await waitFor(() => {
+      expect(fetchSubmission).toHaveBeenCalledWith("submission-sent");
+      expect(result.current.schoolDrawerSubmissions[0]).toEqual(realtimeSubmission);
+    });
+  });
+
   it("merges latest drawer detail ahead of duplicate list rows", () => {
     const latestSubmission = { id: "submission-latest" } as IndicatorSubmission;
     const listRows = [

@@ -332,6 +332,28 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.scopeReviews.0.scopeId', 'bmef')
             ->assertJsonPath('data.scopeReviews.0.decision', 'verified');
 
+        $unverified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'unverified',
+        ]);
+
+        $unverified->assertOk()
+            ->assertJsonPath('data.status', 'submitted')
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
+
+        $bmefUnverifiedReview = collect($unverified->json('data.scopeReviews', []))
+            ->firstWhere('scopeId', 'bmef');
+        $this->assertSame('unverified', $bmefUnverifiedReview['decision'] ?? null);
+        $this->assertNull($bmefUnverifiedReview['notes'] ?? null);
+
+        $invalidUnverify = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'smea',
+            'decision' => 'unverified',
+        ]);
+        $invalidUnverify->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['decision'])
+            ->assertJsonPath('errors.decision.0', 'Only verified requirements can be unverified.');
+
         $returnedWithoutNote = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
             'scopeId' => 'smea',
             'decision' => 'returned',
@@ -362,11 +384,33 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'decision' => 'returned',
             'notes' => 'Please upload the signed version.',
         ]);
+        $this->assertDatabaseHas('form_submission_histories', [
+            'form_type' => IndicatorSubmission::FORM_TYPE,
+            'submission_id' => $submissionId,
+            'action' => 'scope_unverified',
+        ]);
+        $this->assertDatabaseHas('audit_logs', [
+            'action' => 'monitor.scope_unverified',
+        ]);
+        $this->assertDatabaseMissing('notifications', [
+            'type' => IndicatorScopeReviewOutcomeNotification::class,
+            'notifiable_type' => User::class,
+            'notifiable_id' => $schoolHead->id,
+            'data->status' => 'unverified',
+        ]);
         $this->assertDatabaseHas('notifications', [
             'type' => IndicatorScopeReviewOutcomeNotification::class,
             'notifiable_type' => User::class,
             'notifiable_id' => $schoolHead->id,
         ]);
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event): bool {
+            return ($event->payload['eventType'] ?? null) === 'indicators.scope_unverified'
+                && ($event->payload['scopeId'] ?? null) === 'bmef'
+                && ($event->payload['decision'] ?? null) === 'unverified'
+                && ($event->payload['previousDecision'] ?? null) === 'verified'
+                && ($event->payload['touchedScopes'] ?? null) === ['bmef']
+                && ! array_key_exists('notes', $event->payload);
+        });
         Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event): bool {
             return ($event->payload['eventType'] ?? null) === 'indicators.scope_returned'
                 && ($event->payload['scopeId'] ?? null) === 'smea';

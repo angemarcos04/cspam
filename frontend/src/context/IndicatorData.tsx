@@ -31,7 +31,7 @@ import type {
 } from "@/types";
 
 type ReviewDecision = "validated" | "returned";
-type ScopeReviewDecision = "verified" | "returned";
+type ScopeReviewDecision = "verified" | "returned" | "unverified";
 
 interface ReviewSubmissionScopePayload {
   scopeId: string;
