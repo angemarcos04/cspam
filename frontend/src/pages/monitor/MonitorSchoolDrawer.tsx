@@ -279,7 +279,6 @@ export function MonitorSchoolDrawer({
   const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [returnReviewNotes, setReturnReviewNotes] = useState("");
   const [includeReturnNote, setIncludeReturnNote] = useState(false);
-  const [isHistoryDetailsOpen, setIsHistoryDetailsOpen] = useState(false);
   const [activeFilePreviewRow, setActiveFilePreviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [activeFilePreviewUrl, setActiveFilePreviewUrl] = useState<string | null>(null);
   const [activeFilePreviewError, setActiveFilePreviewError] = useState("");
@@ -301,11 +300,7 @@ export function MonitorSchoolDrawer({
     schoolDetail,
     availableSchoolDrawerYears,
     schoolDrawerYearDetail,
-    schoolDrawerHistorySummary,
     schoolDrawerCriticalAlerts,
-    schoolIndicatorPackageRows,
-    latestSchoolPackage,
-    schoolDrawerIndicatorSubmissions,
   } = data;
   const {
     setActiveSchoolDrawerTab,
@@ -313,7 +308,7 @@ export function MonitorSchoolDrawer({
     closeSchoolDrawer,
     onReviewDataChanged,
   } = actions;
-  const { workflowTone, workflowLabel, formatDateTime } = formatting;
+  const { workflowLabel, formatDateTime } = formatting;
 
   useEffect(() => {
     setLocalScopeReviewOverrides({});
@@ -803,75 +798,12 @@ export function MonitorSchoolDrawer({
                     </div>
                   </div>
 
-                  {schoolDrawerHistorySummary?.historyFallbackReason ? (
-                    <div className="mt-3 rounded-sm border border-amber-300 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800">
-                      {schoolDrawerHistorySummary.historyFallbackReason}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                    <div className="space-y-3">
-                      <div className="space-y-1">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-primary-700">History Summary</p>
-                        <p className="text-sm font-semibold text-slate-900">
-                          {schoolDrawerHistorySummary?.historyAvailabilityLabel ?? "History status unavailable"}
-                        </p>
-                        <p className="text-[11px] text-slate-600">
-                          {schoolDrawerHistorySummary?.historyExplanation ?? "No history explanation available yet."}
-                        </p>
-                      </div>
-                      <div className="grid overflow-hidden rounded-sm border border-slate-200 bg-white md:grid-cols-5">
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">Packages</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.historyPackageCount.toLocaleString() ?? "0"}
-                          </p>
-                        </div>
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">School Years</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.historySchoolYearCount.toLocaleString() ?? "0"}
-                          </p>
-                        </div>
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">Renderable Packages</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.packagesWithRenderableRowsCount.toLocaleString() ?? "0"}
-                          </p>
-                        </div>
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">Without Rows</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.packagesWithoutRenderableRowsCount.toLocaleString() ?? "0"}
-                          </p>
-                        </div>
-                        <div className="rounded-sm border border-slate-200 bg-white px-2.5 py-2">
-                          <p className="text-[11px] text-slate-600">Latest Package</p>
-                          <p className="text-sm font-semibold text-slate-900">
-                            {schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <div className="mt-3 overflow-hidden rounded-sm border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className="inline-block border-l-[3px] border-primary-600 pl-3 text-base font-semibold text-slate-900">
                           TARGETS-MET
                         </span>
-                        <span className="pl-3 text-xs font-medium text-slate-500">
-                          Monitor-visible completion: {schoolDrawerYearDetail?.checklistCompleteCount ?? 0}/{(schoolDrawerYearDetail?.checklistCompleteCount ?? 0) + (schoolDrawerYearDetail?.checklistMissingCount ?? 0)} complete
-                        </span>
-                        <span className="pl-3 text-xs font-medium text-slate-500">
-                          Values appear here only after the School Head sends a section/file or submits the full package.
-                        </span>
-                        {schoolDrawerYearDetail?.reportSourceContext.map((line) => (
-                          <span key={`monitor-report-context-${line}`} className="pl-3 text-xs text-slate-500">
-                            {line}
-                          </span>
-                        ))}
                       </div>
                     </div>
 
@@ -951,89 +883,6 @@ export function MonitorSchoolDrawer({
                     ) : (
                       <div className="px-4 py-5 text-sm text-slate-500">
                         {schoolDrawerYearDetail?.reportBlankStateLines[0] ?? "No monitor-visible submitted report package exists yet for the selected academic year."}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="mt-3 rounded-sm border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Package History Context</p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">
-                          Shows the latest package activity and its history status.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        aria-expanded={isHistoryDetailsOpen}
-                        aria-controls="monitor-package-history-details"
-                        onClick={() => setIsHistoryDetailsOpen((current) => !current)}
-                        className="inline-flex items-center rounded-sm border border-slate-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                      >
-                        {isHistoryDetailsOpen ? "Hide package details" : "Show package details"}
-                      </button>
-                    </div>
-                    {isHistoryDetailsOpen && (
-                      <div id="monitor-package-history-details" className="mt-3 space-y-2">
-                        <div className="grid gap-2 text-[11px] text-slate-600 sm:grid-cols-2">
-                          <p>
-                            Latest package: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistoryPackageId ? `#${schoolDrawerHistorySummary.latestHistoryPackageId}` : "N/A"}</span>
-                          </p>
-                          <p>
-                            Latest package year: <span className="font-semibold text-slate-900">{schoolDrawerHistorySummary?.latestHistorySchoolYear ?? "N/A"}</span>
-                          </p>
-                        </div>
-                        {schoolIndicatorPackageRows.length === 0 ? (
-                          <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-500">
-                            No package history exists yet for this school.
-                          </div>
-                        ) : (
-                          <div className="overflow-x-auto rounded-sm border border-slate-200">
-                            <table className="min-w-[720px] w-full border-collapse">
-                              <thead>
-                                <tr className="bg-slate-100 text-[11px] font-semibold uppercase tracking-wide text-slate-700">
-                                  <th className="border border-slate-300 px-2 py-2 text-left">Package</th>
-                                  <th className="border border-slate-300 px-2 py-2 text-left">School Year</th>
-                                  <th className="border border-slate-300 px-2 py-2 text-center">Status</th>
-                                  <th className="border border-slate-300 px-2 py-2 text-center">Indicator Rows</th>
-                                  <th className="border border-slate-300 px-2 py-2 text-center">History Role</th>
-                                  <th className="border border-slate-300 px-2 py-2 text-left">Submitted</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {schoolIndicatorPackageRows.map((row) => {
-                                  const matchingSubmission = schoolDrawerIndicatorSubmissions.find((submission) => submission.id === row.id);
-                                  const hasIndicatorRows = Array.isArray(matchingSubmission?.indicators) && matchingSubmission.indicators.length > 0;
-                                  const historyRole =
-                                    schoolDrawerHistorySummary?.latestRenderableSubmissionId === row.id
-                                      ? "History source"
-                                      : latestSchoolPackage?.id === row.id
-                                        ? "Latest activity"
-                                        : "Historical only";
-
-                                  return (
-                                    <tr key={`monitor-history-package-${row.id}`} className="bg-white">
-                                      <td className="border border-slate-300 px-2 py-2 text-xs font-semibold text-slate-900">#{row.id}</td>
-                                      <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">{row.schoolYear}</td>
-                                      <td className="border border-slate-300 px-2 py-2 text-center">
-                                        <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.status)}`}>
-                                          {workflowLabel(row.status)}
-                                        </span>
-                                      </td>
-                                      <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">
-                                        {hasIndicatorRows ? "Available" : "None"}
-                                      </td>
-                                      <td className="border border-slate-300 px-2 py-2 text-center text-xs text-slate-700">{historyRole}</td>
-                                      <td className="border border-slate-300 px-2 py-2 text-xs text-slate-700">
-                                        {row.submittedAt ? formatDateTime(row.submittedAt) : "N/A"}
-                                      </td>
-                                    </tr>
-                                  );
-                                })}
-                              </tbody>
-                            </table>
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>

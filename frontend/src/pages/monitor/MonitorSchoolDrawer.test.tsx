@@ -286,7 +286,7 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByText(/Compliance is submitted\. Active private package/i)).toBeNull();
   });
 
-  it("keeps the no-indicator-data history state plain and collapses package details", () => {
+  it("keeps the no-indicator-data history state plain without package details", () => {
     render(
       <MonitorSchoolDrawer
         viewState={{
@@ -411,21 +411,16 @@ describe("MonitorSchoolDrawer", () => {
       />,
     );
 
-    expect(screen.getAllByText("This package has no indicator data to display.")).toHaveLength(1);
-    expect(screen.getByText("No indicator data available yet")).toBeTruthy();
+    expect(screen.getByText("No monitor-visible submitted report package exists yet for the selected academic year.")).toBeTruthy();
+    expect(screen.queryByText("This package has no indicator data to display.")).toBeNull();
+    expect(screen.queryByText("No indicator data available yet")).toBeNull();
     expect(screen.queryByText("Packages exist, but none contain indicator rows for history rendering.")).toBeNull();
     expect(screen.queryByText("History Source")).toBeNull();
     expect(screen.queryByText(/Matrix source year:/)).toBeNull();
     expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Package" })).toBeNull();
-
-    const toggle = screen.getByRole("button", { name: "Show package details" });
-    expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(toggle);
-
-    expect(screen.getByRole("button", { name: "Hide package details" }).getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText(/Latest package year:/)).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show package details" })).toBeNull();
+    expect(screen.queryByText(/Latest package year:/)).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Reviewed" })).toBeNull();
     expect(screen.queryByText(/Matrix source year:/)).toBeNull();
     expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
@@ -575,7 +570,8 @@ describe("MonitorSchoolDrawer", () => {
     );
 
     expect(screen.getByText("TARGETS-MET")).toBeTruthy();
-    expect(screen.getByText("Monitor-visible completion: 2/2 complete")).toBeTruthy();
+    expect(screen.queryByText("Monitor-visible completion: 2/2 complete")).toBeNull();
+    expect(screen.queryByText("Values appear here only after the School Head sends a section/file or submits the full package.")).toBeNull();
     expect(screen.queryByText("Submitted Report View")).toBeNull();
     expect(screen.getByText("School's Achievement (SY 2025-2026)")).toBeTruthy();
     expect(screen.getByText("Key Performance Indicators (SY 2025-2026)")).toBeTruthy();
@@ -584,10 +580,9 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
     expect(screen.queryByRole("button", { name: /Jump to Missing/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Jump to Returned/ })).toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Show package details" }));
-    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
-    expect(screen.getByText(/Latest package year:/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Show package details" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Package" })).toBeNull();
+    expect(screen.queryByText(/Latest package year:/)).toBeNull();
     expect(screen.queryByText("Historical Indicator Matrix")).toBeNull();
     expect(screen.queryByText("Matrix source")).toBeNull();
   });
