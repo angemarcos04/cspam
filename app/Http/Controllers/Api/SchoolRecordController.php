@@ -19,14 +19,17 @@ use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
+use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\SchoolStatus;
 use App\Support\Domain\StudentStatus;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -61,6 +64,8 @@ class SchoolRecordController extends Controller
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
         $filters = $this->filterService->extract($request);
+        // FIX: schools are not year-bound, so selected-year dashboard data must scope related records explicitly.
+        $academicYearId = $this->resolveAcademicYearFilterId($filters);
 
         $scope = $isSchoolHead ? 'school' : 'division';
         $scopeKey = $scope === 'division' ? 'division:all' : 'school:unassigned';
@@ -84,7 +89,7 @@ class SchoolRecordController extends Controller
         ]);
         $scopeKey .= '|' . $this->filterService->buildCacheKey($filters);
 
-        $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery);
+        $syncFingerprint = $this->buildSyncFingerprint(clone $baseQuery, $academicYearId);
         $recordCount = $syncFingerprint['recordCount'];
         $latestAt = $syncFingerprint['latestAt'];
         $etag = $this->buildSyncEtag($scope, $scopeKey, $syncFingerprint);
@@ -99,10 +104,12 @@ class SchoolRecordController extends Controller
 
         $query = (clone $baseQuery)
             ->with('submittedBy:id,name')
-            ->with(['latestMonitorRelevantIndicatorSubmission' => function ($query): void {
+            ->with(['latestMonitorRelevantIndicatorSubmission' => function ($query) use ($academicYearId): void {
+                $this->applyAcademicYearFilter($query, $academicYearId);
                 $query->select([
                     'id',
                     'indicator_submissions.school_id',
+                    'indicator_submissions.academic_year_id',
                     'status',
                     'submitted_at',
                     'reviewed_at',
@@ -110,10 +117,12 @@ class SchoolRecordController extends Controller
                     'updated_at',
                 ]);
             }])
-            ->with(['latestIndicatorSubmission' => function ($query): void {
+            ->with(['latestIndicatorSubmission' => function ($query) use ($academicYearId): void {
+                $this->applyAcademicYearFilter($query, $academicYearId);
                 $query->select([
                     'id',
                     'indicator_submissions.school_id',
+                    'indicator_submissions.academic_year_id',
                     'status',
                     'submitted_at',
                     'reviewed_at',
@@ -122,7 +131,9 @@ class SchoolRecordController extends Controller
                 ]);
             }])
             ->with(['schoolHeadAccounts' => fn ($query) => $this->applyDashboardSchoolHeadAccountQuery($query)])
-            ->withCount('students')
+            ->withCount([
+                'students' => fn (Builder $query) => $this->applyAcademicYearFilter($query, $academicYearId),
+            ])
             ->orderByDesc('submitted_at')
             ->orderByDesc('updated_at');
 
@@ -145,7 +156,9 @@ class SchoolRecordController extends Controller
             $records = $query->get();
         }
 
-        $targetsMet = $this->buildTargetsMetSummary(clone $baseQuery);
+        $this->hydrateYearScopedIndicatorLatest($records, $academicYearId);
+
+        $targetsMet = $this->buildTargetsMetSummary(clone $baseQuery, $academicYearId);
         $syncAlerts = $this->buildSyncAlerts($targetsMet);
         $syncedAt = now()->toISOString();
 
@@ -1534,6 +1547,95 @@ class SchoolRecordController extends Controller
     }
 
     /**
+     * @param array<string, mixed> $filters
+     */
+    private function resolveAcademicYearFilterId(array $filters): ?int
+    {
+        $value = $filters['academic_year_id'] ?? null;
+
+        if (! is_numeric($value)) {
+            return null;
+        }
+
+        $academicYearId = (int) $value;
+
+        return $academicYearId > 0 ? $academicYearId : null;
+    }
+
+    private function applyAcademicYearFilter(Builder|Relation $query, ?int $academicYearId): void
+    {
+        if ($academicYearId !== null) {
+            $query->where('academic_year_id', $academicYearId);
+        }
+    }
+
+    /**
+     * @param Collection<int, School> $schools
+     */
+    private function hydrateYearScopedIndicatorLatest(Collection $schools, ?int $academicYearId): void
+    {
+        if ($academicYearId === null || $schools->isEmpty()) {
+            return;
+        }
+
+        $schoolIds = $schools
+            ->pluck('id')
+            ->map(static fn (mixed $id): int => (int) $id)
+            ->filter(static fn (int $id): bool => $id > 0)
+            ->unique()
+            ->values();
+
+        if ($schoolIds->isEmpty()) {
+            return;
+        }
+
+        $columns = [
+            'id',
+            'school_id',
+            'academic_year_id',
+            'status',
+            'submitted_at',
+            'reviewed_at',
+            'created_at',
+            'updated_at',
+        ];
+
+        $latestBySchoolId = IndicatorSubmission::query()
+            ->whereIn('school_id', $schoolIds)
+            ->where('academic_year_id', $academicYearId)
+            ->select($columns)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('school_id')
+            ->keyBy('school_id');
+
+        $monitorRelevantStatuses = [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+            FormSubmissionStatus::RETURNED->value,
+        ];
+
+        $monitorRelevantBySchoolId = IndicatorSubmission::query()
+            ->whereIn('school_id', $schoolIds)
+            ->where('academic_year_id', $academicYearId)
+            ->whereIn('status', $monitorRelevantStatuses)
+            ->select($columns)
+            ->orderByDesc('updated_at')
+            ->orderByDesc('id')
+            ->get()
+            ->unique('school_id')
+            ->keyBy('school_id');
+
+        $schools->each(static function (School $school) use ($latestBySchoolId, $monitorRelevantBySchoolId): void {
+            $schoolId = (int) $school->id;
+
+            $school->setRelation('latestMonitorRelevantIndicatorSubmission', $monitorRelevantBySchoolId->get($schoolId));
+            $school->setRelation('latestIndicatorSubmission', $latestBySchoolId->get($schoolId));
+        });
+    }
+
+    /**
      * @return array{
      *     targetsMet: array<string, int|float|null|string>,
      *     alerts: array<int, array<string, int|float|string|null>>
@@ -1566,7 +1668,7 @@ class SchoolRecordController extends Controller
     /**
      * @return array<string, int|float|null|string>
      */
-    private function buildTargetsMetSummary(Builder $baseQuery): array
+    private function buildTargetsMetSummary(Builder $baseQuery, ?int $academicYearId = null): array
     {
         $schools = (clone $baseQuery)
             ->select(['id', 'status', 'reported_student_count', 'reported_teacher_count'])
@@ -1586,11 +1688,13 @@ class SchoolRecordController extends Controller
         if ($schoolIds->isNotEmpty()) {
             $sectionCount = (int) Section::query()
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->count();
 
             $statusCounts = Student::query()
                 ->selectRaw('status, COUNT(*) as aggregate_count')
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->groupBy('status')
                 ->pluck('aggregate_count', 'status')
                 ->map(static fn ($value): int => (int) $value);
@@ -1828,7 +1932,7 @@ class SchoolRecordController extends Controller
      *     latestAt: ?Carbon
      * }
      */
-    private function buildSyncFingerprint(Builder $baseQuery): array
+    private function buildSyncFingerprint(Builder $baseQuery, ?int $academicYearId = null): array
     {
         $schoolProbe = (clone $baseQuery)
             ->selectRaw('COUNT(*) as aggregate_count')
@@ -1853,6 +1957,7 @@ class SchoolRecordController extends Controller
         if ($schoolIds->isNotEmpty()) {
             $sectionProbe = Section::query()
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->selectRaw('COUNT(*) as aggregate_count')
                 ->selectRaw('MAX(updated_at) as latest_updated_at')
                 ->first();
@@ -1862,6 +1967,7 @@ class SchoolRecordController extends Controller
 
             $studentProbe = Student::query()
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->selectRaw('COUNT(*) as aggregate_count')
                 ->selectRaw('MAX(updated_at) as latest_updated_at')
                 ->selectRaw('MAX(last_status_at) as latest_status_changed_at')
@@ -1872,6 +1978,7 @@ class SchoolRecordController extends Controller
             $latestStudentStatusAt = $studentProbe?->latest_status_changed_at;
             $studentStatusSignature = Student::query()
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->selectRaw('status, COUNT(*) as aggregate_count')
                 ->groupBy('status')
                 ->orderBy('status')
@@ -1886,6 +1993,7 @@ class SchoolRecordController extends Controller
 
             $indicatorProbe = IndicatorSubmission::query()
                 ->whereIn('school_id', $schoolIds)
+                ->when($academicYearId !== null, fn (Builder $query) => $query->where('academic_year_id', $academicYearId))
                 ->selectRaw('COUNT(*) as aggregate_count')
                 ->selectRaw('MAX(updated_at) as latest_updated_at')
                 ->selectRaw('MAX(submitted_at) as latest_submitted_at')
