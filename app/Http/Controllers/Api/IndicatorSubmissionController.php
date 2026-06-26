@@ -17,6 +17,7 @@ use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
+use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Services\FilterService;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
@@ -797,6 +798,14 @@ class IndicatorSubmissionController extends Controller
             'submitted_scope_count' => count(app(SubmissionScopeProgressResolver::class)->buildScopeProgressForSubmission($submission)['requiredScopeIds'] ?? []),
         ]);
 
+        $this->notifyMonitorsOfSubmissionReceived(
+            $submission,
+            $user,
+            $fromStatus === FormSubmissionStatus::RETURNED->value
+                ? 'indicator_package_resubmitted'
+                : 'indicator_package_submitted',
+        );
+
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload($submission, 'indicators.submitted', [
                 'status' => FormSubmissionStatus::SUBMITTED->value,
@@ -864,10 +873,15 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
+        $scopeLabelsById = [];
+        $hasReturnedTarget = false;
         foreach ($targets as $target) {
             $previousDecision = $this->latestScopeDecisionForAudit($submission, $target);
             $isResend = $previousDecision === 'returned';
+            $hasReturnedTarget = $hasReturnedTarget || $isResend;
             $scopeType = $this->scopeTypeFor($target);
+            $scopeLabel = $scopeProgressResolver->scopeLabel($target);
+            $scopeLabelsById[$target] = $scopeLabel;
             $this->auditSubmissionEvent(
                 $request,
                 $isResend
@@ -880,12 +894,20 @@ class IndicatorSubmissionController extends Controller
                     'new_status' => $fromStatus ?? FormSubmissionStatus::DRAFT->value,
                     'scope_id' => $target,
                     'scope_type' => $scopeType,
-                    'scope_label' => $scopeProgressResolver->scopeLabel($target),
+                    'scope_label' => $scopeLabel,
                     'file_type' => $scopeType === 'file' ? $target : null,
                     'previous_decision' => $previousDecision,
                 ],
             );
         }
+
+        $this->notifyMonitorsOfSubmissionReceived(
+            $submission,
+            $user,
+            $hasReturnedTarget ? 'indicator_scope_resent' : 'indicator_scope_submitted',
+            $targets,
+            array_values($scopeLabelsById),
+        );
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload($submission, 'indicators.scopes_submitted', [
@@ -1105,17 +1127,15 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
-        if ($decision !== 'unverified') {
-            $schoolHeads = $this->schoolHeadsForSubmission($submission);
-            Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
-                $submission,
-                $user,
-                $scopeId,
-                $scopeLabel,
-                $decision,
-                $notes,
-            ));
-        }
+        $schoolHeads = $this->schoolHeadsForSubmission($submission);
+        Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
+            $submission,
+            $user,
+            $scopeId,
+            $scopeLabel,
+            $decision,
+            $notes,
+        ));
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload(
@@ -1339,6 +1359,53 @@ class IndicatorSubmissionController extends Controller
         }
 
         return $schoolHeadsQuery->get();
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     * @param list<string> $scopeLabels
+     */
+    private function notifyMonitorsOfSubmissionReceived(
+        IndicatorSubmission $submission,
+        User $schoolHead,
+        string $eventType,
+        array $scopeIds = [],
+        array $scopeLabels = [],
+    ): void {
+        $monitors = $this->monitorRecipientsForNotifications();
+        if ($monitors->isEmpty()) {
+            return;
+        }
+
+        Notification::sendNow($monitors, new IndicatorSubmissionReceivedNotification(
+            $submission,
+            $schoolHead,
+            $eventType,
+            $scopeIds,
+            $scopeLabels,
+        ), ['database']);
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function monitorRecipientsForNotifications(): Collection
+    {
+        $monitorQuery = User::query()->with('roles');
+
+        if ($this->usersHaveAccountTypeColumn()) {
+            $monitorQuery->where('account_type', UserRoleResolver::MONITOR);
+        } else {
+            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::MONITOR);
+            $monitorQuery->whereHas('roles', static function ($builder) use ($aliases): void {
+                $builder->whereIn('name', $aliases);
+            });
+        }
+
+        return $monitorQuery
+            ->get()
+            ->filter(static fn (User $user): bool => $user->canAuthenticate())
+            ->values();
     }
 
     /**

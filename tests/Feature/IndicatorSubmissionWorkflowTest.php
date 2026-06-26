@@ -392,10 +392,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'monitor.scope_unverified',
         ]);
-        $this->assertDatabaseMissing('notifications', [
+        $this->assertDatabaseHas('notifications', [
             'type' => IndicatorScopeReviewOutcomeNotification::class,
             'notifiable_type' => User::class,
             'notifiable_id' => $schoolHead->id,
+            'data->eventType' => 'indicator_scope_unverified',
             'data->status' => 'unverified',
         ]);
         $this->assertDatabaseHas('notifications', [

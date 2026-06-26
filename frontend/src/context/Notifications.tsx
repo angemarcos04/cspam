@@ -127,6 +127,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     await syncNotifications(false);
   }, [syncNotifications]);
 
+  useEffect(() => {
+    if (!token) {
+      void syncNotifications(true);
+      return;
+    }
+
+    setIsSyncActive(true);
+    void syncNotifications(true);
+  }, [token, syncNotifications]);
+
   const markAsRead = useCallback(
     async (id: string) => {
       if (!token) return;

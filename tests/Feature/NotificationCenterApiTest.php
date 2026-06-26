@@ -2,12 +2,19 @@
 
 namespace Tests\Feature;
 
+use App\Models\AcademicYear;
+use App\Models\IndicatorSubmission;
+use App\Models\PerformanceMetric;
 use App\Models\School;
 use App\Models\User;
+use App\Notifications\IndicatorScopeReviewOutcomeNotification;
+use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -129,6 +136,158 @@ class NotificationCenterApiTest extends TestCase
         $this->assertSame('Please check the returned package.', data_get($notification?->data, 'notes'));
     }
 
+    public function test_monitor_receives_full_package_submitted_notification(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor] = $this->submissionNotificationActors();
+        $submissionId = $this->createCompleteIndicatorSubmission($schoolHeadToken);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        $notification = $this->monitorSubmissionNotificationByEvent($monitor, 'indicator_package_submitted');
+        $this->assertSame(IndicatorSubmissionReceivedNotification::class, $notification?->type);
+        $this->assertSame('indicator_package_submitted', data_get($notification?->data, 'eventType'));
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame((string) $schoolHead->school_id, data_get($notification?->data, 'schoolId'));
+        $this->assertNotEmpty(data_get($notification?->data, 'schoolName'));
+        $this->assertNotEmpty(data_get($notification?->data, 'academicYearId'));
+    }
+
+    public function test_monitor_receives_full_package_resubmitted_notification_after_return(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor, $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->createCompleteIndicatorSubmission($schoolHeadToken);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'returned',
+            'notes' => 'Please revise the package.',
+        ])->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        $notification = $this->monitorSubmissionNotificationByEvent($monitor, 'indicator_package_resubmitted');
+        $this->assertSame('indicator_package_resubmitted', data_get($notification?->data, 'eventType'));
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame((string) $schoolHead->school_id, data_get($notification?->data, 'schoolId'));
+    }
+
+    public function test_monitor_receives_grouped_scope_submitted_notification(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $notification = $this->monitorSubmissionNotificationByEvent($monitor, 'indicator_scope_submitted');
+        $this->assertSame('indicator_scope_submitted', data_get($notification?->data, 'eventType'));
+        $this->assertSame(['bmef'], data_get($notification?->data, 'scopeIds'));
+        $this->assertContains('BMEF file', data_get($notification?->data, 'scopeLabels'));
+    }
+
+    public function test_monitor_receives_grouped_scope_resent_notification_after_return(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor, $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'returned',
+        ])->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $notification = $this->monitorSubmissionNotificationByEvent($monitor, 'indicator_scope_resent');
+        $this->assertSame('indicator_scope_resent', data_get($notification?->data, 'eventType'));
+        $this->assertSame(['bmef'], data_get($notification?->data, 'scopeIds'));
+    }
+
+    public function test_monitor_does_not_receive_submission_notification_for_draft_save_or_upload_only(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor] = $this->submissionNotificationActors();
+        $initialCount = $monitor->notifications()
+            ->where('type', IndicatorSubmissionReceivedNotification::class)
+            ->count();
+
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->assertSame(
+            $initialCount,
+            $monitor->fresh()->notifications()->where('type', IndicatorSubmissionReceivedNotification::class)->count(),
+        );
+        $this->assertSame((string) $schoolHead->school_id, (string) IndicatorSubmission::query()->findOrFail($submissionId)->school_id);
+    }
+
+    public function test_scope_unverified_notification_is_labeled_as_reopened_for_review(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, $monitor, $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'unverified',
+        ])->assertOk();
+
+        $notification = $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorScopeReviewOutcomeNotification::class)
+            ->get()
+            ->first(static fn ($notification): bool => data_get($notification->data, 'eventType') === 'indicator_scope_unverified');
+
+        $this->assertSame('indicator_scope_unverified', data_get($notification?->data, 'eventType'));
+        $this->assertSame('BMEF file reopened for review', data_get($notification?->data, 'title'));
+        $this->assertStringContainsString('reopened for review', (string) data_get($notification?->data, 'message'));
+        $this->assertNotSame('indicator_scope_returned', data_get($notification?->data, 'eventType'));
+    }
+
     private function loginToken(string $role, string $login): string
     {
         $loginResponse = $this->postJson('/api/auth/login', [
@@ -140,6 +299,96 @@ class NotificationCenterApiTest extends TestCase
         $loginResponse->assertOk();
 
         return (string) $loginResponse->json('token');
+    }
+
+    /**
+     * @return array{0: User, 1: string, 2: User, 3: string}
+     */
+    private function submissionNotificationActors(): array
+    {
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+
+        return [
+            $schoolHead,
+            $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead)),
+            $monitor,
+            $this->loginToken('monitor', 'cspamsmonitor@gmail.com'),
+        ];
+    }
+
+    private function bootstrapIndicatorSubmission(string $schoolHeadToken): string
+    {
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $response = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $response->assertCreated();
+
+        return (string) $response->json('data.id');
+    }
+
+    private function createCompleteIndicatorSubmission(string $schoolHeadToken): string
+    {
+        $academicYear = AcademicYear::query()->where('is_current', true)->firstOrFail();
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
+
+        $response = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_id' => $metricId,
+                    'target_value' => 1,
+                    'actual_value' => 1,
+                    'remarks' => 'Ready for review.',
+                ],
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [(string) $academicYear->name => 'Maria Santos']],
+                ],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $submissionId = (string) $response->json('data.id');
+        $this->uploadRequiredSubmissionFiles($schoolHeadToken, $submissionId);
+
+        return $submissionId;
+    }
+
+    private function uploadRequiredSubmissionFiles(string $token, string $submissionId): void
+    {
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+        $this->uploadSubmissionDocument($token, $submissionId, 'smea', 'smea.xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+            ->assertOk();
+    }
+
+    private function uploadSubmissionDocument(
+        string $token,
+        string $submissionId,
+        string $type,
+        string $filename,
+        string $mimeType,
+    ) {
+        return $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => $type,
+            'file' => UploadedFile::fake()->create($filename, 64, $mimeType),
+        ]);
+    }
+
+    private function monitorSubmissionNotificationByEvent(User $monitor, string $eventType): ?\Illuminate\Notifications\DatabaseNotification
+    {
+        return $monitor->fresh()->notifications()
+            ->where('type', IndicatorSubmissionReceivedNotification::class)
+            ->get()
+            ->first(static fn ($notification): bool => data_get($notification->data, 'eventType') === $eventType);
     }
 
     private function schoolHeadLogin(User $user): string
