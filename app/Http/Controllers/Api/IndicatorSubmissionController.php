@@ -984,12 +984,12 @@ class IndicatorSubmissionController extends Controller
 
         $schoolHeads = $schoolHeadsQuery->get();
 
-        Notification::send($schoolHeads, new IndicatorReviewOutcomeNotification(
+        Notification::sendNow($schoolHeads, new IndicatorReviewOutcomeNotification(
             $submission,
             $user,
             $decision,
             $notes,
-        ));
+        ), ['database']);
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload(
@@ -1128,14 +1128,14 @@ class IndicatorSubmissionController extends Controller
         );
 
         $schoolHeads = $this->schoolHeadsForSubmission($submission);
-        Notification::send($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
+        Notification::sendNow($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
             $submission,
             $user,
             $scopeId,
             $scopeLabel,
             $decision,
             $notes,
-        ));
+        ), ['database']);
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload(

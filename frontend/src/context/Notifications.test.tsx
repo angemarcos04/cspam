@@ -117,6 +117,31 @@ describe("NotificationProvider", () => {
     });
   });
 
+  it("refreshes notifications on school reminder realtime events after login", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockResolvedValueOnce(listResponse([notificationRow("n2")], 1));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    window.dispatchEvent(new CustomEvent("cspams:update", {
+      detail: { eventType: "school_records.reminder_sent" },
+    }));
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId("notification-count").textContent).toBe("1");
+    });
+  });
+
   it("keeps mark-as-read and mark-all-read behavior", async () => {
     apiRequestRawMock
       .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))

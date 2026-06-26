@@ -7,6 +7,7 @@ use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
 use App\Models\User;
+use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
@@ -14,6 +15,7 @@ use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -181,6 +183,115 @@ class NotificationCenterApiTest extends TestCase
         $this->assertSame((string) $schoolHead->school_id, data_get($notification?->data, 'schoolId'));
     }
 
+    public function test_school_head_receives_package_validated_notification_immediately_without_worker(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, , $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->createCompleteIndicatorSubmission($schoolHeadToken);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        Queue::fake();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'validated',
+            'notes' => 'Accepted.',
+        ])->assertOk();
+
+        $notification = $this->schoolHeadReviewNotificationByEvent($schoolHead, 'indicator_validated');
+        $this->assertSame(IndicatorReviewOutcomeNotification::class, $notification?->type);
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame('validated', data_get($notification?->data, 'status'));
+    }
+
+    public function test_school_head_receives_package_returned_notification_immediately_without_worker(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, , $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->createCompleteIndicatorSubmission($schoolHeadToken);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertOk();
+
+        Queue::fake();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/review", [
+            'decision' => 'returned',
+            'notes' => 'Please revise the package.',
+        ])->assertOk();
+
+        $notification = $this->schoolHeadReviewNotificationByEvent($schoolHead, 'indicator_returned');
+        $this->assertSame(IndicatorReviewOutcomeNotification::class, $notification?->type);
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame('returned', data_get($notification?->data, 'status'));
+        $this->assertSame('Please revise the package.', data_get($notification?->data, 'reviewNotes'));
+    }
+
+    public function test_school_head_receives_scope_verified_notification_immediately_without_worker(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, , $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        Queue::fake();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+
+        $notification = $this->schoolHeadScopeNotificationByEvent($schoolHead, 'indicator_scope_verified');
+        $this->assertSame(IndicatorScopeReviewOutcomeNotification::class, $notification?->type);
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame('verified', data_get($notification?->data, 'status'));
+        $this->assertSame('bmef', data_get($notification?->data, 'scopeId'));
+    }
+
+    public function test_school_head_receives_scope_returned_notification_immediately_without_worker(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [$schoolHead, $schoolHeadToken, , $monitorToken] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        Queue::fake();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'returned',
+            'notes' => 'Please upload the signed version.',
+        ])->assertOk();
+
+        $notification = $this->schoolHeadScopeNotificationByEvent($schoolHead, 'indicator_scope_returned');
+        $this->assertSame(IndicatorScopeReviewOutcomeNotification::class, $notification?->type);
+        $this->assertSame($submissionId, data_get($notification?->data, 'submissionId'));
+        $this->assertSame('returned', data_get($notification?->data, 'status'));
+        $this->assertSame('bmef', data_get($notification?->data, 'scopeId'));
+        $this->assertSame('Please upload the signed version.', data_get($notification?->data, 'reviewNotes'));
+    }
+
     public function test_monitor_receives_grouped_scope_submitted_notification(): void
     {
         Storage::fake('local');
@@ -271,6 +382,8 @@ class NotificationCenterApiTest extends TestCase
             'scopeId' => 'bmef',
             'decision' => 'verified',
         ])->assertOk();
+
+        Queue::fake();
 
         $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
             'scopeId' => 'bmef',
@@ -387,6 +500,22 @@ class NotificationCenterApiTest extends TestCase
     {
         return $monitor->fresh()->notifications()
             ->where('type', IndicatorSubmissionReceivedNotification::class)
+            ->get()
+            ->first(static fn ($notification): bool => data_get($notification->data, 'eventType') === $eventType);
+    }
+
+    private function schoolHeadReviewNotificationByEvent(User $schoolHead, string $eventType): ?\Illuminate\Notifications\DatabaseNotification
+    {
+        return $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorReviewOutcomeNotification::class)
+            ->get()
+            ->first(static fn ($notification): bool => data_get($notification->data, 'eventType') === $eventType);
+    }
+
+    private function schoolHeadScopeNotificationByEvent(User $schoolHead, string $eventType): ?\Illuminate\Notifications\DatabaseNotification
+    {
+        return $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorScopeReviewOutcomeNotification::class)
             ->get()
             ->first(static fn ($notification): bool => data_get($notification->data, 'eventType') === $eventType);
     }
