@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
 use App\Models\User;
@@ -443,6 +444,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'targets' => ['bmef'],
         ])->assertOk();
 
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+            'scope_type' => 'file',
+        ]);
+
         /** @var User $monitor */
         $monitor = User::query()
             ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
@@ -481,6 +488,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'scope_id' => 'bmef',
             'decision' => 'verified',
             'notes' => null,
+        ]);
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+            'scope_type' => 'file',
         ]);
         $this->assertSame(2, FormSubmissionHistory::query()
             ->where('form_type', IndicatorSubmission::FORM_TYPE)
@@ -1706,10 +1718,16 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-original.pdf', 'application/pdf')
             ->assertOk();
 
-        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+        $resent = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
-        ])->assertOk()
+        ]);
+        $resent->assertOk()
             ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
+        $this->assertFalse(collect($resent->json('data.scopeReviews', []))->contains(
+            static fn (mixed $review): bool => is_array($review)
+                && ($review['scopeId'] ?? null) === 'bmef'
+                && ($review['decision'] ?? null) === 'returned',
+        ));
 
         /** @var User $monitor */
         $monitor = User::query()
@@ -1728,6 +1746,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
             ->assertOk();
+        $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
 
         $monitorShowReturnedEdit = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowReturnedEdit->assertOk()
@@ -1744,10 +1766,16 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonValidationErrors(['submission'])
             ->assertJsonPath('errors.submission.0', 'Only sent indicator scopes can be reviewed.');
 
-        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+        $resent = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
-        ])->assertOk()
+        ]);
+        $resent->assertOk()
             ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
+        $this->assertFalse(collect($resent->json('data.scopeReviews', []))->contains(
+            static fn (mixed $review): bool => is_array($review)
+                && ($review['scopeId'] ?? null) === 'bmef'
+                && ($review['decision'] ?? null) === 'returned',
+        ));
 
         $monitorShowResentEdit = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowResentEdit->assertOk()
@@ -2125,6 +2153,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'path' => $storedPath,
         ]);
 
+        $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['fm_qad_001'],
+        ])->assertOk();
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => (int) $submissionId,
+            'scope_id' => 'fm_qad_001',
+        ]);
+
         $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_002', 'fm-qad-002.pdf', 'application/pdf')
             ->assertOk()
             ->assertJsonPath('data.files.fm_qad_002.uploaded', true);
@@ -2144,6 +2180,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseMissing('indicator_submission_files', [
             'indicator_submission_id' => (int) $submissionId,
             'type' => 'fm_qad_001',
+        ]);
+        $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => (int) $submissionId,
+            'scope_id' => 'fm_qad_001',
         ]);
 
         $history = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}/history");
@@ -2487,6 +2527,21 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'targets' => ['bmef'],
         ])->assertOk();
 
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+            'scope_type' => 'file',
+            'submitted_by' => $schoolHead->id,
+        ]);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+        $this->assertSame(1, IndicatorSubmissionScopeSubmission::query()
+            ->where('indicator_submission_id', $submissionId)
+            ->where('scope_id', 'bmef')
+            ->count());
+
         $monitorShowAfterSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $monitorShowAfterSend->assertOk()
             ->assertJsonPath('data.files.bmef.uploaded', true)
@@ -2503,6 +2558,41 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->withToken($monitorToken)
             ->get("/api/submissions/{$submissionId}/download/bmef")
             ->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'returned',
+        ])->assertOk();
+
+        $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
+
+        $monitorShowAfterReturn = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterReturn->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', false)
+            ->assertJsonPath('data.files.bmef.viewUrl', null)
+            ->assertJsonPath('data.files.bmef.downloadUrl', null);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
+            ->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
+
+        $monitorShowAfterResend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterResend->assertOk()
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', ['bmef'])
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf')
+            ->assertJsonPath('data.files.bmef.viewUrl', "/api/submissions/{$submissionId}/view/bmef")
+            ->assertJsonPath('data.files.bmef.downloadUrl', "/api/submissions/{$submissionId}/download/bmef");
     }
 
     public function test_submitted_indicator_submission_cannot_be_updated(): void

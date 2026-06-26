@@ -1619,7 +1619,10 @@ class SchoolRecordController extends Controller
         $monitorRelevantBySchoolId = IndicatorSubmission::query()
             ->whereIn('school_id', $schoolIds)
             ->where('academic_year_id', $academicYearId)
-            ->whereIn('status', $monitorRelevantStatuses)
+            ->where(function (Builder $query) use ($monitorRelevantStatuses): void {
+                $query->whereIn('status', $monitorRelevantStatuses)
+                    ->orWhereHas('scopeSubmissions');
+            })
             ->select($columns)
             ->orderByDesc('updated_at')
             ->orderByDesc('id')

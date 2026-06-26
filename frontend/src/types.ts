@@ -556,6 +556,7 @@ export interface IndicatorSubmission {
     id: string;
     name: string;
   };
+  academicYearId?: string | number | null;
   notes: string | null;
   reviewNotes: string | null;
   summary: IndicatorSubmissionSummary;

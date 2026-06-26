@@ -71,7 +71,7 @@ describe("MonitorSchoolDrawer", () => {
           synchronizedStudents: 0,
           synchronizedTeachers: 0,
         },
-        availableSchoolDrawerYears: ["2025-2026"],
+        availableSchoolDrawerYears: [{ id: "2025-2026", label: "2025-2026" }],
         schoolDrawerYearDetail: {
           selectedYearLabel: "2025-2026",
           availableYears: [{ id: "2025-2026", label: "2025-2026" }],
@@ -162,7 +162,7 @@ describe("MonitorSchoolDrawer", () => {
             synchronizedStudents: 0,
             synchronizedTeachers: 0,
           },
-          availableSchoolDrawerYears: ["2025-2026"],
+          availableSchoolDrawerYears: [{ id: "2025-2026", label: "2025-2026" }],
           schoolDrawerYearDetail: {
             selectedYearLabel: "2025-2026",
             availableYears: [{ id: "2025-2026", label: "2025-2026" }],
@@ -328,7 +328,7 @@ describe("MonitorSchoolDrawer", () => {
             synchronizedStudents: 0,
             synchronizedTeachers: 0,
           },
-          availableSchoolDrawerYears: ["2025-2026"],
+          availableSchoolDrawerYears: [{ id: "2025-2026", label: "2025-2026" }],
           schoolDrawerYearDetail: null,
           schoolDrawerHistorySummary: {
             historyPackageCount: 1,
@@ -468,7 +468,7 @@ describe("MonitorSchoolDrawer", () => {
             synchronizedStudents: 0,
             synchronizedTeachers: 0,
           },
-          availableSchoolDrawerYears: ["2025-2026"],
+          availableSchoolDrawerYears: [{ id: "2025-2026", label: "2025-2026" }],
           schoolDrawerYearDetail: {
             selectedYearLabel: "2025-2026",
             availableYears: [{ id: "2025-2026", label: "2025-2026" }],
@@ -628,7 +628,10 @@ describe("MonitorSchoolDrawer", () => {
           synchronizedStudents: 0,
           synchronizedTeachers: 0,
         },
-        availableSchoolDrawerYears: ["2026-2027", "2025-2026"],
+        availableSchoolDrawerYears: [
+          { id: "2026-2027", label: "2026-2027" },
+          { id: "2025-2026", label: "2025-2026" },
+        ],
         schoolDrawerYearDetail: {
           selectedYearLabel: "2025-2026",
           availableYears: [{ id: "2025-2026", label: "2025-2026" }],
@@ -1231,7 +1234,7 @@ describe("MonitorSchoolDrawer", () => {
           synchronizedStudents: 0,
           synchronizedTeachers: 0,
         },
-        availableSchoolDrawerYears: ["2025-2026"],
+        availableSchoolDrawerYears: [{ id: "2025-2026", label: "2025-2026" }],
         schoolDrawerYearDetail: {
           selectedYearLabel: "2025-2026",
           availableYears: [{ id: "2025-2026", label: "2025-2026" }],

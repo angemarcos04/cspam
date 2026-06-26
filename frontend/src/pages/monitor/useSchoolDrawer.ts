@@ -11,6 +11,7 @@ import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
 import { deriveAvailableMonitorSchoolDetailYears } from "@/pages/monitor/monitorSchoolDetailYear";
+import type { MonitorDrawerYearOption } from "@/pages/monitor/monitorDrawerTypes";
 import type { IndicatorSubmission } from "@/types";
 import type { MonitorUiRealtimeBatch } from "./useMonitorUiRefresh";
 
@@ -39,7 +40,7 @@ export interface UseSchoolDrawerResult {
   schoolDrawerSchoolCode: string;
   activeSchoolDrawerTab: SchoolDrawerTab;
   selectedSchoolDrawerYear: string | null;
-  availableSchoolDrawerYears: string[];
+  availableSchoolDrawerYears: MonitorDrawerYearOption[];
   expandedDrawerIndicatorRows: Record<string, boolean>;
   highlightedDrawerIndicatorKey: string | null;
   schoolDrawerSubmissions: IndicatorSubmission[];
@@ -57,7 +58,7 @@ export interface UseSchoolDrawerResult {
   toggleDrawerIndicatorLabel: (key: string) => void;
 }
 
-export function deriveAvailableSchoolDrawerYears(submissions: IndicatorSubmission[]): string[] {
+export function deriveAvailableSchoolDrawerYears(submissions: IndicatorSubmission[]): MonitorDrawerYearOption[] {
   return deriveAvailableMonitorSchoolDetailYears(submissions);
 }
 
@@ -366,14 +367,12 @@ export function useSchoolDrawer({
           if (!active) {
             return;
           }
-          const latestSubmissionYear = String(latestSubmission.academicYear?.name ?? "").trim();
-          if (latestSubmissionYear) {
-            setSelectedSchoolDrawerYear(latestSubmissionYear);
+          const latestSubmissionYearId = String(latestSubmission.academicYear?.id ?? latestSubmission.academicYearId ?? "").trim();
+          if (latestSubmissionYearId) {
+            setSelectedSchoolDrawerYear((current) => current ?? latestSubmissionYearId);
           }
           setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, []));
           setSchoolDrawerSubmissionsError("");
-          setIsSchoolDrawerSubmissionsLoading(false);
-          return;
         } catch (err) {
           if (!active) {
             return;
@@ -457,10 +456,11 @@ export function useSchoolDrawer({
       return;
     }
 
+    const availableYearIds = availableSchoolDrawerYears.map((year) => year.id);
     setSelectedSchoolDrawerYear((current) => (
-      current && availableSchoolDrawerYears.includes(current)
+      current && availableYearIds.includes(current)
         ? current
-        : availableSchoolDrawerYears[0]
+        : availableYearIds[0] ?? null
     ));
   }, [availableSchoolDrawerYears]);
 

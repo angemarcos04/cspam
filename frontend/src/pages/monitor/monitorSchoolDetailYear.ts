@@ -361,14 +361,46 @@ export function resolveMonitorSubmissionSchoolYearLabel(submission: IndicatorSub
     || deriveSchoolYearLabel(submission?.submittedAt ?? submission?.updatedAt ?? submission?.createdAt);
 }
 
-export function deriveAvailableMonitorSchoolDetailYears(submissions: IndicatorSubmission[]): string[] {
-  void submissions;
-  return deriveVisibleMonitorSchoolYearWindow();
+function resolveMonitorSubmissionAcademicYearId(submission: IndicatorSubmission | null | undefined): string {
+  return String(submission?.academicYear?.id ?? submission?.academicYearId ?? "").trim();
+}
+
+function monitorYearOptionForSubmission(submission: IndicatorSubmission): MonitorDrawerYearOption {
+  const yearId = resolveMonitorSubmissionAcademicYearId(submission);
+  const label = resolveMonitorSubmissionSchoolYearLabel(submission);
+
+  return {
+    id: yearId || label,
+    label,
+  };
+}
+
+export function deriveAvailableMonitorSchoolDetailYears(submissions: IndicatorSubmission[]): MonitorDrawerYearOption[] {
+  const options = new Map<string, MonitorDrawerYearOption>();
+
+  submissions
+    .slice()
+    .sort(compareMonitorPackagePriority)
+    .forEach((submission) => {
+      const option = monitorYearOptionForSubmission(submission);
+      if (option.id && !options.has(option.id)) {
+        options.set(option.id, option);
+      }
+    });
+
+  if (options.size === 0) {
+    deriveVisibleMonitorSchoolYearWindow().forEach((yearLabel) => {
+      options.set(yearLabel, { id: yearLabel, label: yearLabel });
+    });
+  }
+
+  return [...options.values()];
 }
 
 export interface MonitorSchoolDetailYearSelection {
-  availableYears: string[];
+  availableYears: MonitorDrawerYearOption[];
   effectiveSelectedYear: string | null;
+  effectiveSelectedYearId: string | null;
   selectedYearSubmissions: IndicatorSubmission[];
   sortedSelectedYearSubmissions: IndicatorSubmission[];
   latestYearSubmission: IndicatorSubmission | null;
@@ -380,30 +412,36 @@ export function resolveMonitorSchoolDetailYearSelection(
 ): MonitorSchoolDetailYearSelection {
   const availableYears = deriveAvailableMonitorSchoolDetailYears(submissions);
   const currentYearLabel = deriveSchoolYearLabel(new Date().toISOString());
-  const latestSubmissionYear = submissions
+  const latestSubmissionYearOptionId = submissions
     .slice()
     .sort(compareMonitorPackagePriority)
-    .map(resolveMonitorSubmissionSchoolYearLabel)
-    .find((year) => availableYears.includes(year)) ?? null;
-  const requestedSelectedYear = selectedSchoolDrawerYear && availableYears.includes(selectedSchoolDrawerYear)
+    .map((submission) => monitorYearOptionForSubmission(submission).id)
+    .find((yearId) => availableYears.some((option) => option.id === yearId)) ?? null;
+  const requestedSelectedYearId = selectedSchoolDrawerYear && availableYears.some((option) => option.id === selectedSchoolDrawerYear)
     ? selectedSchoolDrawerYear
-    : null;
-  const requestedSelectedYearSubmissions = requestedSelectedYear
-    ? submissions.filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === requestedSelectedYear)
+    : selectedSchoolDrawerYear
+      ? availableYears.find((option) => option.label === selectedSchoolDrawerYear)?.id ?? null
+      : null;
+  const requestedSelectedYearSubmissions = requestedSelectedYearId
+    ? submissions.filter((submission) => monitorYearOptionForSubmission(submission).id === requestedSelectedYearId)
     : [];
+  const requestedSelectedYear = requestedSelectedYearId
+    ? availableYears.find((option) => option.id === requestedSelectedYearId)?.label ?? requestedSelectedYearId
+    : null;
   const hasSingleUnlabeledRequestedSubmission = Boolean(requestedSelectedYear)
     && submissions.length === 1
     && !(submissions[0]?.academicYear?.name ?? "").trim();
-  const effectiveSelectedYear = requestedSelectedYear
-    && (requestedSelectedYearSubmissions.length > 0 || hasSingleUnlabeledRequestedSubmission || !latestSubmissionYear)
-    ? requestedSelectedYear
-    : latestSubmissionYear
-      ? latestSubmissionYear
-    : availableYears.includes(currentYearLabel)
-      ? currentYearLabel
-    : availableYears[0] ?? null;
-  const exactSelectedYearSubmissions = effectiveSelectedYear
-    ? submissions.filter((submission) => resolveMonitorSubmissionSchoolYearLabel(submission) === effectiveSelectedYear)
+  const effectiveSelectedYearId = requestedSelectedYearId
+    && (requestedSelectedYearSubmissions.length > 0 || hasSingleUnlabeledRequestedSubmission || !latestSubmissionYearOptionId)
+    ? requestedSelectedYearId
+    : latestSubmissionYearOptionId
+      ? latestSubmissionYearOptionId
+      : availableYears.find((option) => option.label === currentYearLabel)?.id ?? availableYears[0]?.id ?? null;
+  const effectiveSelectedYear = effectiveSelectedYearId
+    ? availableYears.find((option) => option.id === effectiveSelectedYearId)?.label ?? effectiveSelectedYearId
+    : null;
+  const exactSelectedYearSubmissions = effectiveSelectedYearId
+    ? submissions.filter((submission) => monitorYearOptionForSubmission(submission).id === effectiveSelectedYearId)
     : [];
   const shouldUseSingleUnlabeledSubmissionForSelectedYear =
     exactSelectedYearSubmissions.length === 0
@@ -418,6 +456,7 @@ export function resolveMonitorSchoolDetailYearSelection(
   return {
     availableYears,
     effectiveSelectedYear,
+    effectiveSelectedYearId,
     selectedYearSubmissions,
     sortedSelectedYearSubmissions,
     latestYearSubmission: sortedSelectedYearSubmissions[0] ?? null,
@@ -602,7 +641,7 @@ export function buildMonitorDrawerYearDetail(
 
   return {
     selectedYearLabel: effectiveSelectedYear,
-    availableYears: availableYears.map<MonitorDrawerYearOption>((year) => ({ id: year, label: year })),
+    availableYears,
     ...currentIssue,
     checklistItems,
     packageRows,

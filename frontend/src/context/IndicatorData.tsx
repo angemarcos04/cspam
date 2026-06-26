@@ -1316,7 +1316,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const rememberLocalIndicatorMutationEcho = useCallback((submission: {
     id: string;
     academicYear?: { id?: string | null } | null;
-    academicYearId?: string | null;
+    academicYearId?: string | number | null;
   }) => {
     const submissionId = String(submission.id ?? "").trim();
     const academicYearId = String(submission.academicYear?.id ?? submission.academicYearId ?? "").trim();

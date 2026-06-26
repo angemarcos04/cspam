@@ -10,6 +10,7 @@ import type {
   MonitorDrawerHistorySummary,
   MonitorDrawerPackageRow,
   MonitorDrawerYearDetail,
+  MonitorDrawerYearOption,
   SchoolDetailSnapshot,
   SchoolDrawerCriticalAlert,
   SchoolIndicatorMatrix,
@@ -38,7 +39,7 @@ interface MonitorSchoolDrawerLoadingState {
 
 interface MonitorSchoolDrawerData {
   schoolDetail: SchoolDetailSnapshot | null;
-  availableSchoolDrawerYears: string[];
+  availableSchoolDrawerYears: MonitorDrawerYearOption[];
   schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
   schoolDrawerCriticalAlerts: SchoolDrawerCriticalAlert[];
@@ -577,8 +578,8 @@ export function MonitorSchoolDrawer({
                           <option value="">No submission years yet</option>
                         ) : (
                           availableSchoolDrawerYears.map((year) => (
-                            <option key={`monitor-school-drawer-year-${year}`} value={year}>
-                              {year}
+                            <option key={`monitor-school-drawer-year-${year.id}`} value={year.id}>
+                              {year.label}
                             </option>
                           ))
                         )}
@@ -896,7 +897,7 @@ export function MonitorSchoolDrawer({
                   title="School Audit Trail"
                   description="Recent workflow activity for this school and selected academic year."
                   schoolCode={schoolDetail.schoolCode}
-                  academicYearLabel={selectedSchoolDrawerYear}
+                  academicYearLabel={schoolDrawerYearDetail?.selectedYearLabel ?? selectedSchoolDrawerYear}
                 />
               )}
             </div>

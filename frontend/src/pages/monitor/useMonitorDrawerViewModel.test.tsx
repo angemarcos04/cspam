@@ -21,6 +21,93 @@ afterEach(() => {
 });
 
 describe("buildMonitorDrawerYearDetail", () => {
+  it("uses academic-year ids to keep sent file actions isolated between years", () => {
+    const schoolDetail = {
+      schoolKey: "school-1",
+      schoolCode: "401777",
+      schoolName: "Sample Public School",
+      region: "II",
+      level: "Elementary",
+      type: "Public",
+      schoolTypeRaw: "public",
+      requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+      activePackageLabel: "BMEF and SMEA",
+      address: "N/A",
+      hasComplianceRecord: true,
+      indicatorStatus: "submitted",
+      hasActivePackageSubmission: true,
+      missingCount: 0,
+      awaitingReviewCount: 1,
+      lastActivityAt: null,
+      reportedStudents: 0,
+      reportedTeachers: 0,
+      synchronizedStudents: 0,
+      synchronizedTeachers: 0,
+    };
+    const submissions = [
+      {
+        id: "year-a",
+        status: "draft",
+        files: {
+          bmef: {
+            type: "bmef",
+            uploaded: true,
+            originalFilename: "year-a-bmef.pdf",
+            uploadedAt: "2026-06-05T00:00:00.000Z",
+            viewUrl: "/view/year-a/bmef",
+            downloadUrl: "/download/year-a/bmef",
+          },
+        },
+        scopeProgress: { submittedScopeIds: ["bmef"] },
+        scopeReviews: [],
+        indicators: [],
+        academicYear: { id: "ay-2025", name: "2025-2026" },
+        createdAt: "2026-06-05T00:00:00.000Z",
+        updatedAt: "2026-06-05T00:00:00.000Z",
+        submittedAt: null,
+      },
+      {
+        id: "year-b",
+        status: "draft",
+        files: {
+          smea: {
+            type: "smea",
+            uploaded: true,
+            originalFilename: "year-b-smea.xlsx",
+            uploadedAt: "2027-06-05T00:00:00.000Z",
+            viewUrl: "/view/year-b/smea",
+            downloadUrl: "/download/year-b/smea",
+          },
+        },
+        scopeProgress: { submittedScopeIds: ["smea"] },
+        scopeReviews: [],
+        indicators: [],
+        academicYear: { id: "ay-2026", name: "2026-2027" },
+        createdAt: "2027-06-05T00:00:00.000Z",
+        updatedAt: "2027-06-05T00:00:00.000Z",
+        submittedAt: null,
+      },
+    ] as never;
+
+    const yearADetail = buildMonitorDrawerYearDetail(schoolDetail, "ay-2025", submissions, []);
+    const yearARows = new Map(yearADetail?.packageRows.map((row) => [row.id, row]));
+
+    expect(yearADetail?.selectedYearLabel).toBe("2025-2026");
+    expect(yearARows.get("bmef")?.canReview).toBe(true);
+    expect(yearARows.get("bmef")?.viewUrl).toBe("/view/year-a/bmef");
+    expect(yearARows.get("smea")?.canReview).toBe(false);
+    expect(yearARows.get("smea")?.viewUrl).toBeNull();
+
+    const yearBDetail = buildMonitorDrawerYearDetail(schoolDetail, "ay-2026", submissions, []);
+    const yearBRows = new Map(yearBDetail?.packageRows.map((row) => [row.id, row]));
+
+    expect(yearBDetail?.selectedYearLabel).toBe("2026-2027");
+    expect(yearBRows.get("smea")?.canReview).toBe(true);
+    expect(yearBRows.get("smea")?.viewUrl).toBe("/view/year-b/smea");
+    expect(yearBRows.get("bmef")?.canReview).toBe(false);
+    expect(yearBRows.get("bmef")?.viewUrl).toBeNull();
+  });
+
   it("builds a simple public selected-year checklist and keeps finalized report truth year-scoped", () => {
     const detail = buildMonitorDrawerYearDetail(
       {
@@ -642,11 +729,11 @@ describe("buildMonitorDrawerYearDetail", () => {
     const years = deriveAvailableMonitorSchoolDetailYears([]);
 
     expect(years).toEqual([
-      "2025-2026",
-      "2026-2027",
-      "2027-2028",
-      "2028-2029",
-      "2029-2030",
+      { id: "2025-2026", label: "2025-2026" },
+      { id: "2026-2027", label: "2026-2027" },
+      { id: "2027-2028", label: "2027-2028" },
+      { id: "2028-2029", label: "2028-2029" },
+      { id: "2029-2030", label: "2029-2030" },
     ]);
   });
 
@@ -710,7 +797,7 @@ describe("buildMonitorDrawerYearDetail", () => {
     expect(selection.latestYearSubmission?.id).toBe("sent-draft-2025");
   });
 
-  it("uses a single sent draft with no explicit year label for the selected drawer year", () => {
+  it("uses a single sent draft selected by academic-year id even without an explicit year label", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-03T00:00:00.000Z"));
 
@@ -725,9 +812,10 @@ describe("buildMonitorDrawerYearDetail", () => {
         updatedAt: "2026-06-01T08:30:00.000Z",
         submittedAt: null,
       } as never,
-    ], "2025-2026");
+    ], "ay-2025");
 
-    expect(selection.effectiveSelectedYear).toBe("2025-2026");
+    expect(selection.effectiveSelectedYearId).toBe("ay-2025");
+    expect(selection.effectiveSelectedYear).toBe("2026-2027");
     expect(selection.latestYearSubmission?.id).toBe("sent-draft-unlabeled");
   });
 });

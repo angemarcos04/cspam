@@ -119,7 +119,7 @@ describe("useSchoolDrawer", () => {
     );
   });
 
-  it("derives available drawer years from the monitor-visible year window", () => {
+  it("derives available drawer years from submission academic-year ids", () => {
     expect(deriveAvailableSchoolDrawerYears([
       {
         id: "sub-1",
@@ -135,7 +135,10 @@ describe("useSchoolDrawer", () => {
         updatedAt: null,
         createdAt: null,
       },
-    ] as never)).toEqual(["2025-2026", "2026-2027", "2027-2028", "2028-2029", "2029-2030"]);
+    ] as never)).toEqual([
+      { id: "2", label: "2025-2026" },
+      { id: "1", label: "2024-2025" },
+    ]);
   });
 
   it("opens the drawer on the submissions tab by default", () => {
@@ -207,7 +210,7 @@ describe("useSchoolDrawer", () => {
     expect(shouldForceSchoolSubmissionReload(1)).toBe(true);
   });
 
-  it("hydrates latest drawer detail without waiting for slower list rows", async () => {
+  it("hydrates latest drawer detail and still loads the full school submission list", async () => {
     const latestSubmission = {
       id: "submission-latest",
       status: "draft",
@@ -244,11 +247,16 @@ describe("useSchoolDrawer", () => {
     await waitFor(() => {
       expect(fetchSubmission).toHaveBeenCalledWith("submission-latest");
       expect(result.current.schoolDrawerSubmissions).toEqual([latestSubmission]);
-      expect(result.current.selectedSchoolDrawerYear).toBe("2025-2026");
+      expect(result.current.selectedSchoolDrawerYear).toBe("ay-1");
       expect(result.current.isSchoolDrawerSubmissionsLoading).toBe(false);
     });
 
-    expect(listSubmissionsForSchool).not.toHaveBeenCalled();
+    expect(listSubmissionsForSchool).toHaveBeenCalledWith(
+      "401777",
+      expect.objectContaining({
+        signal: expect.any(AbortSignal),
+      }),
+    );
   });
 
   it("hydrates a matching sent-scope realtime submission before stale list rows", async () => {

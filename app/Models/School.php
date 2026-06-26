@@ -148,7 +148,10 @@ class School extends Model
                     'id' => 'max',
                 ],
                 static function ($query) use ($monitorRelevantStatuses): void {
-                    $query->whereIn('status', $monitorRelevantStatuses);
+                    $query->where(function ($builder) use ($monitorRelevantStatuses): void {
+                        $builder->whereIn('status', $monitorRelevantStatuses)
+                            ->orWhereHas('scopeSubmissions');
+                    });
                 },
             );
     }

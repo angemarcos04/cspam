@@ -13,6 +13,7 @@ use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionScopeReview;
+use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
@@ -151,6 +152,7 @@ class IndicatorSubmissionController extends Controller
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+                'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
                 'scopeReviews.reviewedBy:id,name,email',
                 'createdBy:id,name,email',
                 'submittedBy:id,name,email',
@@ -186,6 +188,8 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
+            'scopeReviews.reviewedBy:id,name,email',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -546,6 +550,10 @@ class IndicatorSubmissionController extends Controller
         $auditScopeIds = GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)
             ? [$workspaceSection]
             : $this->auditScopeIdsForRows($indicatorRows);
+        if (GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)) {
+            $this->removeSubmittedScopes($submission, [$workspaceSection]);
+        }
+
         $this->auditSubmissionEvent($request, 'workspace.section_saved', $submission, $user, [
             'old_status' => $currentStatus,
             'new_status' => $currentStatus,
@@ -631,6 +639,8 @@ class IndicatorSubmissionController extends Controller
                 ],
             );
         }
+
+        $this->removeSubmittedScopes($submission, [$fileType]);
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -855,6 +865,8 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        $this->upsertSubmittedScopes($submission, $targets, $user);
+
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
             submissionId: $submission->id,
@@ -875,10 +887,14 @@ class IndicatorSubmissionController extends Controller
 
         $scopeLabelsById = [];
         $hasReturnedTarget = false;
+        $returnedTargets = [];
         foreach ($targets as $target) {
             $previousDecision = $this->latestScopeDecisionForAudit($submission, $target);
             $isResend = $previousDecision === 'returned';
             $hasReturnedTarget = $hasReturnedTarget || $isResend;
+            if ($isResend) {
+                $returnedTargets[] = $target;
+            }
             $scopeType = $this->scopeTypeFor($target);
             $scopeLabel = $scopeProgressResolver->scopeLabel($target);
             $scopeLabelsById[$target] = $scopeLabel;
@@ -900,6 +916,8 @@ class IndicatorSubmissionController extends Controller
                 ],
             );
         }
+
+        $this->clearReturnedScopeReviews($submission, $returnedTargets);
 
         $this->notifyMonitorsOfSubmissionReceived(
             $submission,
@@ -943,6 +961,11 @@ class IndicatorSubmissionController extends Controller
             'reviewed_at' => now(),
             'review_notes' => $notes,
         ])->save();
+
+        if ($decision === FormSubmissionStatus::RETURNED->value) {
+            $submission->scopeSubmissions()->delete();
+            $submission->unsetRelation('scopeSubmissions');
+        }
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -1089,6 +1112,10 @@ class IndicatorSubmissionController extends Controller
             ],
         );
 
+        if ($decision === 'returned') {
+            $this->removeSubmittedScopes($submission, [$scopeId]);
+        }
+
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
             submissionId: $submission->id,
@@ -1193,6 +1220,8 @@ class IndicatorSubmissionController extends Controller
             return ['workspace' => $workspace];
         });
 
+        $this->removeSubmittedScopes($submission, [$workspace]);
+
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
             submissionId: $submission->id,
@@ -1254,6 +1283,7 @@ class IndicatorSubmissionController extends Controller
         $submission->refresh()->loadMissing([
             'school:id,school_code,name,type',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeReviews.reviewedBy:id,name,email',
         ]);
         /** @var SubmissionFileRequirementResolver $requirementResolver */
@@ -1316,6 +1346,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeReviews.reviewedBy:id,name,email',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
@@ -1338,6 +1369,75 @@ class IndicatorSubmissionController extends Controller
         }
 
         return 'unknown';
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     */
+    private function upsertSubmittedScopes(IndicatorSubmission $submission, array $scopeIds, User $submittedBy): void
+    {
+        $submittedAt = now();
+
+        foreach ($scopeIds as $scopeId) {
+            IndicatorSubmissionScopeSubmission::query()->updateOrCreate(
+                [
+                    'indicator_submission_id' => $submission->id,
+                    'scope_id' => $scopeId,
+                ],
+                [
+                    'scope_type' => $this->scopeTypeFor($scopeId),
+                    'submitted_by' => $submittedBy->id,
+                    'submitted_at' => $submittedAt,
+                ],
+            );
+        }
+
+        $submission->unsetRelation('scopeSubmissions');
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     */
+    private function removeSubmittedScopes(IndicatorSubmission $submission, array $scopeIds): void
+    {
+        $normalizedScopeIds = array_values(array_filter(
+            array_map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)), $scopeIds),
+            static fn (string $scopeId): bool => $scopeId !== '',
+        ));
+
+        if ($normalizedScopeIds === []) {
+            return;
+        }
+
+        IndicatorSubmissionScopeSubmission::query()
+            ->where('indicator_submission_id', $submission->id)
+            ->whereIn('scope_id', $normalizedScopeIds)
+            ->delete();
+
+        $submission->unsetRelation('scopeSubmissions');
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     */
+    private function clearReturnedScopeReviews(IndicatorSubmission $submission, array $scopeIds): void
+    {
+        $normalizedScopeIds = array_values(array_filter(
+            array_map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)), $scopeIds),
+            static fn (string $scopeId): bool => $scopeId !== '',
+        ));
+
+        if ($normalizedScopeIds === []) {
+            return;
+        }
+
+        IndicatorSubmissionScopeReview::query()
+            ->where('indicator_submission_id', $submission->id)
+            ->whereIn('scope_id', $normalizedScopeIds)
+            ->where('decision', 'returned')
+            ->delete();
+
+        $submission->unsetRelation('scopeReviews');
     }
 
     /**

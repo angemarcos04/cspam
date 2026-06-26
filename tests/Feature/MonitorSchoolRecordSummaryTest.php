@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\AcademicYear;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\Section;
 use App\Models\School;
 use App\Models\Student;
@@ -77,6 +78,74 @@ class MonitorSchoolRecordSummaryTest extends TestCase
 
         $this->assertIsArray($record);
         $this->assertSame('returned', data_get($record, 'indicatorLatest.status'));
+    }
+
+    public function test_monitor_school_summary_treats_draft_with_sent_scope_as_monitor_relevant_latest(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        /** @var AcademicYear $academicYear */
+        $academicYear = AcademicYear::query()->where('is_current', true)->firstOrFail();
+
+        $school = School::query()->create([
+            'school_code' => '955509',
+            'name' => 'Draft Sent Scope Summary School',
+            'level' => 'High School',
+            'district' => 'District Test',
+            'address' => 'District Test, Region Test',
+            'region' => 'Region Test',
+            'type' => 'public',
+            'status' => 'active',
+            'reported_student_count' => 0,
+            'reported_teacher_count' => 0,
+            'submitted_by' => $monitor->id,
+            'submitted_at' => now()->subDay(),
+        ]);
+
+        IndicatorSubmission::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => 'ANNUAL',
+            'version' => 1,
+            'status' => 'submitted',
+            'created_by' => $monitor->id,
+            'submitted_by' => $monitor->id,
+            'submitted_at' => now()->subDays(4),
+            'updated_at' => now()->subDays(4),
+            'created_at' => now()->subDays(5),
+        ]);
+
+        $draftWithSentScope = IndicatorSubmission::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => 'ANNUAL',
+            'version' => 2,
+            'status' => 'draft',
+            'created_by' => $monitor->id,
+            'updated_at' => now()->subHour(),
+            'created_at' => now()->subHours(2),
+        ]);
+
+        IndicatorSubmissionScopeSubmission::query()->create([
+            'indicator_submission_id' => $draftWithSentScope->id,
+            'scope_id' => 'bmef',
+            'scope_type' => 'file',
+            'submitted_by' => $monitor->id,
+            'submitted_at' => now()->subMinutes(30),
+        ]);
+
+        $response = $this->actingAs($monitor, 'sanctum')->getJson('/api/dashboard/records');
+
+        $response->assertOk();
+
+        $record = collect($response->json('data'))
+            ->firstWhere('schoolId', '955509');
+
+        $this->assertIsArray($record);
+        $this->assertSame((string) $draftWithSentScope->id, data_get($record, 'indicatorLatest.id'));
+        $this->assertSame('submitted', data_get($record, 'indicatorLatest.status'));
     }
 
     public function test_monitor_school_summary_scopes_related_counts_and_latest_submission_to_selected_year(): void

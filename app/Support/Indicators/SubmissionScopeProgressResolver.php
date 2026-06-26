@@ -139,6 +139,36 @@ final class SubmissionScopeProgressResolver
             return $requiredScopeIds;
         }
 
+        $durableScopeIds = $this->durableSubmittedScopeIdsForSubmission($submission, $requiredScopeSet);
+        if ($durableScopeIds !== []) {
+            return $durableScopeIds;
+        }
+
+        return $this->historySubmittedScopeIdsForSubmission($submission, $requiredScopeSet);
+    }
+
+    /**
+     * @param array<string, int> $requiredScopeSet
+     * @return list<string>
+     */
+    private function durableSubmittedScopeIdsForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
+    {
+        $scopeIds = $submission->relationLoaded('scopeSubmissions')
+            ? $submission->scopeSubmissions->pluck('scope_id')->all()
+            : $submission->scopeSubmissions()->pluck('scope_id')->all();
+
+        return array_values(array_unique(array_filter(
+            array_map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)), $scopeIds),
+            static fn (string $scopeId): bool => isset($requiredScopeSet[$scopeId]),
+        )));
+    }
+
+    /**
+     * @param array<string, int> $requiredScopeSet
+     * @return list<string>
+     */
+    private function historySubmittedScopeIdsForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
+    {
         $submittedScopeSet = [];
         $histories = FormSubmissionHistory::query()
             ->where('form_type', IndicatorSubmission::FORM_TYPE)
@@ -149,6 +179,16 @@ final class SubmissionScopeProgressResolver
 
         foreach ($histories as $history) {
             $toStatus = strtolower(trim((string) ($history->to_status ?? '')));
+            $metadata = is_array($history->metadata) ? $history->metadata : [];
+            $action = strtolower(trim((string) $history->action));
+
+            if ($action === 'scope_submitted') {
+                foreach ($this->extractScopeIdsFromMetadata($submission, $metadata) as $scopeId) {
+                    $submittedScopeSet[$scopeId] = true;
+                }
+                continue;
+            }
+
             if ($toStatus === FormSubmissionStatus::RETURNED->value) {
                 $submittedScopeSet = [];
                 continue;
@@ -159,16 +199,6 @@ final class SubmissionScopeProgressResolver
                 FormSubmissionStatus::VALIDATED->value,
             ], true)) {
                 $submittedScopeSet = $requiredScopeSet;
-                continue;
-            }
-
-            $metadata = is_array($history->metadata) ? $history->metadata : [];
-            $action = strtolower(trim((string) $history->action));
-
-            if ($action === 'scope_submitted') {
-                foreach ($this->extractScopeIdsFromMetadata($submission, $metadata) as $scopeId) {
-                    $submittedScopeSet[$scopeId] = true;
-                }
                 continue;
             }
 
