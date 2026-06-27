@@ -7,6 +7,7 @@ import * as realtime from "@/lib/realtime";
 
 describe("AuthProvider logout", () => {
   beforeEach(() => {
+    vi.stubEnv("VITE_ENABLE_STATEFUL_SPA_API", "true");
     document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
     window.localStorage.clear();
     window.sessionStorage.clear();
