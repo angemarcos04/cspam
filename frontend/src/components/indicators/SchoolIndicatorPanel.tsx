@@ -128,6 +128,8 @@ const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 1_500;
 const WORKSPACE_DETAIL_HYDRATION_RETRY_MS = 350;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_MS = 1_500;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS = 5;
+const VERIFIED_SCOPE_LOCK_MESSAGE = "This file or indicator has been verified.";
+const VERIFIED_PACKAGE_LOCK_MESSAGE = "This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.";
 
 function waitForWorkspaceDetailHydrationRetry(attempt: number): Promise<void> {
   return new Promise((resolve) => {
@@ -3243,8 +3245,18 @@ function SchoolIndicatorPanelComponent({
     () => visibleFileDefinitions.filter((definition) => !submittedByFileType[definition.type]),
     [submittedByFileType, visibleFileDefinitions],
   );
+  const verifiedScopeIds = useMemo(
+    () => new Set(
+      (activeFormSubmission?.scopeReviews ?? [])
+        .filter((review) => review.decision === "verified")
+        .map((review) => review.scopeId),
+    ),
+    [activeFormSubmission],
+  );
+  const hasAnyVerifiedScope = verifiedScopeIds.size > 0;
   const finalSubmitBlockedReason = useMemo(() => {
     const reasons = [
+      hasAnyVerifiedScope ? VERIFIED_PACKAGE_LOCK_MESSAGE : "",
       indicatorMissingReason,
       buildFileMissingReason(missingRequiredFileDefinitions.map((definition) => `${definition.shortLabel} file`)),
       pendingUploadFileTypes.length > 0
@@ -3255,7 +3267,7 @@ function SchoolIndicatorPanelComponent({
     ].filter((reason) => reason !== "");
 
     return reasons.join(" ");
-  }, [indicatorMissingReason, missingRequiredFileDefinitions, pendingUploadFileTypes]);
+  }, [hasAnyVerifiedScope, indicatorMissingReason, missingRequiredFileDefinitions, pendingUploadFileTypes]);
   const isFormLocked = isFormSubmitted && !isSubmittedEditMode;
   const submittedByLabel = activeFormSubmission?.submittedBy?.name
     ?? activeFormSubmission?.createdBy?.name
@@ -3304,7 +3316,30 @@ function SchoolIndicatorPanelComponent({
     }
     return workspaceSaveSectionForCategory(activeCategory?.id);
   }, [activeCategory?.id, activeTab]);
-  const isActiveCategoryLocked = Boolean(activeCategory && isFormLocked);
+  const activeScopeReview = useMemo(() => {
+    if (!activeScopeId) {
+      return null;
+    }
+
+    return activeFormSubmission?.scopeReviews?.find((review) => review.scopeId === activeScopeId) ?? null;
+  }, [activeFormSubmission, activeScopeId]);
+  const isCurrentScopeVerified = Boolean(activeScopeId && verifiedScopeIds.has(activeScopeId));
+  const activeScopeReviewLabel = useMemo(() => {
+    if (!activeScopeReview) {
+      return "";
+    }
+
+    const scopeLabel = activeTab?.kind === "category" && activeCategory
+      ? categoryTabLabel(activeCategory)
+      : activeScopeId
+        ? workspaceSaveSectionLabel(activeScopeId as WorkspaceSaveSection)
+        : "This requirement";
+
+    return activeScopeReview.decision === "verified"
+      ? `${scopeLabel} has been verified by the Division Monitor.`
+      : `${scopeLabel} was returned by the Division Monitor.`;
+  }, [activeCategory, activeScopeId, activeScopeReview, activeTab]);
+  const isActiveCategoryLocked = Boolean(activeCategory && (isFormLocked || isCurrentScopeVerified));
   const isSelectedYearEditable = Boolean(
     selectedSchoolYearLabel && yearWorkspaceState.editableSchoolYears.includes(selectedSchoolYearLabel),
   );
@@ -3356,11 +3391,15 @@ function SchoolIndicatorPanelComponent({
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit Package" : "Final Submit Package";
   const saveActionDisabledTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
+    : isCurrentScopeVerified
+      ? VERIFIED_SCOPE_LOCK_MESSAGE
     : activeUploadType && !pendingUploadFileByType[activeUploadType]
       ? "Choose a file before saving."
     : undefined;
   const submitActionTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
+    : hasAnyVerifiedScope
+      ? VERIFIED_PACKAGE_LOCK_MESSAGE
     : finalSubmitBlockedReason !== ""
       ? "Complete all required sections and files before final submit."
       : workspaceMode === "submitted_editing"
@@ -3375,33 +3414,12 @@ function SchoolIndicatorPanelComponent({
   const activeScopeHasPendingUpload = Boolean(
     activeUploadType && pendingUploadFileByType[activeUploadType],
   );
-  const activeScopeReview = useMemo(() => {
-    if (!activeScopeId) {
-      return null;
-    }
-
-    return activeFormSubmission?.scopeReviews?.find((review) => review.scopeId === activeScopeId) ?? null;
-  }, [activeFormSubmission, activeScopeId]);
-  const activeScopeReviewLabel = useMemo(() => {
-    if (!activeScopeReview) {
-      return "";
-    }
-
-    const scopeLabel = activeTab?.kind === "category" && activeCategory
-      ? categoryTabLabel(activeCategory)
-      : activeScopeId
-        ? workspaceSaveSectionLabel(activeScopeId as WorkspaceSaveSection)
-        : "This requirement";
-
-    return activeScopeReview.decision === "verified"
-      ? `${scopeLabel} has been verified by the Division Monitor.`
-      : `${scopeLabel} was returned by the Division Monitor.`;
-  }, [activeCategory, activeScopeId, activeScopeReview, activeTab]);
   const batchSelectableScopeIds = useMemo(
     () => workspaceProgressSummary.readyUnsubmittedScopeIds.filter((scopeId) => (
-      !isSubmissionFileType(scopeId) || !pendingUploadFileByType[scopeId]
+      !verifiedScopeIds.has(scopeId)
+      && (!isSubmissionFileType(scopeId) || !pendingUploadFileByType[scopeId])
     )),
-    [pendingUploadFileByType, workspaceProgressSummary.readyUnsubmittedScopeIds],
+    [pendingUploadFileByType, verifiedScopeIds, workspaceProgressSummary.readyUnsubmittedScopeIds],
   );
   const batchSelectableScopeLabels = useMemo(() => {
     const labels = new Map<string, string>();
@@ -3423,6 +3441,8 @@ function SchoolIndicatorPanelComponent({
   const sendActionHasBatchSelection = sendActionMode === "batch";
   const sendActionTitle = isWorkspaceReadOnly
     ? "This academic year is not open for encoding."
+    : isCurrentScopeVerified
+      ? VERIFIED_SCOPE_LOCK_MESSAGE
     : sendActionHasBatchSelection
       ? "Send the selected ready workspace items."
       : activeScopeHasPendingUpload
@@ -4528,6 +4548,9 @@ function SchoolIndicatorPanelComponent({
     if (!canShowSaveAndSubmitActions) {
       return;
     }
+    if (isCurrentScopeVerified) {
+      return;
+    }
     if (autosaveInFlightRef.current) {
       return;
     }
@@ -4564,7 +4587,7 @@ function SchoolIndicatorPanelComponent({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isCurrentScopeVerified, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
 
   const scheduleServerAutosave = useCallback((delayMs: number) => {
     if (typeof window === "undefined") {
@@ -4835,6 +4858,10 @@ function SchoolIndicatorPanelComponent({
         setSubmitError("No reset scope is available for the selected workspace.");
         return;
       }
+      if (verifiedScopeIds.has(activeWorkspaceResetTarget)) {
+        setSubmitError(VERIFIED_SCOPE_LOCK_MESSAGE);
+        return;
+      }
 
       const activeSubmission = (
         [mutableActiveWorkspaceSubmission, editableWorkspaceSubmissionInScope, latestActiveWorkspaceSubmission].find((submission) => (
@@ -4939,6 +4966,7 @@ function SchoolIndicatorPanelComponent({
     rehydrateWorkspaceFromSubmission,
     resetSubmissionWorkspace,
     runGroupBAction,
+    verifiedScopeIds,
     workspaceMode,
     workspaceSchoolYears,
     yearWorkspaceState.requiredYearsInScope,
@@ -4980,6 +5008,10 @@ function SchoolIndicatorPanelComponent({
         return;
       }
       if (!activeCategory) {
+        return;
+      }
+      if (isCurrentScopeVerified) {
+        setSubmitError(VERIFIED_SCOPE_LOCK_MESSAGE);
         return;
       }
       if (isActiveCategoryLocked) {
@@ -5098,6 +5130,10 @@ function SchoolIndicatorPanelComponent({
         setSubmitError("This submitted report is read-only. Click Edit to continue.");
         return;
       }
+      if (hasAnyVerifiedScope) {
+        setSubmitError(VERIFIED_PACKAGE_LOCK_MESSAGE);
+        return;
+      }
       submittedEditPreserveContextRef.current = null;
       if (!ensureWorkspaceLineageAlignment()) {
         return;
@@ -5197,6 +5233,10 @@ function SchoolIndicatorPanelComponent({
       }
       if (isActiveCategoryLocked) {
         setSubmitError("This submitted report is read-only. Click Edit to continue.");
+        return;
+      }
+      if (isCurrentScopeVerified) {
+        setSubmitError(VERIFIED_SCOPE_LOCK_MESSAGE);
         return;
       }
       if (!activeScopeReady) {
@@ -5325,6 +5365,10 @@ function SchoolIndicatorPanelComponent({
         setSubmitError("This academic year is not yet open for encoding.");
         return;
       }
+      if (scopedTargets.some((scopeId) => verifiedScopeIds.has(scopeId))) {
+        setSubmitError(VERIFIED_SCOPE_LOCK_MESSAGE);
+        return;
+      }
       submittedEditPreserveContextRef.current = null;
       if (!ensureWorkspaceLineageAlignment()) {
         return;
@@ -5419,6 +5463,10 @@ function SchoolIndicatorPanelComponent({
     await runGroupBAction("Final submit package", async () => {
       if (workspaceMode === "read_only_year") {
         setSubmitError("This academic year is not yet open for encoding.");
+        return;
+      }
+      if (hasAnyVerifiedScope) {
+        setSubmitError(VERIFIED_PACKAGE_LOCK_MESSAGE);
         return;
       }
       submittedEditPreserveContextRef.current = null;
@@ -5546,6 +5594,12 @@ function SchoolIndicatorPanelComponent({
   const handleSaveFileUpload = useCallback(async (type: IndicatorSubmissionFileType, file: File) => {
     const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
     await runGroupBAction("Save file", async () => {
+      if (verifiedScopeIds.has(type)) {
+        setUploadErrorByType((current) => ({ ...current, [type]: VERIFIED_SCOPE_LOCK_MESSAGE }));
+        setSubmitError(VERIFIED_SCOPE_LOCK_MESSAGE);
+        return;
+      }
+
       setSavingSection(type);
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
@@ -5651,13 +5705,19 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, workspaceMode]);
+  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
       const selectedFile = event.target.files?.[0];
       event.currentTarget.value = "";
       if (!selectedFile) {
+        return;
+      }
+      if (verifiedScopeIds.has(type)) {
+        setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
+        setUploadErrorByType((current) => ({ ...current, [type]: VERIFIED_SCOPE_LOCK_MESSAGE }));
+        setSaveMessage("");
         return;
       }
 
@@ -5685,7 +5745,7 @@ function SchoolIndicatorPanelComponent({
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
       setSaveMessage(`${SUBMISSION_FILE_DEFINITION_BY_TYPE[type].shortLabel} selected. Click Save to update the Report View.`);
     },
-    [],
+    [verifiedScopeIds],
   );
   const handleCancelPendingFile = useCallback((type: IndicatorSubmissionFileType) => {
     setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
@@ -6113,7 +6173,7 @@ function SchoolIndicatorPanelComponent({
               </button>
             </div>
           </div>
-          {activeScopeReview && (
+          {activeScopeReview && activeScopeReview.decision !== "unverified" && (
             <div
               className={`rounded-sm border px-3 py-2 text-xs ${
                 activeScopeReview.decision === "verified"
@@ -6262,7 +6322,7 @@ function SchoolIndicatorPanelComponent({
                 const pendingFile = pendingUploadFileByType[activeUploadType];
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions;
+                const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions || isCurrentScopeVerified;
 
                 return (
                   <div className="space-y-3">
@@ -6780,11 +6840,22 @@ function SchoolIndicatorPanelComponent({
             {workspaceDraftGuidanceCopy()}
           </p>
         )}
+        {isCurrentScopeVerified && (
+          <p className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
+            {VERIFIED_SCOPE_LOCK_MESSAGE}
+          </p>
+        )}
+        {hasAnyVerifiedScope && (
+          <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            {VERIFIED_PACKAGE_LOCK_MESSAGE}
+          </p>
+        )}
         <div className="flex flex-wrap items-center gap-2">
           {canShowResetAction && (
             <button
               type="button"
-              disabled={isManualActionBlocked}
+              disabled={isManualActionBlocked || isCurrentScopeVerified}
+              title={isCurrentScopeVerified ? VERIFIED_SCOPE_LOCK_MESSAGE : undefined}
               onClick={() => void handleResetDraft()}
               className="inline-flex items-center gap-2 rounded-sm border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
             >
@@ -6811,6 +6882,7 @@ function SchoolIndicatorPanelComponent({
                   || (activeCategory ? complianceMetrics.length === 0 : false)
                   || Boolean(activeUploadType && !pendingUploadFileByType[activeUploadType])
                   || isWorkspaceReadOnly
+                  || isCurrentScopeVerified
                 }
                 title={saveActionDisabledTitle}
                 className="inline-flex items-center gap-2 rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
@@ -6830,6 +6902,7 @@ function SchoolIndicatorPanelComponent({
                 || (!sendActionHasBatchSelection && (!activeScopeId || !activeScopeReady))
                 || (!sendActionHasBatchSelection && activeScopeHasPendingUpload)
                 || isWorkspaceReadOnly
+                || (!sendActionHasBatchSelection && isCurrentScopeVerified)
               }
               title={sendActionTitle}
               className="inline-flex items-center gap-2 rounded-sm border border-primary-300 bg-white px-4 py-2 text-sm font-semibold text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-70"

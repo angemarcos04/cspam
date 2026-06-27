@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionScopeReview;
 use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
@@ -521,6 +522,137 @@ class IndicatorSubmissionWorkflowTest extends TestCase
                 && ($event->payload['previousDecision'] ?? null) === 'unverified'
                 && ($event->payload['touchedScopes'] ?? null) === ['bmef'];
         });
+    }
+
+    public function test_verified_file_scope_blocks_school_head_mutation_until_unverified(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('verified-file-lock-monitor', ['role:monitor'])->plainTextToken;
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit")
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.');
+
+        IndicatorSubmissionScopeSubmission::query()
+            ->where('indicator_submission_id', $submissionId)
+            ->where('scope_id', 'bmef')
+            ->delete();
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'unverified',
+        ])->assertOk()
+            ->assertJsonPath('data.scopeReviews.0.decision', 'unverified');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf');
+    }
+
+    public function test_verified_indicator_section_blocks_school_head_save_reset_and_send(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'workspace_section' => GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ])->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        IndicatorSubmissionScopeReview::query()->create([
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+            'scope_type' => 'section',
+            'decision' => 'verified',
+            'reviewed_by' => User::query()
+                ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+                ->value('id'),
+            'reviewed_at' => now(),
+        ]);
+
+        $payload = [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'workspace_section' => GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Updated Name']],
+                ],
+            ],
+        ];
+
+        $this->withToken($schoolHeadToken)->putJson("/api/indicators/submissions/{$submissionId}", $payload)
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/reset-workspace", [
+            'workspace' => GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => [GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS],
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
     }
 
     public function test_school_head_can_bootstrap_minimal_indicator_draft_and_update_it_later(): void

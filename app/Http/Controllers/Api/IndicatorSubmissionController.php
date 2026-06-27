@@ -458,6 +458,10 @@ class IndicatorSubmissionController extends Controller
         $shouldReplaceMissing = $request->boolean('replace_missing')
             || $mode === 'full_replace';
         $indicatorRows = $this->buildIndicatorRows($request, (int) $submission->school_id);
+        $mutationScopeIds = GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)
+            ? [$workspaceSection]
+            : $this->auditScopeIdsForRows($indicatorRows);
+        $this->assertScopesAreNotVerified($submission, $mutationScopeIds);
 
         DB::transaction(function () use (
             $submission,
@@ -589,6 +593,7 @@ class IndicatorSubmissionController extends Controller
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
+        $this->assertScopesAreNotVerified($submission, [$fileType]);
         $file = $request->file('file');
         if (! $file) {
             throw ValidationException::withMessages([
@@ -765,6 +770,7 @@ class IndicatorSubmissionController extends Controller
         $requirementResolver = app(SubmissionFileRequirementResolver::class);
 
         $fromStatus = $this->statusValue($submission->status);
+        $this->assertSubmissionHasNoVerifiedScopes($submission);
         if (! in_array($fromStatus, [
             FormSubmissionStatus::DRAFT->value,
             FormSubmissionStatus::RETURNED->value,
@@ -858,6 +864,7 @@ class IndicatorSubmissionController extends Controller
                 'targets' => 'Select at least one valid submission scope.',
             ]);
         }
+        $this->assertScopesAreNotVerified($submission, $targets);
 
         $missingRequirements = $scopeProgressResolver->missingRequirementLabelsForScopes($submission, $targets);
         if ($missingRequirements !== []) {
@@ -1055,24 +1062,7 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $fromStatus = $this->statusValue($submission->status);
-        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
-        $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
-            ? $scopeProgress['submittedScopeIds']
-            : [];
-        if (! in_array($scopeId, $submittedScopeIds, true)) {
-            throw ValidationException::withMessages([
-                'submission' => 'Only sent indicator scopes can be reviewed.',
-            ]);
-        }
-
         $decision = $request->string('decision')->toString();
-        $notes = $request->filled('notes')
-            ? trim($request->string('notes')->toString())
-            : null;
-        $scopeLabel = $scopeProgressResolver->scopeLabel($scopeId);
-        $scopeType = $this->scopeTypeFor($scopeId);
-
         $currentReview = IndicatorSubmissionScopeReview::query()
             ->where('indicator_submission_id', $submission->id)
             ->where('scope_id', $scopeId)
@@ -1084,6 +1074,23 @@ class IndicatorSubmissionController extends Controller
                 'decision' => 'Only verified requirements can be unverified.',
             ]);
         }
+
+        $fromStatus = $this->statusValue($submission->status);
+        $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
+        $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
+            ? $scopeProgress['submittedScopeIds']
+            : [];
+        if ($decision !== 'unverified' && ! in_array($scopeId, $submittedScopeIds, true)) {
+            throw ValidationException::withMessages([
+                'submission' => 'Only sent indicator scopes can be reviewed.',
+            ]);
+        }
+
+        $notes = $request->filled('notes')
+            ? trim($request->string('notes')->toString())
+            : null;
+        $scopeLabel = $scopeProgressResolver->scopeLabel($scopeId);
+        $scopeType = $this->scopeTypeFor($scopeId);
 
         $historyAction = match ($decision) {
             'verified' => 'scope_verified',
@@ -1210,6 +1217,7 @@ class IndicatorSubmissionController extends Controller
         ]);
 
         $workspace = strtolower(trim((string) $validated['workspace']));
+        $this->assertScopesAreNotVerified($submission, [$workspace]);
 
         $metadata = DB::transaction(function () use ($submission, $workspace): array {
             if (GroupBWorkspaceDefinition::isMetricWorkspace($workspace)) {
@@ -1372,6 +1380,62 @@ class IndicatorSubmissionController extends Controller
         }
 
         return 'unknown';
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     * @return list<string>
+     */
+    private function normalizedScopeIdsForSubmission(IndicatorSubmission $submission, array $scopeIds): array
+    {
+        /** @var SubmissionScopeProgressResolver $scopeProgressResolver */
+        $scopeProgressResolver = app(SubmissionScopeProgressResolver::class);
+
+        return $scopeProgressResolver->normalizeScopeIds($submission, $scopeIds);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function verifiedScopeIdsForSubmission(IndicatorSubmission $submission): array
+    {
+        return IndicatorSubmissionScopeReview::query()
+            ->where('indicator_submission_id', $submission->id)
+            ->where('decision', 'verified')
+            ->pluck('scope_id')
+            ->map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)))
+            ->filter(static fn (string $scopeId): bool => $scopeId !== '')
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     */
+    private function assertScopesAreNotVerified(IndicatorSubmission $submission, array $scopeIds): void
+    {
+        $normalizedScopeIds = $this->normalizedScopeIdsForSubmission($submission, $scopeIds);
+        if ($normalizedScopeIds === []) {
+            return;
+        }
+
+        if (array_intersect($normalizedScopeIds, $this->verifiedScopeIdsForSubmission($submission)) !== []) {
+            throw ValidationException::withMessages([
+                'submission' => 'This file or indicator has been verified.',
+            ]);
+        }
+    }
+
+    private function assertSubmissionHasNoVerifiedScopes(IndicatorSubmission $submission): void
+    {
+        if ($this->verifiedScopeIdsForSubmission($submission) === []) {
+            return;
+        }
+
+        throw ValidationException::withMessages([
+            'submission' => 'This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.',
+        ]);
     }
 
     /**

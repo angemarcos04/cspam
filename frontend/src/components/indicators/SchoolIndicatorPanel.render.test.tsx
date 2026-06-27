@@ -713,6 +713,111 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(screen.queryByRole("button", { name: "Send This Item" })).toBeNull();
   }, 10_000);
 
+  it("locks the School Head action toolbar when the active scope is verified", async () => {
+    const verifiedSubmission = {
+      id: "submission-1",
+      formType: "indicator",
+      status: "draft",
+      statusLabel: "Draft",
+      reportingPeriod: "ANNUAL",
+      version: 1,
+      schoolId: "1",
+      schoolType: "private",
+      notes: null,
+      reviewNotes: null,
+      createdAt: "2026-05-19T08:00:00.000Z",
+      updatedAt: "2026-05-19T09:00:00.000Z",
+      submittedAt: null,
+      reviewedAt: null,
+      summary: {
+        totalIndicators: 0,
+        metIndicators: 0,
+        belowTargetIndicators: 0,
+        complianceRatePercent: 0,
+      },
+      indicators: [],
+      files: {
+        fm_qad_001: {
+          type: "fm_qad_001",
+          uploaded: true,
+          path: null,
+          originalFilename: "fm-qad-001.pdf",
+          sizeBytes: 2048,
+          uploadedAt: "2026-05-19T09:00:00.000Z",
+          downloadUrl: "/api/submissions/submission-1/download/fm_qad_001",
+          viewUrl: "/api/submissions/submission-1/view/fm_qad_001",
+        },
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: ["fm_qad_001"],
+        missingFileTypes: [],
+      },
+      scopeProgress: {
+        requiredScopeIds: ["school_achievements_learning_outcomes"],
+        submittedScopeIds: ["school_achievements_learning_outcomes"],
+        pendingScopeIds: [],
+        submittedRequiredScopeCount: 1,
+        totalRequiredScopeCount: 1,
+      },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "school_achievements_learning_outcomes",
+        scopeType: "section",
+        decision: "verified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+        updatedAt: "2026-05-19T10:00:00.000Z",
+      }],
+      academicYear: {
+        id: "year-1",
+        name: "2025-2026",
+      },
+    };
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [verifiedSubmission],
+      allSubmissions: [verifiedSubmission],
+      metrics: [],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([verifiedSubmission]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission: vi.fn(),
+      fetchSubmission: vi.fn().mockResolvedValue(verifiedSubmission),
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
+      loadHistory: vi.fn(),
+    });
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+    expect(screen.getByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).not.toBeNull();
+
+    const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
+    const saveButton = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
+
+    expect(resetButton.disabled).toBe(true);
+    expect(saveButton.disabled).toBe(true);
+    expect(sendButton.disabled).toBe(true);
+    expect(finalSubmitButton.disabled).toBe(true);
+  }, 10_000);
+
   it("hydrates and refreshes the saved submission immediately after saving School Achievements", async () => {
     const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
     const updateSubmission = vi.fn().mockResolvedValue({
