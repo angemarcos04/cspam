@@ -169,7 +169,7 @@ Set these on both the web service and the background worker:
 APP_ENV=production
 APP_DEBUG=false
 APP_KEY=<same persistent Laravel app key>
-APP_URL=https://cspams.onrender.com
+APP_URL=https://cspam-eea2.onrender.com
 FRONTEND_URL=https://cspam.vercel.app/
 
 DB_CONNECTION=pgsql
@@ -242,7 +242,7 @@ CSPAMS_SYNC_DEMO_MONITOR_PASSWORD=true
 Use host names, not full URLs, for Sanctum stateful domains:
 
 ```env
-SANCTUM_STATEFUL_DOMAINS=cspam.vercel.app,cspams.onrender.com
+SANCTUM_STATEFUL_DOMAINS=cspam.vercel.app,cspam-eea2.onrender.com
 ```
 
 Use full origins for CORS:
@@ -307,7 +307,7 @@ CSPAMS_DIAGNOSTICS_TOKEN=<random-long-token>
 Redeploy the web service, then open:
 
 ```text
-https://cspams.onrender.com/api/ops/queue-diagnostics?token=<random-long-token>
+https://cspam-eea2.onrender.com/api/ops/queue-diagnostics?token=<random-long-token>
 ```
 
 You can also call it through the Vercel rewrite:
@@ -331,7 +331,7 @@ The endpoint reports mailer, SMTP host/port/scheme, sender, whether SMTP usernam
 To test the configured mail transport without generating an OTP, send a POST request to:
 
 ```text
-https://cspams.onrender.com/api/ops/mail-diagnostics/send?token=<random-long-token>
+https://cspam-eea2.onrender.com/api/ops/mail-diagnostics/send?token=<random-long-token>
 ```
 
 This sends a harmless diagnostic email to `CSPAMS_MONITOR_EMAIL`. If delivery fails, the response includes the sanitized provider error without exposing the Resend API key or mail password.

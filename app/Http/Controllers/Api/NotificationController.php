@@ -17,12 +17,8 @@ class NotificationController extends Controller
         $user = $this->requireUser($request);
         $perPage = $this->resolvePerPage($request);
         $page = $this->resolvePage($request);
-        $counts = $user->notifications()
-            ->selectRaw('COUNT(*) as total_count')
-            ->selectRaw('SUM(CASE WHEN read_at IS NULL THEN 1 ELSE 0 END) as unread_count')
-            ->first();
-        $total = (int) ($counts?->total_count ?? 0);
-        $unreadCount = (int) ($counts?->unread_count ?? 0);
+        $total = $user->notifications()->count();
+        $unreadCount = $user->unreadNotifications()->count();
         $notifications = $user->notifications()
             ->orderByDesc('created_at')
             ->forPage($page, $perPage)
@@ -112,17 +108,51 @@ class NotificationController extends Controller
      */
     private function serializeNotification(DatabaseNotification $notification): array
     {
-        $payload = is_array($notification->data) ? $notification->data : [];
+        $payload = $this->normalizeNotificationPayload($notification->data);
 
         return [
             'id' => (string) $notification->id,
             'type' => (string) $notification->type,
-            'eventType' => (string) ($payload['eventType'] ?? 'notification'),
-            'title' => (string) ($payload['title'] ?? 'Notification'),
-            'message' => (string) ($payload['message'] ?? 'You have a new notification.'),
-            'readAt' => optional($notification->read_at)->toISOString(),
-            'createdAt' => optional($notification->created_at)->toISOString(),
+            'eventType' => $this->payloadString($payload, 'eventType', 'notification'),
+            'title' => $this->payloadString($payload, 'title', 'Notification'),
+            'message' => $this->payloadString($payload, 'message', 'You have a new notification.'),
+            'readAt' => $notification->read_at?->toISOString(),
+            'createdAt' => $notification->created_at?->toISOString(),
             'data' => $payload,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function normalizeNotificationPayload(mixed $data): array
+    {
+        if (is_array($data)) {
+            return $data;
+        }
+
+        if (is_string($data) && trim($data) !== '') {
+            $decoded = json_decode($data, true);
+
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function payloadString(array $payload, string $key, string $fallback): string
+    {
+        $value = $payload[$key] ?? null;
+
+        if (is_string($value) && trim($value) !== '') {
+            return $value;
+        }
+
+        return $fallback;
     }
 }

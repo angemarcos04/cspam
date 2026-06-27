@@ -40,6 +40,8 @@ interface NotificationContextType {
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 const AUTO_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_PER_PAGE = 40;
+const NOTIFICATION_LOAD_ERROR =
+  "Unable to load notifications. Try refreshing. If this continues, contact the administrator.";
 
 function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications: AppNotification[]): AppNotificationListMeta {
   return {
@@ -74,12 +76,12 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         }
 
         if (err.status === 403) {
-          setError(err.message || "You do not have permission to access notifications.");
+          setError("You do not have permission to access notifications.");
           return;
         }
       }
 
-      setError(err instanceof Error ? err.message : "Unexpected server error.");
+      setError(NOTIFICATION_LOAD_ERROR);
     },
     [],
   );

@@ -14,9 +14,11 @@ use App\Notifications\SchoolSubmissionReminderNotification;
 use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -25,6 +27,150 @@ class NotificationCenterApiTest extends TestCase
 {
     use RefreshDatabase;
     use InteractsWithSeededCredentials;
+
+    public function test_unauthenticated_user_cannot_list_notifications(): void
+    {
+        $this->getJson('/api/notifications')
+            ->assertUnauthorized();
+    }
+
+    public function test_monitor_notification_list_returns_empty_state(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $this->withToken($monitorToken)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.unreadCount', 0)
+            ->assertJsonPath('meta.currentPage', 1)
+            ->assertJsonPath('meta.lastPage', 1);
+    }
+
+    public function test_school_head_notification_list_returns_empty_state(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $schoolHead->createToken('test-school-head')->plainTextToken;
+        $schoolHead->notifications()->delete();
+
+        $this->withToken($schoolHeadToken)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.unreadCount', 0);
+    }
+
+    public function test_malformed_and_legacy_notification_payloads_do_not_crash_index(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $fallbackId = (string) Str::uuid();
+        $legacyJsonStringId = (string) Str::uuid();
+        $missingMessageId = (string) Str::uuid();
+        $now = now();
+
+        DB::table('notifications')->insert([
+            [
+                'id' => $fallbackId,
+                'type' => 'legacy.notification',
+                'notifiable_type' => User::class,
+                'notifiable_id' => $monitor->id,
+                'data' => 'not-json',
+                'read_at' => null,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ],
+            [
+                'id' => $legacyJsonStringId,
+                'type' => 'legacy.notification',
+                'notifiable_type' => User::class,
+                'notifiable_id' => $monitor->id,
+                'data' => json_encode(json_encode([
+                    'eventType' => 'legacy_json_string',
+                    'title' => 'Legacy JSON string',
+                    'message' => 'Decoded from a legacy JSON string.',
+                ])),
+                'read_at' => null,
+                'created_at' => $now->copy()->addSecond(),
+                'updated_at' => $now->copy()->addSecond(),
+            ],
+            [
+                'id' => $missingMessageId,
+                'type' => 'legacy.notification',
+                'notifiable_type' => User::class,
+                'notifiable_id' => $monitor->id,
+                'data' => json_encode([
+                    'eventType' => 'legacy_missing_message',
+                    'title' => 'Legacy notification',
+                ]),
+                'read_at' => null,
+                'created_at' => $now->copy()->addSeconds(2),
+                'updated_at' => $now->copy()->addSeconds(2),
+            ],
+        ]);
+
+        $response = $this->withToken($monitorToken)->getJson('/api/notifications');
+
+        $response->assertOk()
+            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.unreadCount', 3);
+
+        $rows = collect($response->json('data'))->keyBy('id');
+
+        $this->assertSame('notification', data_get($rows->get($fallbackId), 'eventType'));
+        $this->assertSame('Notification', data_get($rows->get($fallbackId), 'title'));
+        $this->assertSame('You have a new notification.', data_get($rows->get($fallbackId), 'message'));
+        $this->assertSame('legacy_json_string', data_get($rows->get($legacyJsonStringId), 'eventType'));
+        $this->assertSame('Legacy JSON string', data_get($rows->get($legacyJsonStringId), 'title'));
+        $this->assertSame('You have a new notification.', data_get($rows->get($missingMessageId), 'message'));
+    }
+
+    public function test_mark_as_read_cannot_read_another_users_notification(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $notification = $schoolHead->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Private notification'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson("/api/notifications/{$notification->id}/read")
+            ->assertNotFound();
+
+        $this->assertNull($notification->fresh()?->read_at);
+    }
+
+    public function test_mark_all_read_succeeds_with_zero_unread_notifications(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $this->withToken($monitorToken)->postJson('/api/notifications/read-all')
+            ->assertOk()
+            ->assertJsonPath('data.updated', 0);
+    }
 
     public function test_school_head_can_list_and_mark_notifications_as_read(): void
     {

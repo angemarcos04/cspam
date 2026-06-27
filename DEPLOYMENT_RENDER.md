@@ -22,7 +22,7 @@ The Dockerfile also defaults to `bash scripts/render-start.sh`, so the same star
 ```env
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://cspams.onrender.com
+APP_URL=https://cspam-eea2.onrender.com
 
 MAIL_MAILER=resend
 MAIL_FROM_ADDRESS=onboarding@resend.dev

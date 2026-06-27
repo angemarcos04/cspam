@@ -15,7 +15,7 @@ vi.mock("@/context/Auth", () => ({
 
 vi.mock("@/lib/api", () => ({
   apiRequestRaw: apiRequestRawMock,
-  isApiError: () => false,
+  isApiError: (error: unknown) => Boolean(error && typeof error === "object" && "status" in error),
 }));
 
 function notificationRow(id: string, readAt: string | null = null) {
@@ -46,10 +46,15 @@ function listResponse(rows = [notificationRow("n1")], unreadCount = 1) {
   };
 }
 
+function apiError(status: number, message = `Request failed with status ${status}.`) {
+  return Object.assign(new Error(message), { status });
+}
+
 function NotificationsHarness() {
   const {
     notifications,
     unreadCount,
+    error,
     refreshNotifications,
     markAsRead,
     markAllAsRead,
@@ -59,6 +64,7 @@ function NotificationsHarness() {
     <div>
       <p data-testid="unread-count">{unreadCount}</p>
       <p data-testid="notification-count">{notifications.length}</p>
+      <p data-testid="notification-error">{error}</p>
       <button type="button" onClick={() => void refreshNotifications()}>Refresh</button>
       <button type="button" onClick={() => void markAsRead("n1")}>Read one</button>
       <button type="button" onClick={() => void markAllAsRead()}>Read all</button>
@@ -175,6 +181,93 @@ describe("NotificationProvider", () => {
         method: "POST",
         token: "monitor-token",
       });
+    });
+  });
+
+  it("shows a user-safe error for server notification load failures", async () => {
+    apiRequestRawMock.mockRejectedValue(apiError(500));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-error").textContent).toBe(
+        "Unable to load notifications. Try refreshing. If this continues, contact the administrator.",
+      );
+    });
+  });
+
+  it("shows a session-expired error for unauthorized notification loads", async () => {
+    apiRequestRawMock.mockRejectedValue(apiError(401));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-error").textContent).toBe("Your session expired. Please sign in again.");
+    });
+  });
+
+  it("shows a permission error for forbidden notification loads", async () => {
+    apiRequestRawMock.mockRejectedValue(apiError(403, "Raw backend permission text."));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-error").textContent).toBe(
+        "You do not have permission to access notifications.",
+      );
+    });
+  });
+
+  it("normalizes malformed notification list responses without crashing", async () => {
+    apiRequestRawMock.mockResolvedValue({ data: { data: null, meta: undefined } });
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("0");
+      expect(screen.getByTestId("unread-count").textContent).toBe("0");
+      expect(screen.getByTestId("notification-error").textContent).toBe("");
+    });
+  });
+
+  it("keeps unread count intact when mark-as-read fails", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockRejectedValueOnce(apiError(500));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Read one" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+      expect(screen.getByTestId("notification-error").textContent).toBe(
+        "Unable to load notifications. Try refreshing. If this continues, contact the administrator.",
+      );
     });
   });
 });
