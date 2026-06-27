@@ -24,6 +24,7 @@ interface FileUploadFieldProps {
   canViewReport?: boolean;
   isUploading: boolean;
   disabled: boolean;
+  mutationDisabled?: boolean;
   onUploadClick: () => void;
   onCancelPendingClick?: () => void;
   onViewClick?: () => void;
@@ -48,6 +49,7 @@ export function FileUploadField({
   canViewReport = false,
   isUploading,
   disabled,
+  mutationDisabled = false,
   onUploadClick,
   onCancelPendingClick,
   onViewClick,
@@ -55,6 +57,7 @@ export function FileUploadField({
   error = "",
 }: FileUploadFieldProps) {
   const isDownloadDisabled = disabled || !submitted;
+  const isMutationDisabled = disabled || mutationDisabled;
   const conciseLabel = actionLabel ?? label;
   const hasPendingFile = Boolean(pendingFile);
 
@@ -92,7 +95,7 @@ export function FileUploadField({
             <button
               type="button"
               onClick={onViewClick}
-              disabled={disabled || !canViewReport}
+              disabled={isDownloadDisabled || !canViewReport}
               className="inline-flex items-center gap-1.5 rounded-sm border border-primary-300 bg-primary-50 px-3 py-1.5 text-xs font-semibold text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Eye className="h-3.5 w-3.5" />
@@ -129,7 +132,7 @@ export function FileUploadField({
             <button
               type="button"
               onClick={onUploadClick}
-              disabled={disabled || isUploading}
+              disabled={isMutationDisabled || isUploading}
               className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Upload className="h-3.5 w-3.5" />
@@ -138,7 +141,7 @@ export function FileUploadField({
             <button
               type="button"
               onClick={onCancelPendingClick}
-              disabled={disabled || isUploading || !onCancelPendingClick}
+              disabled={isMutationDisabled || isUploading || !onCancelPendingClick}
               className="inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <X className="h-3.5 w-3.5" />
@@ -153,7 +156,7 @@ export function FileUploadField({
           <button
             type="button"
             onClick={onUploadClick}
-            disabled={disabled}
+            disabled={isMutationDisabled}
             className="mt-3 inline-flex items-center gap-1.5 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Upload className="h-3.5 w-3.5" />

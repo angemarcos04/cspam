@@ -542,6 +542,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
             ->assertOk();
+        $originalSubmission = IndicatorSubmission::query()->findOrFail($submissionId);
+        $originalBmefPath = $originalSubmission->bmef_file_path;
+        $this->assertNotNull($originalBmefPath);
+
         $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
         ])->assertOk();
@@ -561,6 +565,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonValidationErrors(['submission'])
             ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+        $this->assertDatabaseHas('indicator_submissions', [
+            'id' => (int) $submissionId,
+            'bmef_file_path' => $originalBmefPath,
+            'bmef_original_filename' => 'bmef.pdf',
+        ]);
 
         $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
@@ -587,6 +596,57 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
             ->assertOk()
             ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-revised.pdf');
+    }
+
+    public function test_verified_same_year_scope_cannot_be_bypassed_with_second_draft(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+
+        $first = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+        $firstSubmissionId = (string) $first->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $firstSubmissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$firstSubmissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('verified-cross-submission-lock-monitor', ['role:monitor'])->plainTextToken;
+
+        $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$firstSubmissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+
+        $second = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+        $secondSubmissionId = (string) $second->json('data.id');
+        $this->assertNotSame($firstSubmissionId, $secondSubmissionId);
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $secondSubmissionId, 'bmef', 'bmef-through-second-draft.pdf', 'application/pdf')
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+        $this->assertDatabaseHas('indicator_submissions', [
+            'id' => (int) $secondSubmissionId,
+            'bmef_file_path' => null,
+            'bmef_original_filename' => null,
+        ]);
     }
 
     public function test_verified_indicator_section_blocks_school_head_save_reset_and_send(): void
@@ -638,6 +698,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ];
 
         $this->withToken($schoolHeadToken)->putJson("/api/indicators/submissions/{$submissionId}", $payload)
+            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['submission'])
+            ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');
+
+        $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions', $payload)
             ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonValidationErrors(['submission'])
             ->assertJsonPath('errors.submission.0', 'This file or indicator has been verified.');

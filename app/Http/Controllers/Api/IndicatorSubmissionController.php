@@ -273,6 +273,7 @@ class IndicatorSubmissionController extends Controller
             ? trim($request->string('notes')->toString())
             : null;
         $indicatorRows = $this->buildIndicatorRows($request, $schoolId);
+        $this->assertSchoolYearScopesAreNotVerified($schoolId, $academicYearId, $this->auditScopeIdsForRows($indicatorRows));
 
         /** @var IndicatorSubmission $submission */
         $submission = DB::transaction(function () use (
@@ -1400,14 +1401,48 @@ class IndicatorSubmissionController extends Controller
     private function verifiedScopeIdsForSubmission(IndicatorSubmission $submission): array
     {
         return IndicatorSubmissionScopeReview::query()
-            ->where('indicator_submission_id', $submission->id)
             ->where('decision', 'verified')
+            ->whereHas('submission', static function ($query) use ($submission): void {
+                $query
+                    ->where('school_id', $submission->school_id)
+                    ->where('academic_year_id', $submission->academic_year_id);
+            })
             ->pluck('scope_id')
             ->map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)))
             ->filter(static fn (string $scopeId): bool => $scopeId !== '')
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * @param list<string> $scopeIds
+     */
+    private function assertSchoolYearScopesAreNotVerified(int $schoolId, int $academicYearId, array $scopeIds): void
+    {
+        $normalizedScopeIds = array_values(array_filter(
+            array_map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)), $scopeIds),
+            static fn (string $scopeId): bool => $scopeId !== '',
+        ));
+        if ($normalizedScopeIds === []) {
+            return;
+        }
+
+        $hasVerifiedScope = IndicatorSubmissionScopeReview::query()
+            ->where('decision', 'verified')
+            ->whereIn('scope_id', $normalizedScopeIds)
+            ->whereHas('submission', static function ($query) use ($schoolId, $academicYearId): void {
+                $query
+                    ->where('school_id', $schoolId)
+                    ->where('academic_year_id', $academicYearId);
+            })
+            ->exists();
+
+        if ($hasVerifiedScope) {
+            throw ValidationException::withMessages([
+                'submission' => 'This file or indicator has been verified.',
+            ]);
+        }
     }
 
     /**

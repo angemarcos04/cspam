@@ -3246,12 +3246,35 @@ function SchoolIndicatorPanelComponent({
     [submittedByFileType, visibleFileDefinitions],
   );
   const verifiedScopeIds = useMemo(
-    () => new Set(
-      (activeFormSubmission?.scopeReviews ?? [])
-        .filter((review) => review.decision === "verified")
-        .map((review) => review.scopeId),
-    ),
-    [activeFormSubmission],
+    () => {
+      const scopeIds = new Set<string>();
+      const activeYearId = String(activeAcademicYearId ?? "").trim();
+      const sourceSubmissions = [...schoolScopedSubmissions];
+
+      if (
+        activeFormSubmission
+        && !sourceSubmissions.some((submission) => submission.id === activeFormSubmission.id)
+      ) {
+        sourceSubmissions.push(activeFormSubmission);
+      }
+
+      for (const submission of sourceSubmissions) {
+        const submissionYearId = String(submission.academicYear?.id ?? "").trim();
+        if (!activeYearId || submissionYearId !== activeYearId) {
+          continue;
+        }
+
+        for (const review of submission.scopeReviews ?? []) {
+          const scopeId = String(review.scopeId ?? "").trim().toLowerCase();
+          if (review.decision === "verified" && scopeId) {
+            scopeIds.add(scopeId);
+          }
+        }
+      }
+
+      return scopeIds;
+    },
+    [activeAcademicYearId, activeFormSubmission, schoolScopedSubmissions],
   );
   const hasAnyVerifiedScope = verifiedScopeIds.size > 0;
   const finalSubmitBlockedReason = useMemo(() => {
@@ -6322,7 +6345,8 @@ function SchoolIndicatorPanelComponent({
                 const pendingFile = pendingUploadFileByType[activeUploadType];
                 const uploadError = uploadErrorByType[activeUploadType];
                 const isUploading = uploadingFileType === activeUploadType;
-                const uploadDisabled = isManualActionBlocked || isUploading || !canShowSaveAndSubmitActions || isCurrentScopeVerified;
+                const uploadDisabled = isUploading || !canShowSaveAndSubmitActions;
+                const uploadMutationDisabled = isManualActionBlocked || isCurrentScopeVerified;
 
                 return (
                   <div className="space-y-3">
@@ -6347,6 +6371,7 @@ function SchoolIndicatorPanelComponent({
                       canViewReport={uploaded}
                       isUploading={isUploading}
                       disabled={uploadDisabled}
+                      mutationDisabled={uploadMutationDisabled}
                       onUploadClick={() => handleRequestUpload(activeUploadType)}
                       onCancelPendingClick={() => handleCancelPendingFile(activeUploadType)}
                       onViewClick={() => void handleViewUploadedFile(activeUploadType)}

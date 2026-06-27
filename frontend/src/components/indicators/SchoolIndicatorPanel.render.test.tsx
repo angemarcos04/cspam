@@ -60,6 +60,85 @@ function buildHydratedSubmission(submissionId = "submission-1") {
   };
 }
 
+interface FileWorkspaceSubmissionOptions {
+  submissionId?: string;
+  uploadedFileTypes?: string[];
+  readyScopeIds?: string[];
+  submittedScopeIds?: string[];
+  scopeReviews?: Array<Record<string, unknown>>;
+}
+
+function buildFileWorkspaceSubmission(options: FileWorkspaceSubmissionOptions = {}) {
+  const submissionId = options.submissionId ?? "submission-1";
+  const uploadedFileTypes = options.uploadedFileTypes ?? ["fm_qad_001"];
+  const readyScopeIds = options.readyScopeIds ?? uploadedFileTypes;
+  const submittedScopeIds = options.submittedScopeIds ?? [];
+  const scopeReviews = options.scopeReviews ?? [];
+
+  const files = uploadedFileTypes.reduce<Record<string, Record<string, unknown>>>((current, type) => {
+    current[type] = {
+      type,
+      uploaded: true,
+      path: null,
+      originalFilename: `${type.replace(/_/g, "-")}.pdf`,
+      sizeBytes: 2048,
+      uploadedAt: "2026-05-19T09:00:00.000Z",
+      downloadUrl: `/api/submissions/${submissionId}/download/${type}`,
+      viewUrl: `/api/submissions/${submissionId}/view/${type}`,
+    };
+    return current;
+  }, {});
+
+  return {
+    ...buildHydratedSubmission(submissionId),
+    updatedAt: "2026-05-19T10:00:00.000Z",
+    files,
+    completion: {
+      hasImetaFormData: false,
+      hasBmefFile: false,
+      hasSmeaFile: false,
+      isComplete: false,
+      requiredFileTypes: uploadedFileTypes,
+      uploadedFileTypes,
+      missingFileTypes: [],
+    },
+    scopeProgress: {
+      requiredScopeIds: [...uploadedFileTypes],
+      submittedScopeIds,
+      pendingScopeIds: readyScopeIds.filter((scopeId) => !submittedScopeIds.includes(scopeId)),
+      submittedRequiredScopeCount: submittedScopeIds.length,
+      totalRequiredScopeCount: uploadedFileTypes.length,
+    },
+    scopeReviews,
+  };
+}
+
+function mockIndicatorPanelData(submissions: Array<Record<string, unknown>>, overrides: Record<string, unknown> = {}) {
+  useIndicatorDataMock.mockReturnValue({
+    submissions,
+    allSubmissions: submissions,
+    metrics: [],
+    academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+    isLoading: false,
+    isAllSubmissionsLoading: false,
+    isSaving: false,
+    error: null,
+    refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+    loadSubmissionsForYear: vi.fn().mockResolvedValue(submissions),
+    bootstrapSubmission: vi.fn(),
+    createSubmission: vi.fn(),
+    updateSubmission: vi.fn(),
+    fetchSubmission: vi.fn().mockResolvedValue(submissions[0] ?? buildHydratedSubmission()),
+    resetSubmissionWorkspace: vi.fn(),
+    uploadSubmissionFile: vi.fn(),
+    downloadSubmissionFile: vi.fn(),
+    submitSubmission: vi.fn(),
+    submitSubmissionScopes: vi.fn(),
+    loadHistory: vi.fn(),
+    ...overrides,
+  });
+}
+
 beforeEach(() => {
   localStorage.clear();
   useAuthMock.mockReturnValue({
@@ -816,6 +895,182 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(saveButton.disabled).toBe(true);
     expect(sendButton.disabled).toBe(true);
     expect(finalSubmitButton.disabled).toBe(true);
+  }, 10_000);
+
+  it("locks upload replacement and toolbar actions when the active file scope is verified", async () => {
+    const verifiedFileSubmission = buildFileWorkspaceSubmission({
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+        updatedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([verifiedFileSubmission]);
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+
+    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+    const viewFileButton = await screen.findByRole("button", { name: /View FM-QAD-001.*File/i }) as HTMLButtonElement;
+    const downloadButton = await screen.findByRole("button", { name: /Download FM-QAD-001.*report/i }) as HTMLButtonElement;
+    expect(viewFileButton.disabled).toBe(false);
+    expect(downloadButton.disabled).toBe(false);
+
+    const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
+    const saveButton = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
+
+    expect(resetButton.disabled).toBe(true);
+    expect(saveButton.disabled).toBe(true);
+    expect(sendButton.disabled).toBe(true);
+    expect(finalSubmitButton.disabled).toBe(true);
+  }, 10_000);
+
+  it("lets an unverified active file scope return to normal toolbar behavior", async () => {
+    const verifiedSubmission = buildFileWorkspaceSubmission({
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+        updatedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    });
+    const unverifiedSubmission = buildFileWorkspaceSubmission({
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "unverified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:05:00.000Z",
+        updatedAt: "2026-05-19T10:05:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([verifiedSubmission]);
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+
+    mockIndicatorPanelData([unverifiedSubmission]);
+    view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
+    });
+    expect(screen.queryByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).toBeNull();
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
+    expect(sendButton.disabled).toBe(false);
+    expect(finalSubmitButton.title).not.toBe("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.");
+  }, 10_000);
+
+  it("only blocks final submit when a verified scope is outside the active tab", async () => {
+    const submission = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001", "fm_qad_002"],
+      readyScopeIds: ["fm_qad_002"],
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+        updatedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([submission]);
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-002/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_002");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-002 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+
+    await screen.findByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.");
+    expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
+
+    const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
+    expect(resetButton.disabled).toBe(false);
+    expect(sendButton.disabled).toBe(false);
+    expect(finalSubmitButton.disabled).toBe(true);
+  }, 10_000);
+
+  it("removes stale verified scopes from batch selections after refreshed state arrives", async () => {
+    const readySubmission = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001", "fm_qad_002"],
+      readyScopeIds: ["fm_qad_001", "fm_qad_002"],
+      submittedScopeIds: [],
+    });
+    const refreshedSubmission = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001", "fm_qad_002"],
+      readyScopeIds: ["fm_qad_001", "fm_qad_002"],
+      submittedScopeIds: [],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedBy: { id: "monitor-1", name: "Monitor", email: "monitor@example.test" },
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+        updatedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    });
+    const submitSubmissionScopes = vi.fn().mockResolvedValue(refreshedSubmission);
+    mockIndicatorPanelData([readySubmission], { submitSubmissionScopes });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const selectAllButton = await screen.findByRole("button", { name: "Select all" });
+    fireEvent.click(selectAllButton);
+    await screen.findByText("Selected: FM-QAD-001, FM-QAD-002");
+
+    mockIndicatorPanelData([refreshedSubmission], { submitSubmissionScopes });
+    view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Selected: FM-QAD-001, FM-QAD-002")).toBeNull();
+    });
+    expect(screen.getByText("Selected: FM-QAD-002")).not.toBeNull();
+    const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
+    fireEvent.click(sendButton);
+    await waitFor(() => {
+      expect(submitSubmissionScopes).toHaveBeenCalledWith("submission-1", ["fm_qad_002"]);
+    });
+    expect(submitSubmissionScopes).not.toHaveBeenCalledWith("submission-1", ["fm_qad_001"]);
   }, 10_000);
 
   it("hydrates and refreshes the saved submission immediately after saving School Achievements", async () => {
