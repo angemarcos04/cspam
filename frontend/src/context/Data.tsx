@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, displayMessageForApiError, isApiError } from "@/lib/api";
+import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SessionUser,
@@ -150,7 +151,7 @@ interface DataContextType {
   lastSyncedAt: string | null;
   syncScope: SyncScope;
   syncStatus: SyncStatus;
-  refreshRecords: (options?: { force?: boolean }) => Promise<void>;
+  refreshRecords: (options?: RefreshOptions) => Promise<void>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
@@ -341,7 +342,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const syncRecords = useCallback(
-    async (silent = false, force = false) => {
+    async (silent = false, force = false, throwOnError = false) => {
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
         syncQueuedForceRef.current = syncQueuedForceRef.current || force;
@@ -465,6 +466,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
           return;
         }
         await handleApiError(err);
+        if (throwOnError) {
+          throw err;
+        }
       } finally {
         if (requestGeneration === syncGenerationRef.current) {
           syncInFlightRef.current = false;
@@ -484,8 +488,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
-  const refreshRecords = useCallback(async (options?: { force?: boolean }) => {
-    await syncRecords(false, Boolean(options?.force));
+  const refreshRecords = useCallback(async (options?: RefreshOptions) => {
+    await syncRecords(false, Boolean(options?.force), Boolean(options?.throwOnError));
   }, [syncRecords]);
 
   useEffect(() => {

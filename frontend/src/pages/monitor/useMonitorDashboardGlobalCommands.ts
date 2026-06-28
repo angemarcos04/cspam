@@ -1,14 +1,14 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
-import { runRefreshBatches } from "@/lib/runRefreshBatches";
+import { runRefreshBatches, type RefreshOptions } from "@/lib/runRefreshBatches";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 type DashboardToastTone = "success" | "info" | "warning";
 
 interface UseMonitorDashboardGlobalCommandsArgs {
-  refreshRecords: () => Promise<unknown>;
-  refreshSubmissions: () => Promise<unknown>;
-  refreshStudents: () => Promise<unknown>;
-  refreshTeachers: () => Promise<unknown>;
+  refreshRecords: (options?: RefreshOptions) => Promise<unknown>;
+  refreshSubmissions: (options?: RefreshOptions) => Promise<unknown>;
+  refreshStudents: (options?: RefreshOptions) => Promise<unknown>;
+  refreshTeachers: (options?: RefreshOptions) => Promise<unknown>;
   onToast: (message: string, tone?: DashboardToastTone) => void;
   setShowNavigatorManual: Dispatch<SetStateAction<boolean>>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
@@ -41,10 +41,11 @@ export function useMonitorDashboardGlobalCommands({
   setIsNavigatorVisible,
 }: UseMonitorDashboardGlobalCommandsArgs): UseMonitorDashboardGlobalCommandsResult {
   const handleRefreshDashboard = useCallback(async () => {
+    const manualRefreshOptions: RefreshOptions = { force: true, throwOnError: true };
     const results = await runRefreshBatches([
-      [refreshRecords],
-      [refreshSubmissions],
-      [refreshStudents, refreshTeachers],
+      [() => refreshRecords(manualRefreshOptions)],
+      [() => refreshSubmissions(manualRefreshOptions)],
+      [() => refreshStudents(manualRefreshOptions), () => refreshTeachers(manualRefreshOptions)],
     ]);
 
     if (results.some((result) => result.status === "rejected")) {

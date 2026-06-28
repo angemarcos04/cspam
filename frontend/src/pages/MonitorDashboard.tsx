@@ -197,7 +197,7 @@ export function MonitorDashboard() {
     syncAlerts,
     isLoading,
     isSaving,
-    error,
+    error: recordError,
     lastSyncedAt,
     syncScope,
     syncStatus,
@@ -224,6 +224,7 @@ export function MonitorDashboard() {
   const {
     allSubmissions,
     isLoading: isIndicatorDataLoading,
+    error: indicatorError,
     lastSyncedAt: indicatorLastSyncedAt,
     fetchSubmission,
     listSubmissionsForSchool,
@@ -232,12 +233,14 @@ export function MonitorDashboard() {
   const {
     students,
     isLoading: isStudentDataLoading,
+    error: studentError,
     lastSyncedAt: studentLastSyncedAt,
     refreshStudents,
     queryStudents,
   } = useStudentData();
   const {
     isLoading: isTeacherDataLoading,
+    error: teacherError,
     lastSyncedAt: teacherLastSyncedAt,
     refreshTeachers,
     listTeachers,
@@ -480,6 +483,7 @@ export function MonitorDashboard() {
     );
     return maxTime > 0 ? new Date(maxTime).toISOString() : null;
   }, [indicatorLastSyncedAt, lastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
+  const dashboardError = recordError || indicatorError || studentError || teacherError;
   const isDashboardSyncing =
     isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
   const showSubmissionFilters = showAdvancedFilters;
@@ -1100,9 +1104,9 @@ export function MonitorDashboard() {
         />
       }
     >
-      {error && (
+      {dashboardError && (
         <section className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
-          {error}
+          {dashboardError}
         </section>
       )}
 

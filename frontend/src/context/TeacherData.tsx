@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, displayMessageForApiError, isApiError } from "@/lib/api";
+import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
 
@@ -94,7 +95,7 @@ export interface TeacherDataContextType {
   syncScope: TeacherSyncScope;
   totalCount: number;
   dataVersion: number;
-  refreshTeachers: () => Promise<void>;
+  refreshTeachers: (options?: RefreshOptions) => Promise<void>;
   listTeachers: (params?: TeacherListParams) => Promise<TeacherListResult>;
   addTeacher: (payload: TeacherRecordPayload) => Promise<void>;
   updateTeacher: (id: string, payload: TeacherRecordPayload) => Promise<void>;
@@ -331,6 +332,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   );
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const syncQueuedForceRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const listCacheRef = useRef<Map<string, TeacherListCacheEntry>>(new Map());
@@ -359,6 +361,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
+    syncQueuedForceRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     listCacheRef.current.clear();
@@ -446,9 +449,10 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
   );
 
   const syncTeachers = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false, throwOnError = false) => {
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
+        syncQueuedForceRef.current = syncQueuedForceRef.current || force;
         return;
       }
 
@@ -464,11 +468,13 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         etagRef.current = "";
         syncScopeKeyRef.current = "";
         listCacheRef.current.clear();
+        syncQueuedForceRef.current = false;
         return;
       }
 
       syncInFlightRef.current = true;
       syncQueuedRef.current = false;
+      syncQueuedForceRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -478,9 +484,14 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
+        if (force) {
+          etagRef.current = "";
+          listCacheRef.current.clear();
+        }
+
         const response = await apiRequestRaw<TeacherRecordsResponse>(buildListPath(snapshotParamsRef.current), {
           token,
-          extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+          extraHeaders: !force && etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
         const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
@@ -536,6 +547,9 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
           return;
         }
         await handleApiError(err);
+        if (throwOnError) {
+          throw err;
+        }
       } finally {
         if (requestGeneration === syncGenerationRef.current) {
           syncInFlightRef.current = false;
@@ -545,16 +559,18 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          const queuedForce = syncQueuedForceRef.current;
           syncQueuedRef.current = false;
-          void syncTeachers(true);
+          syncQueuedForceRef.current = false;
+          void syncTeachers(true, queuedForce);
         }
       }
     },
     [token, requestTeachers, handleApiError],
   );
 
-  const refreshTeachers = useCallback(async () => {
-    await syncTeachers(false);
+  const refreshTeachers = useCallback(async (options?: RefreshOptions) => {
+    await syncTeachers(false, Boolean(options?.force), Boolean(options?.throwOnError));
   }, [syncTeachers]);
 
   const listTeachers = useCallback(

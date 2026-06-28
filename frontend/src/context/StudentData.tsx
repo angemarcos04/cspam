@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, displayMessageForApiError, isApiError } from "@/lib/api";
+import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   StudentEnrollmentStatus,
@@ -140,7 +141,7 @@ export interface StudentDataContextType {
   syncScope: StudentSyncScope;
   totalCount: number;
   dataVersion: number;
-  refreshStudents: () => Promise<void>;
+  refreshStudents: (options?: RefreshOptions) => Promise<void>;
   queryStudents: (params?: StudentListParams) => Promise<StudentListResult>;
   listStudentHistory: (studentId: string, params?: StudentHistoryParams) => Promise<StudentHistoryResult>;
   addStudent: (payload: StudentRecordPayload, options?: { revalidate?: boolean }) => Promise<void>;
@@ -475,6 +476,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const syncQueuedForceRef = useRef(false);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const listCacheRef = useRef<Map<string, StudentListCacheEntry>>(new Map());
@@ -492,6 +494,7 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
+    syncQueuedForceRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     listCacheRef.current.clear();
@@ -583,9 +586,10 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
   );
 
   const syncStudents = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false, throwOnError = false) => {
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
+        syncQueuedForceRef.current = syncQueuedForceRef.current || force;
         return;
       }
 
@@ -603,10 +607,12 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         listCacheRef.current.clear();
         historyCacheRef.current.clear();
         syncQueuedRef.current = false;
+        syncQueuedForceRef.current = false;
         return;
       }
 
       syncInFlightRef.current = true;
+      syncQueuedForceRef.current = false;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
@@ -616,9 +622,14 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
+        if (force) {
+          etagRef.current = "";
+          listCacheRef.current.clear();
+        }
+
         const response = await apiRequestRaw<StudentRecordsResponse>(buildListPath(snapshotParamsRef.current), {
           token,
-          extraHeaders: etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
+          extraHeaders: !force && etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
         });
 
         const nextEtag = normalizeEtag(response.headers.get("X-Sync-Etag") || response.headers.get("ETag"));
@@ -682,6 +693,9 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
           return;
         }
         await handleApiError(err);
+        if (throwOnError) {
+          throw err;
+        }
       } finally {
         if (requestGeneration === syncGenerationRef.current) {
           syncInFlightRef.current = false;
@@ -691,16 +705,18 @@ export function StudentDataProvider({ children }: { children: ReactNode }) {
         }
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          const queuedForce = syncQueuedForceRef.current;
           syncQueuedRef.current = false;
-          void syncStudents(true);
+          syncQueuedForceRef.current = false;
+          void syncStudents(true, queuedForce);
         }
       }
     },
     [token, handleApiError],
   );
 
-  const refreshStudents = useCallback(async () => {
-    await syncStudents(false);
+  const refreshStudents = useCallback(async (options?: RefreshOptions) => {
+    await syncStudents(false, Boolean(options?.force), Boolean(options?.throwOnError));
   }, [syncStudents]);
 
   const queryStudents = useCallback(

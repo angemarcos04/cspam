@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildSchoolAdminRefreshBatches,
   buildDashboardViewYearStorageKey,
   formatComplianceStatusLabel,
+  resolveDashboardLastSyncedAt,
   resolveInitialSchoolHeadReportAcademicYearId,
   resolveInitialSubmittedReportAcademicYearId,
   resolveCurrentReportIndicatorByGroupAKey,
@@ -795,17 +796,41 @@ describe("resolveHydratedCurrentReportSubmissionCandidate", () => {
 });
 
 describe("buildSchoolAdminRefreshBatches", () => {
-  it("eagerly includes the full School Head submission preload after the snapshot refresh", () => {
-    const refreshRecords = async () => undefined;
-    const refreshSubmissions = async () => undefined;
-    const refreshAllSubmissions = async () => undefined;
+  it("passes manual refresh options to the snapshot and full School Head preload tasks", async () => {
+    const refreshRecords = vi.fn().mockResolvedValue(undefined);
+    const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
+    const refreshAllSubmissions = vi.fn().mockResolvedValue(undefined);
+    const options = { force: true, throwOnError: true };
 
+    const batches = buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions, options);
+
+    expect(batches).toHaveLength(2);
+    expect(batches[0]).toHaveLength(2);
+    expect(batches[1]).toHaveLength(1);
+
+    await Promise.all(batches[0].map((task) => task()));
+    await batches[1][0]();
+
+    expect(refreshRecords).toHaveBeenCalledWith(options);
+    expect(refreshSubmissions).toHaveBeenCalledWith(options);
+    expect(refreshAllSubmissions).toHaveBeenCalledWith(options);
+  });
+});
+
+describe("resolveDashboardLastSyncedAt", () => {
+  it("returns the latest valid dashboard sync timestamp", () => {
     expect(
-      buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions),
-    ).toEqual([
-      [refreshRecords, refreshSubmissions],
-      [refreshAllSubmissions],
-    ]);
+      resolveDashboardLastSyncedAt(
+        "2026-06-29T01:00:00.000Z",
+        "2026-06-29T02:30:00.000Z",
+        "not-a-date",
+        null,
+      ),
+    ).toBe("2026-06-29T02:30:00.000Z");
+  });
+
+  it("returns null when no valid sync timestamp exists", () => {
+    expect(resolveDashboardLastSyncedAt(null, undefined, "not-a-date")).toBeNull();
   });
 });
 

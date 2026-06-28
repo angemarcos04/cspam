@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useAuth } from "@/context/Auth";
 import { ApiError, apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, displayMessageForApiError, getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
+import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import {
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -66,6 +67,7 @@ export interface IndicatorListResult {
 export interface LoadAllSubmissionsOptions {
   signal?: AbortSignal;
   force?: boolean;
+  throwOnError?: boolean;
   schoolCode?: string | number | null;
 }
 
@@ -179,7 +181,7 @@ export interface IndicatorDataContextType {
   isSaving: boolean;
   error: string;
   lastSyncedAt: string | null;
-  refreshSubmissions: () => Promise<void>;
+  refreshSubmissions: (options?: RefreshOptions) => Promise<void>;
   refreshAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
   loadSubmissionsForYear: (schoolId: string, academicYearId: string, status?: string) => Promise<IndicatorSubmission[]>;
@@ -1018,6 +1020,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
+  const syncQueuedForceRef = useRef(false);
   const submissionsEtagRef = useRef<string>("");
   const schoolSubmissionsCacheRef = useRef<Map<string, { versionKey: string; rows: IndicatorSubmission[] }>>(new Map());
   const yearSubmissionsCacheRef = useRef<Map<string, IndicatorSubmission[]>>(new Map());
@@ -1040,6 +1043,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     syncGenerationRef.current += 1;
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
+    syncQueuedForceRef.current = false;
     referenceDataSyncedAtRef.current = 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
@@ -1241,8 +1245,15 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       throwIfAborted(signal);
 
       const versionKey = buildAllSubmissionsVersionKey();
+      if (options?.force) {
+        schoolSubmissionsCacheRef.current.clear();
+        yearSubmissionsCacheRef.current.clear();
+        allSubmissionsCacheRef.current = null;
+        allSubmissionsInFlightRef.current = null;
+      }
+
       const cached = allSubmissionsCacheRef.current;
-      if (cached && cached.versionKey === versionKey) {
+      if (!options?.force && cached && cached.versionKey === versionKey) {
         return cached.rows;
       }
 
@@ -1257,7 +1268,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       }
 
       const inFlight = allSubmissionsInFlightRef.current;
-      if (inFlight && inFlight.versionKey === versionKey) {
+      if (!options?.force && inFlight && inFlight.versionKey === versionKey) {
         const rows = await inFlight.promise;
         throwIfAborted(signal);
         return rows;
@@ -1299,7 +1310,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       setIsAllSubmissionsLoading(true);
 
       try {
-        const rows = await loadAllSubmissions({ signal });
+        const rows = await loadAllSubmissions({ signal, force: options?.force });
         throwIfAborted(signal);
 
         if (buildAllSubmissionsVersionKey() === requestVersionKey) {
@@ -1430,9 +1441,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const syncSubmissions = useCallback(
-    async (silent = false) => {
+    async (silent = false, force = false, throwOnError = false) => {
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
+        syncQueuedForceRef.current = syncQueuedForceRef.current || force;
         return;
       }
 
@@ -1447,6 +1459,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         yearSubmissionsCacheRef.current.clear();
         allSubmissionsCacheRef.current = null;
         allSubmissionsInFlightRef.current = null;
+        syncQueuedForceRef.current = false;
         setIsLoading(false);
         allSubmissionsLoadingCountRef.current = 0;
         setIsAllSubmissionsLoading(false);
@@ -1458,6 +1471,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       syncInFlightRef.current = true;
       syncQueuedRef.current = false;
+      syncQueuedForceRef.current = false;
       const requestGeneration = syncGenerationRef.current;
       const syncStartedAt = Date.now();
 
@@ -1467,8 +1481,17 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
+        if (force) {
+          submissionsEtagRef.current = "";
+          schoolSubmissionsCacheRef.current.clear();
+          yearSubmissionsCacheRef.current.clear();
+          allSubmissionsCacheRef.current = null;
+          allSubmissionsInFlightRef.current = null;
+        }
+
         const snapshotParams = sanitizeIndicatorListParams({ page: 1, perPage: SUBMISSION_SNAPSHOT_PER_PAGE });
         const shouldRefreshReferenceData =
+          force ||
           metrics.length === 0 ||
           academicYears.length === 0 ||
           Date.now() - referenceDataSyncedAtRef.current > REFERENCE_DATA_SYNC_INTERVAL_MS;
@@ -1476,7 +1499,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const [submissionsResponse, metricPayload, yearPayload] = await Promise.all([
           apiRequestRaw<IndicatorSubmissionsResponse>(buildSubmissionsPath(snapshotParams), {
             token,
-            extraHeaders: submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
+            extraHeaders: !force && submissionsEtagRef.current ? { "If-None-Match": submissionsEtagRef.current } : undefined,
           }),
           shouldRefreshReferenceData
             ? apiRequest<IndicatorMetricsResponse>("/api/indicators/metrics", { token })
@@ -1528,6 +1551,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           return;
         }
         await handleApiError(err);
+        if (throwOnError) {
+          throw err;
+        }
       } finally {
         if (requestGeneration === syncGenerationRef.current) {
           syncInFlightRef.current = false;
@@ -1537,9 +1563,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
+          const queuedForce = syncQueuedForceRef.current;
           syncQueuedRef.current = false;
+          syncQueuedForceRef.current = false;
           if (!shouldSkipBackgroundSync()) {
-            void syncSubmissions(true);
+            void syncSubmissions(true, queuedForce);
           }
         }
       }
@@ -1547,8 +1575,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     [academicYears.length, handleApiError, metrics.length, shouldSkipBackgroundSync, token, user],
   );
 
-  const refreshSubmissions = useCallback(async () => {
-    await syncSubmissions(false);
+  const refreshSubmissions = useCallback(async (options?: RefreshOptions) => {
+    await syncSubmissions(false, Boolean(options?.force), Boolean(options?.throwOnError));
   }, [syncSubmissions]);
 
   const runSubmissionMutation = useCallback(

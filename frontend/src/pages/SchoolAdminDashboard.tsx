@@ -22,7 +22,7 @@ import { useData } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import { isEditableKeyboardTarget, isRefreshShortcut } from "@/lib/keyboardShortcuts";
-import { runRefreshBatches } from "@/lib/runRefreshBatches";
+import { runRefreshBatches, type RefreshOptions } from "@/lib/runRefreshBatches";
 import {
   buildSchoolHeadCurrentReportBlankStateLines,
   buildSchoolHeadCurrentReportSourceContext,
@@ -66,11 +66,24 @@ export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashb
 const DASHBOARD_VIEW_YEAR_MANUAL_STORAGE_KEY_SUFFIX = ":manual";
 
 export function buildSchoolAdminRefreshBatches(
-  refreshRecords: () => Promise<unknown>,
-  refreshSubmissions: () => Promise<unknown>,
-  refreshAllSubmissions: () => Promise<unknown>,
+  refreshRecords: (options?: RefreshOptions) => Promise<unknown>,
+  refreshSubmissions: (options?: RefreshOptions) => Promise<unknown>,
+  refreshAllSubmissions: (options?: RefreshOptions) => Promise<unknown>,
+  options: RefreshOptions = {},
 ) {
-  return [[refreshRecords, refreshSubmissions], [refreshAllSubmissions]];
+  return [
+    [() => refreshRecords(options), () => refreshSubmissions(options)],
+    [() => refreshAllSubmissions(options)],
+  ];
+}
+
+export function resolveDashboardLastSyncedAt(...values: Array<string | null | undefined>): string | null {
+  const maxTime = values.reduce((latest, value) => {
+    const parsed = value ? Date.parse(value) : Number.NaN;
+    return Number.isFinite(parsed) ? Math.max(latest, parsed) : latest;
+  }, 0);
+
+  return maxTime > 0 ? new Date(maxTime).toISOString() : null;
 }
 
 /* ── Quick-jump targets ── */
@@ -961,12 +974,13 @@ function buildAuthenticatedReportPreviewEndpoint(relativeUrl: string): string {
 /* ── Component ── */
 export function SchoolAdminDashboard() {
   const { user, apiToken } = useAuth();
-  const { records, error, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
+  const { records, error: recordError, lastSyncedAt, syncScope, syncStatus, refreshRecords } = useData();
   const {
     submissions: submissionSnapshot,
     allSubmissions,
     academicYears,
     downloadSubmissionFile,
+    error: indicatorError,
     fetchSubmission,
     lastSyncedAt: indicatorLastSyncedAt,
     loadSubmissionsForYear,
@@ -979,6 +993,7 @@ export function SchoolAdminDashboard() {
   const [dashboardViewSubmissions, setDashboardViewSubmissions] = useState<IndicatorSubmission[]>([]);
   const [isDashboardYearSwitching, setIsDashboardYearSwitching] = useState(false);
   const [isRefreshingAll, setIsRefreshingAll] = useState(false);
+  const [dashboardRefreshWarning, setDashboardRefreshWarning] = useState("");
   const [focusedSectionId, setFocusedSectionId] = useState<string | null>(null);
   const [activeReportModalType, setActiveReportModalType] = useState<IndicatorSubmissionFileType | null>(null);
   const [activeReportPreviewUrl, setActiveReportPreviewUrl] = useState<string | null>(null);
@@ -1532,8 +1547,8 @@ export function SchoolAdminDashboard() {
   );
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
-    async () => runRefreshBatches(
-      buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions),
+    async (options: RefreshOptions = {}) => runRefreshBatches(
+      buildSchoolAdminRefreshBatches(refreshRecords, refreshSubmissions, refreshAllSubmissions, options),
     ),
     [refreshAllSubmissions, refreshRecords, refreshSubmissions],
   );
@@ -1541,8 +1556,12 @@ export function SchoolAdminDashboard() {
   const handleRefreshAll = useCallback(async () => {
     if (isRefreshingAll) return;
     setIsRefreshingAll(true);
+    setDashboardRefreshWarning("");
     try {
-      await runDashboardRefresh();
+      const results = await runDashboardRefresh({ force: true, throwOnError: true });
+      if (results.some((result) => result.status === "rejected")) {
+        setDashboardRefreshWarning("Some dashboard data failed to refresh. Please try again.");
+      }
     } finally {
       setIsRefreshingAll(false);
     }
@@ -1902,6 +1921,12 @@ export function SchoolAdminDashboard() {
     return () => window.removeEventListener("keydown", handleRefreshShortcut);
   }, [handleRefreshAll]);
 
+  const dashboardLastSyncedAt = useMemo(
+    () => resolveDashboardLastSyncedAt(lastSyncedAt, indicatorLastSyncedAt),
+    [indicatorLastSyncedAt, lastSyncedAt],
+  );
+  const dashboardError = recordError || indicatorError || dashboardRefreshWarning;
+
   /* ── Render ── */
   return (
     <Shell
@@ -1931,8 +1956,8 @@ export function SchoolAdminDashboard() {
           <span className="hidden max-w-[17rem] items-center truncate text-[11px] font-medium text-primary-100 sm:inline-flex lg:max-w-[21rem]">
             {syncStatus === "up_to_date" ? "Up to date" : "Updated"}
             {" | "}
-            {lastSyncedAt
-              ? new Date(lastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+            {dashboardLastSyncedAt
+              ? new Date(dashboardLastSyncedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
               : "Not synced"}
             {syncScope ? ` | ${syncScope}` : ""}
           </span>
@@ -1940,9 +1965,9 @@ export function SchoolAdminDashboard() {
       }
     >
       <div className="school-head-dashboard mx-auto w-full max-w-[1180px] text-[14px]">
-      {error && (
+      {dashboardError && (
         <section className="mb-5 border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-          {error}
+          {dashboardError}
         </section>
       )}
 

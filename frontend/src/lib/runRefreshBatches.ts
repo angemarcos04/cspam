@@ -1,4 +1,5 @@
 export type RefreshTask = () => Promise<unknown>;
+export type RefreshOptions = { force?: boolean; throwOnError?: boolean };
 
 export async function runRefreshBatches(batches: RefreshTask[][]): Promise<PromiseSettledResult<unknown>[]> {
   const results: PromiseSettledResult<unknown>[] = [];

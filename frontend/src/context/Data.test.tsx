@@ -357,6 +357,84 @@ describe("DataProvider school record sync recovery", () => {
       expect(result.current.error).toBe("You may not view these records.");
     });
   });
+
+  it("rejects manual refresh errors only when throwOnError is requested", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:36:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-1\"" }),
+      })
+      .mockRejectedValueOnce(new ApiError("Refresh failed", 500, null))
+      .mockRejectedValueOnce(new ApiError("Manual refresh failed", 500, null));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.refreshRecords();
+    });
+
+    await expect(result.current.refreshRecords({ throwOnError: true })).rejects.toThrow("Manual refresh failed");
+  });
+
+  it("omits If-None-Match when dashboard record refresh is forced", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:36:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-1\"" }),
+      })
+      .mockResolvedValueOnce({
+        status: 304,
+        data: null,
+        headers: new Headers({
+          "X-Sync-Record-Count": "0",
+          "X-Sync-Etag": "\"etag-1\"",
+        }),
+      });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.refreshRecords({ force: true });
+    });
+
+    expect(apiRequestRawMock.mock.calls[1]?.[1]).toMatchObject({
+      extraHeaders: undefined,
+    });
+  });
 });
 
 describe("buildDataProviderSessionKey", () => {

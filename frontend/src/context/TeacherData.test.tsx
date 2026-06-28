@@ -86,4 +86,59 @@ describe("TeacherDataProvider API errors", () => {
     expect(result.current.error).not.toBe("Request failed with status 503.");
     expect(subscribeSharedSyncPolling).toHaveBeenCalled();
   });
+
+  it("rejects manual teacher refresh errors when throwOnError is requested", async () => {
+    vi.mocked(apiRequestRaw)
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: { currentPage: 1, lastPage: 1, perPage: 100, total: 0, syncedAt: "2026-05-07T06:36:01.000Z" },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"teachers-1\"" }),
+      })
+      .mockRejectedValueOnce(new ApiError("Teacher refresh failed", 500, null));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <TeacherDataProvider>{children}</TeacherDataProvider>;
+    const { result } = renderHook(() => useTeacherData(), { wrapper });
+
+    await act(async () => {
+      await result.current.refreshTeachers();
+    });
+
+    await expect(result.current.refreshTeachers({ throwOnError: true })).rejects.toThrow("Teacher refresh failed");
+  });
+
+  it("omits If-None-Match when teacher refresh is forced", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: { currentPage: 1, lastPage: 1, perPage: 100, total: 0, syncedAt: "2026-05-07T06:36:01.000Z" },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"teachers-1\"" }),
+      })
+      .mockResolvedValueOnce({
+        status: 304,
+        data: null,
+        headers: new Headers({ "X-Sync-Etag": "\"teachers-1\"" }),
+      });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <TeacherDataProvider>{children}</TeacherDataProvider>;
+    const { result } = renderHook(() => useTeacherData(), { wrapper });
+
+    await act(async () => {
+      await result.current.refreshTeachers();
+    });
+
+    await act(async () => {
+      await result.current.refreshTeachers({ force: true });
+    });
+
+    expect(apiRequestRawMock.mock.calls[1]?.[1]).toMatchObject({
+      extraHeaders: undefined,
+    });
+  });
 });
