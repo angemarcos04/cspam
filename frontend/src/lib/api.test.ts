@@ -135,6 +135,37 @@ describe("api request helpers", () => {
       status: 422,
     });
   });
+
+  it.each([502, 503, 504])("uses safe copy for bare infrastructure status %s responses", async (status) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("", { status })));
+
+    await expect(apiRequest("/api/dashboard/records")).rejects.toMatchObject({
+      message: SERVICE_UNAVAILABLE_MESSAGE,
+      status,
+    });
+  });
+
+  it("preserves verified-lock workflow messages from validation responses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: "The given data was invalid.",
+        errors: {
+          submission: ["This file or indicator has been verified."],
+        },
+      }), {
+        status: 422,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(apiRequest("/api/indicators/submissions/example", {
+      method: "PUT",
+      token: "sample-bearer-token",
+    })).rejects.toMatchObject({
+      message: "This file or indicator has been verified.",
+      status: 422,
+    });
+  });
 });
 
 describe("messageForApiError", () => {

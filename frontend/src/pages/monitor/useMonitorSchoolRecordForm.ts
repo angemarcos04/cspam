@@ -1,5 +1,5 @@
 import { useCallback, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 import type {
   MonitorSchoolRecordFormField,
   MonitorSchoolRecordFormProps,
@@ -252,7 +252,7 @@ export function useMonitorSchoolRecordForm({
           }
         }
 
-        setRecordFormError(err instanceof Error ? err.message : "Unable to save school record.");
+        setRecordFormError(messageForApiError(err, "Unable to save school record."));
       }
     },
     [addRecord, clearBulkImportError, clearDeleteError, closeRecordForm, editingRecordId, recordForm, updateRecord, validateRecordForm],

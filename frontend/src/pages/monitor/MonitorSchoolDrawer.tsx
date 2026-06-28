@@ -3,7 +3,7 @@ import { CheckCircle2, Download, RotateCcw, X } from "lucide-react";
 import { SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
-import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError } from "@/lib/api";
 import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
@@ -113,11 +113,7 @@ function disabledPackageActionTitle(row: MonitorDrawerPackageRow): string {
 }
 
 function errorMessageFromUnknown(error: unknown): string {
-  if (error instanceof Error && error.message.trim()) {
-    return error.message;
-  }
-
-  return "Unable to save this review decision. Please try again.";
+  return messageForApiError(error, "Unable to save this review decision. Please try again.");
 }
 
 function extractPreviewPayloadMessage(payload: unknown): string | null {

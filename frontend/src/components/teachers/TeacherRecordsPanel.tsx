@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AlertCircle, Edit2, Filter, Plus, RefreshCw, Save, Search, Trash2, X } from "lucide-react";
 import { useTeacherData } from "@/context/TeacherData";
+import { messageForApiError } from "@/lib/api";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
 
 interface TeacherRecordsPanelProps {
@@ -158,7 +159,7 @@ export function TeacherRecordsPanel({
         setPagedTeachers([]);
         setTotalTeachers(0);
         setTotalPages(1);
-        setPageError(err instanceof Error ? err.message : "Unable to load teacher records.");
+        setPageError(messageForApiError(err, "Unable to load teacher records."));
       } finally {
         if (pageAbortRef.current === controller) {
           pageAbortRef.current = null;
@@ -315,7 +316,7 @@ export function TeacherRecordsPanel({
         closeForm();
       }, 800);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to save teacher record.");
+      setFormError(messageForApiError(err, "Unable to save teacher record."));
     }
   };
 
@@ -329,7 +330,7 @@ export function TeacherRecordsPanel({
       await deleteTeacher(teacher.id);
       await loadTeachersPage(page, true);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to delete teacher record.");
+      setFormError(messageForApiError(err, "Unable to delete teacher record."));
     } finally {
       setDeletingId(null);
     }

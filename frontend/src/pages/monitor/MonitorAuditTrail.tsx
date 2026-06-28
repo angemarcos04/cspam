@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, COOKIE_SESSION_TOKEN } from "@/lib/api";
+import { apiRequest, COOKIE_SESSION_TOKEN, messageForApiError } from "@/lib/api";
 import type { CspamsRealtimePayload } from "@/lib/realtime";
 import type { AuditLogEntry } from "@/types";
 
@@ -188,7 +188,7 @@ export function AuditTrailPanel({
         return;
       }
 
-      setError(err instanceof Error ? err.message : "Unable to load audit trail.");
+      setError(messageForApiError(err, "Unable to load audit trail."));
     } finally {
       if (!signal?.aborted) {
         setIsLoading(false);

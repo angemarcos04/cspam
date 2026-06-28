@@ -1,4 +1,5 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from "react";
+import { messageForApiError } from "@/lib/api";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
@@ -77,7 +78,7 @@ export function useMonitorSchoolActionRouter({
           pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : `Unable to send reminder for ${schoolName}.`;
+        const message = messageForApiError(err, `Unable to send reminder for ${schoolName}.`);
         pushToast(message, "warning");
       } finally {
         setRemindingSchoolKey((current) => (current === schoolKey ? null : current));

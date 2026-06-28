@@ -21,7 +21,7 @@ import {
 } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
-import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError } from "@/lib/api";
 import {
   buildSubmissionUploadedFileFingerprint,
   getActiveWorkspaceFileTypes,
@@ -1615,7 +1615,7 @@ function normalizeSessionMessage(value: string | null | undefined): string {
 }
 
 function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
-  const message = error instanceof Error ? error.message : fallback;
+  const message = messageForApiError(error, fallback);
   const normalized = message.toLowerCase();
   if (
     normalized.includes("timeout")
@@ -2869,7 +2869,7 @@ function SchoolIndicatorPanelComponent({
         if (options.onError) {
           options.onError(err);
         } else {
-          setSubmitError(err instanceof Error ? err.message : "Unable to complete the requested action.");
+          setSubmitError(messageForApiError(err, "Unable to complete the requested action."));
         }
         return null;
       }
@@ -2903,7 +2903,7 @@ function SchoolIndicatorPanelComponent({
         if (options.onError) {
           options.onError(err);
         } else {
-          setSubmitError(err instanceof Error ? err.message : "Unable to complete the workspace transition.");
+          setSubmitError(messageForApiError(err, "Unable to complete the workspace transition."));
         }
         return null;
       } finally {
@@ -2936,7 +2936,6 @@ function SchoolIndicatorPanelComponent({
       try {
         await action();
       } catch (error) {
-        console.error("[GroupB] API error:", error);
         setSubmitError(
           toGroupBActionErrorMessage(error, `${label} failed. Please try again.`),
         );
@@ -3766,7 +3765,7 @@ function SchoolIndicatorPanelComponent({
       },
       onError: (err) => {
         postRefreshMessageRef.current = null;
-        setSubmitError(err instanceof Error ? err.message : "Unable to refresh the selected academic year workspace.");
+        setSubmitError(messageForApiError(err, "Unable to refresh the selected academic year workspace."));
       },
     });
     return didReset === true;
@@ -4605,7 +4604,7 @@ function SchoolIndicatorPanelComponent({
         transitionEpoch: autosaveTransitionEpoch,
       });
     } catch (err) {
-      setAutosaveError(err instanceof Error ? err.message : "Server autosave failed. Draft is still kept locally.");
+      setAutosaveError(messageForApiError(err, "Server autosave failed. Draft is still kept locally."));
     } finally {
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
@@ -5135,7 +5134,6 @@ function SchoolIndicatorPanelComponent({
         },
         getSuccessMessage: (saved) => `${workspaceSaveSectionLabel(sectionToSave)} saved for package #${saved.id}.`,
         onError: (err) => {
-          console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to save indicator package."));
         },
       });
@@ -5228,7 +5226,6 @@ function SchoolIndicatorPanelComponent({
         },
         getSuccessMessage: (result) => `Package #${result.id} sent as the final package for review.`,
         onError: (err) => {
-          console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to final-submit the package."));
         },
       });
@@ -5349,7 +5346,6 @@ function SchoolIndicatorPanelComponent({
           ? `${activeScopeSubmitLabel} from package #${result.id}.`
           : `${activeScopeSubmitLabel}.`,
         onError: (err) => {
-          console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to send this workspace item."));
         },
       });
@@ -5475,7 +5471,6 @@ function SchoolIndicatorPanelComponent({
           ? `${scopedTargets.length} workspace item${scopedTargets.length === 1 ? "" : "s"} sent from package #${result.id}.`
           : `${scopedTargets.length} workspace item${scopedTargets.length === 1 ? "" : "s"} sent.`,
         onError: (err) => {
-          console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to send the selected workspace items."));
         },
       });
@@ -5564,7 +5559,6 @@ function SchoolIndicatorPanelComponent({
         },
         getSuccessMessage: (result) => `Package #${result.id} sent as the final package for review.`,
         onError: (err) => {
-          console.error("[GroupB] API error:", err);
           setSubmitError(toGroupBActionErrorMessage(err, "Unable to final-submit the package."));
         },
       });
@@ -5608,7 +5602,7 @@ function SchoolIndicatorPanelComponent({
       const history = await loadHistory(submissionId);
       setHistoryBySubmissionId((current) => ({ ...current, [submissionId]: history }));
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Unable to load package history.");
+      setSubmitError(messageForApiError(err, "Unable to load package history."));
     } finally {
       setHistoryLoadingSubmissionId(null);
     }
@@ -5713,7 +5707,6 @@ function SchoolIndicatorPanelComponent({
           getSuccessMessage: (updated) => `${fileDefinition.shortLabel} file saved for package #${updated.id}.`,
           skipResolvedWorkspaceRehydrate: true,
           onError: (err) => {
-            console.error("[GroupB] API error:", err);
             setUploadingFileType(null);
             setUploadErrorByType((current) => ({
               ...current,
@@ -5871,7 +5864,7 @@ function SchoolIndicatorPanelComponent({
       const fileDefinition = SUBMISSION_FILE_DEFINITION_BY_TYPE[type];
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: err instanceof Error ? err.message : `Unable to download ${fileDefinition.shortLabel} file.`,
+        [type]: messageForApiError(err, `Unable to download ${fileDefinition.shortLabel} file.`),
       }));
     }
   }, [downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);
@@ -5948,7 +5941,7 @@ function SchoolIndicatorPanelComponent({
       await downloadSubmissionFile(source.submission.id, type).catch(() => undefined);
       setUploadErrorByType((current) => ({
         ...current,
-        [type]: err instanceof Error ? err.message : `Unable to open ${fileDefinition.shortLabel} report.`,
+        [type]: messageForApiError(err, `Unable to open ${fileDefinition.shortLabel} report.`),
       }));
     }
   }, [apiToken, downloadSubmissionFile, isSubmissionInAcademicYear, resolveFileSourceSubmission]);

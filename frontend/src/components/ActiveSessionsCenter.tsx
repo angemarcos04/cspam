@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Laptop, LoaderCircle, Shield, Smartphone, Trash2 } from "lucide-react";
 import { useAuth } from "@/context/Auth";
+import { messageForApiError } from "@/lib/api";
 import type { ActiveSessionDevice } from "@/types";
 
 function formatRelativeTime(value: string | null): string {
@@ -59,7 +60,7 @@ export function ActiveSessionsCenter() {
       const payload = await listActiveSessions();
       setSessions(payload);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to load active sessions.");
+      setError(messageForApiError(err, "Unable to load active sessions."));
     } finally {
       setIsLoading(false);
     }
@@ -100,7 +101,7 @@ export function ActiveSessionsCenter() {
       setSuccessMessage("Session revoked.");
       await refreshSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to revoke session.");
+      setError(messageForApiError(err, "Unable to revoke session."));
     } finally {
       setRevokingSessionId(null);
     }
@@ -118,7 +119,7 @@ export function ActiveSessionsCenter() {
       );
       await refreshSessions();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to revoke other sessions.");
+      setError(messageForApiError(err, "Unable to revoke other sessions."));
     } finally {
       setIsRevokingOthers(false);
     }

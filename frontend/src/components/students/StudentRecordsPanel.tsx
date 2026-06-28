@@ -3,7 +3,7 @@ import { AlertCircle, CalendarDays, Edit2, Filter, History, Plus, RefreshCw, Sav
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 import type { StudentEnrollmentStatus, StudentRecord, StudentRecordPayload, StudentStatusHistoryEntry, TeacherRecord } from "@/types";
 
 interface StudentRecordsPanelProps {
@@ -248,7 +248,7 @@ export function StudentRecordsPanel({
         setPagedStudents([]);
         setTotalStudents(0);
         setTotalPages(1);
-        setPageError(err instanceof Error ? err.message : "Unable to load student records.");
+        setPageError(messageForApiError(err, "Unable to load student records."));
       } finally {
         if (pageAbortRef.current === controller) {
           pageAbortRef.current = null;
@@ -634,7 +634,7 @@ export function StudentRecordsPanel({
         setHistoryEntries([]);
         setHistoryPage(Math.max(1, nextPage));
         setHistoryTotalPages(1);
-        setHistoryError(err instanceof Error ? err.message : "Unable to load student history.");
+        setHistoryError(messageForApiError(err, "Unable to load student history."));
       } finally {
         if (historyAbortRef.current === controller) {
           historyAbortRef.current = null;
@@ -728,7 +728,7 @@ export function StudentRecordsPanel({
         closeForm();
       }, 800);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to save student record.");
+      setFormError(messageForApiError(err, "Unable to save student record."));
     }
   };
 
@@ -800,7 +800,7 @@ export function StudentRecordsPanel({
       setTotalPages(previousTotalPages);
       setPage(previousPage);
       setSelectedStudentIds(previousSelection);
-      setFormError(err instanceof Error ? err.message : "Unable to delete student record.");
+      setFormError(messageForApiError(err, "Unable to delete student record."));
     } finally {
       setDeletingIds((current) => {
         const next = new Set(current);
@@ -894,7 +894,7 @@ export function StudentRecordsPanel({
       setTotalPages(previousTotalPages);
       setPage(previousPage);
       setSelectedStudentIds(previousSelection);
-      setFormError(err instanceof Error ? err.message : "Unable to delete selected student records.");
+      setFormError(messageForApiError(err, "Unable to delete selected student records."));
     } finally {
       setDeletingIds(new Set());
     }
@@ -909,7 +909,7 @@ export function StudentRecordsPanel({
       await refreshStudents();
       await loadStudentsPage(page, true);
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : "Unable to refresh student records.");
+      setFormError(messageForApiError(err, "Unable to refresh student records."));
     }
   };
 

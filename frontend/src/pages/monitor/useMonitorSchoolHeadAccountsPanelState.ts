@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import { messageForApiError } from "@/lib/api";
 import type {
   MonitorSchoolHeadAccountRow,
   MonitorSchoolHeadAccountsPanelProps,
@@ -191,7 +192,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
         setPendingDeleteSchoolRecordPreview(preview);
       } catch (err) {
         setPendingDeleteSchoolRecordError(
-          err instanceof Error ? err.message : "Unable to load school archive preview.",
+          messageForApiError(err, "Unable to load school archive preview."),
         );
       } finally {
         setIsDeleteSchoolRecordLoading(false);
@@ -214,7 +215,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       closePendingDeleteSchoolRecord();
     } catch (err) {
       setPendingDeleteSchoolRecordError(
-        err instanceof Error ? err.message : "Unable to archive school record.",
+        messageForApiError(err, "Unable to archive school record."),
       );
     } finally {
       setIsDeleteSchoolRecordLoading(false);
@@ -290,7 +291,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
       closePendingBatchDeleteSchoolRecords();
     } catch (err) {
       setBatchDeleteSchoolRecordsError(
-        err instanceof Error ? err.message : "Unable to batch delete flagged schools.",
+        messageForApiError(err, "Unable to batch delete flagged schools."),
       );
     } finally {
       setIsBatchDeleteSchoolRecordsLoading(false);

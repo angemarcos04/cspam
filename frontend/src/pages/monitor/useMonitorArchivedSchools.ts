@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { messageForApiError } from "@/lib/api";
 import type { MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
 import type { SchoolRecord } from "@/types";
 
@@ -46,7 +47,7 @@ export function useMonitorArchivedSchools({
       const archived = await listArchivedRecords();
       setArchivedRecords(archived);
     } catch (err) {
-      setDeleteError(err instanceof Error ? err.message : "Unable to load archived schools.");
+      setDeleteError(messageForApiError(err, "Unable to load archived schools."));
     } finally {
       setIsArchivedRecordsLoading(false);
     }
@@ -68,7 +69,7 @@ export function useMonitorArchivedSchools({
         await loadArchivedRecords();
         pushToast(`Restored ${record.schoolName}.`, "success");
       } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : "Unable to restore school record.");
+        setDeleteError(messageForApiError(err, "Unable to restore school record."));
       }
     },
     [loadArchivedRecords, pushToast, restoreRecord],
@@ -82,7 +83,7 @@ export function useMonitorArchivedSchools({
         await loadArchivedRecords();
         pushToast(`Permanently deleted ${record.schoolName}.`, "success");
       } catch (err) {
-        setDeleteError(err instanceof Error ? err.message : "Unable to permanently delete school record.");
+        setDeleteError(messageForApiError(err, "Unable to permanently delete school record."));
       }
     },
     [loadArchivedRecords, permanentlyDeleteArchivedRecord, pushToast],

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ChangeEvent, type MutableRefObject } from "react";
+import { messageForApiError } from "@/lib/api";
 import type { MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
 import type { SchoolBulkImportResult, SchoolBulkImportRowPayload } from "@/types";
 import { parseSchoolBulkImportCsv } from "./monitorSchoolBulkImportCsv";
@@ -88,7 +89,7 @@ export function useMonitorSchoolBulkImport({
           await loadArchivedRecords();
         }
       } catch (err) {
-        setBulkImportError(err instanceof Error ? err.message : "Bulk import failed.");
+        setBulkImportError(messageForApiError(err, "Bulk import failed."));
       } finally {
         setIsBulkImporting(false);
       }

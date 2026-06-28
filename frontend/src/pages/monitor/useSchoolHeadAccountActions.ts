@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from "react";
+import { messageForApiError } from "@/lib/api";
 import type {
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
@@ -469,7 +470,7 @@ export function useSchoolHeadAccountActions({
         }, 0);
       }
     } catch (err) {
-      setPendingAccountVerificationError(err instanceof Error ? err.message : "Unable to send confirmation code.");
+      setPendingAccountVerificationError(messageForApiError(err, "Unable to send confirmation code."));
     } finally {
       setIsPendingAccountVerificationSending(false);
     }
@@ -631,7 +632,7 @@ export function useSchoolHeadAccountActions({
       setEditingSchoolHeadAccountSchoolId(null);
       closePendingAccountAction();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to complete account action.";
+      const message = messageForApiError(err, "Unable to complete account action.");
       if (requiresVerification(pendingAccountAction)) {
         setPendingAccountVerificationError(message);
       } else {
@@ -714,7 +715,7 @@ export function useSchoolHeadAccountActions({
         const receipt = await issueSchoolHeadSetupLink(record.id, null);
         announceSchoolHeadAccountDelivery(receipt, record.schoolName, "Setup link", pushToast);
       } catch (err) {
-        pushToast(err instanceof Error ? err.message : "Unable to send setup link.", "warning");
+        pushToast(messageForApiError(err, "Unable to send setup link."), "warning");
       } finally {
         setAccountActionKey(null);
       }
@@ -789,7 +790,7 @@ export function useSchoolHeadAccountActions({
         setEditingSchoolHeadAccountSchoolId(null);
       } catch (err) {
         setSchoolHeadAccountDraftError(
-          err instanceof Error ? err.message : "Unable to save School Head account.",
+          messageForApiError(err, "Unable to save School Head account."),
         );
       } finally {
         setAccountActionKey(null);

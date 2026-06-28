@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { ActiveSessionsCenter } from "@/components/ActiveSessionsCenter";
 import { NotificationCenter } from "@/components/NotificationCenter";
 import { useAuth } from "@/context/Auth";
+import { messageForApiError } from "@/lib/api";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 
 interface ShellProps {
@@ -30,7 +31,7 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
       await logout({ force: true });
       navigate("/", { replace: true });
     } catch (err) {
-      setSignOutError(err instanceof Error ? err.message : "Logout failed. Try again.");
+      setSignOutError(messageForApiError(err, "Logout failed. Try again."));
     }
   };
 

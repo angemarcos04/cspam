@@ -10,6 +10,7 @@ import {
 import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
+import { messageForApiError } from "@/lib/api";
 import { deriveAvailableMonitorSchoolDetailYears } from "@/pages/monitor/monitorSchoolDetailYear";
 import type { MonitorDrawerYearOption } from "@/pages/monitor/monitorDrawerTypes";
 import type { IndicatorSubmission } from "@/types";
@@ -388,7 +389,7 @@ export function useSchoolDrawer({
           }
           if (!schoolSubmissionLookupKey) {
             setSchoolDrawerSubmissions([]);
-            setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+            setSchoolDrawerSubmissionsError(messageForApiError(err, "Unable to load school submissions."));
             setIsSchoolDrawerSubmissionsLoading(false);
             return;
           }
@@ -429,7 +430,7 @@ export function useSchoolDrawer({
         }
         if (!latestSubmission) {
           setSchoolDrawerSubmissions([]);
-          setSchoolDrawerSubmissionsError(err instanceof Error ? err.message : "Unable to load school submissions.");
+          setSchoolDrawerSubmissionsError(messageForApiError(err, "Unable to load school submissions."));
         }
       } finally {
         if (active) {

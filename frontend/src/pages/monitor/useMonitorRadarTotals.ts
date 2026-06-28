@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { messageForApiError } from "@/lib/api";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
 import type { MonitorTopNavigatorId } from "./monitorFilters";
@@ -105,13 +106,13 @@ export function useMonitorRadarTotals({
 
           if (studentsResult.status === "rejected") {
             const studentMessage =
-              studentsResult.reason instanceof Error ? studentsResult.reason.message : "Unexpected student totals error.";
+              messageForApiError(studentsResult.reason, "Unexpected student totals error.");
             nextErrorMessages.push(`Student totals unavailable: ${studentMessage}`);
           }
 
           if (teachersResult.status === "rejected") {
             const teacherMessage =
-              teachersResult.reason instanceof Error ? teachersResult.reason.message : "Unexpected teacher totals error.";
+              messageForApiError(teachersResult.reason, "Unexpected teacher totals error.");
             nextErrorMessages.push(`Teacher totals unavailable: ${teacherMessage}`);
           }
 
@@ -136,7 +137,7 @@ export function useMonitorRadarTotals({
         setMonitorRadarTotals((current) => ({
           ...current,
           isLoading: false,
-          error: err instanceof Error ? err.message : "Unable to sync totals.",
+          error: messageForApiError(err, "Unable to sync totals."),
         }));
       } finally {
         if (active && abortRef.current === controller) {

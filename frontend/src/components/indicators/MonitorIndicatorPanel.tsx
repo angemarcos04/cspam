@@ -17,6 +17,7 @@ import {
 import { SUBMISSION_FILE_DEFINITIONS, SUBMISSION_FILE_DEFINITION_BY_TYPE } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
+import { messageForApiError } from "@/lib/api";
 import { resolveVisibleSubmissionFileDefinitions } from "@/utils/submissionRequirements";
 import type { FormSubmissionHistoryEntry, IndicatorSubmission, IndicatorSubmissionFileType, SchoolRecord } from "@/types";
 
@@ -925,7 +926,7 @@ export function MonitorIndicatorPanel({
       const history = await loadHistory(submissionId);
       setHistoryBySubmissionId((current) => ({ ...current, [submissionId]: history }));
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to load package history.";
+      const message = messageForApiError(err, "Unable to load package history.");
       setActionError(message);
       onToast?.(message, "warning");
     } finally {
@@ -965,7 +966,7 @@ export function MonitorIndicatorPanel({
     try {
       await downloadSubmissionFile(submissionId, type);
     } catch (err) {
-      const message = err instanceof Error ? err.message : `Unable to download ${type.toUpperCase()} file.`;
+      const message = messageForApiError(err, `Unable to download ${type.toUpperCase()} file.`);
       setDetailFileDownloadError(message);
       onToast?.(message, "warning");
     } finally {
@@ -1115,7 +1116,7 @@ export function MonitorIndicatorPanel({
         }
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to complete review action.";
+      const message = messageForApiError(err, "Unable to complete review action.");
       setReviewActionError(message);
       setActionError(message);
       onToast?.(message, "warning");
@@ -1240,7 +1241,7 @@ export function MonitorIndicatorPanel({
       } catch (err) {
         failedRows.push({
           submissionId: row.submission.id,
-          reason: err instanceof Error ? err.message : "Request failed.",
+          reason: messageForApiError(err, "Request failed."),
         });
       }
     }
@@ -1326,7 +1327,7 @@ export function MonitorIndicatorPanel({
       await onSendReminder(detailRow.schoolKey, detailRow.schoolName, note);
       onToast?.(`Reminder sent to ${detailRow.schoolName}.`, "success");
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Unable to send reminder.";
+      const message = messageForApiError(err, "Unable to send reminder.");
       onToast?.(message, "warning");
     } finally {
       setIsDetailReminderSending(false);

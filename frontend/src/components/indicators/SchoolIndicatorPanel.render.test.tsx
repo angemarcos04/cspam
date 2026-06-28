@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
+import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 
 const useAuthMock = vi.fn();
 const useIndicatorDataMock = vi.fn();
@@ -1240,6 +1241,76 @@ describe("SchoolIndicatorPanel batch submit", () => {
       expect(refreshSubmissions).toHaveBeenCalled();
     });
     expect(screen.queryByText("Unable to save indicator package.")).toBeNull();
+  }, 10_000);
+
+  it("shows safe service-unavailable copy when School Head save receives a raw 503", async () => {
+    const updateSubmission = vi.fn().mockRejectedValue(
+      new ApiError("Request failed with status 503.", 503, null),
+    );
+    useIndicatorDataMock.mockReturnValue({
+      submissions: [{
+        ...buildHydratedSubmission("submission-1"),
+        completion: {
+          hasImetaFormData: false,
+          hasBmefFile: false,
+          hasSmeaFile: false,
+          isComplete: false,
+          requiredFileTypes: ["school_achievements_learning_outcomes", "fm_qad_001"],
+          uploadedFileTypes: [],
+          missingFileTypes: ["school_achievements_learning_outcomes", "fm_qad_001"],
+        },
+        scopeProgress: {
+          requiredScopeIds: ["school_achievements_learning_outcomes", "fm_qad_001"],
+          submittedScopeIds: [],
+          pendingScopeIds: ["school_achievements_learning_outcomes", "fm_qad_001"],
+          submittedRequiredScopeCount: 0,
+          totalRequiredScopeCount: 2,
+        },
+      }],
+      allSubmissions: [],
+      metrics: [{
+        id: "metric-1",
+        code: "IMETA_ENROLL_TOTAL",
+        name: "TOTAL NUMBER OF ENROLMENT",
+        category: "school_achievements_learning_outcomes",
+        framework: "imeta",
+        dataType: "yearly_matrix",
+        inputSchema: {
+          valueType: "integer",
+          years: ["2025-2026"],
+        },
+        sortOrder: 1,
+      }],
+      academicYears: [{ id: "year-1", name: "2025-2026", isCurrent: true }],
+      isLoading: false,
+      isAllSubmissionsLoading: false,
+      isSaving: false,
+      error: null,
+      refreshSubmissions: vi.fn().mockResolvedValue(undefined),
+      loadSubmissionsForYear: vi.fn().mockResolvedValue([]),
+      bootstrapSubmission: vi.fn(),
+      createSubmission: vi.fn(),
+      updateSubmission,
+      fetchSubmission: vi.fn(),
+      resetSubmissionWorkspace: vi.fn(),
+      uploadSubmissionFile: vi.fn(),
+      downloadSubmissionFile: vi.fn(),
+      submitSubmission: vi.fn(),
+      submitSubmissionScopes: vi.fn(),
+      loadHistory: vi.fn(),
+    });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    const [valueInput] = await within(view.container).findAllByRole("spinbutton");
+    if (!valueInput) {
+      throw new Error("Expected a School Achievements value input.");
+    }
+    fireEvent.change(valueInput, { target: { value: "2024" } });
+    fireEvent.click(await within(view.container).findByRole("button", { name: "Save" }));
+
+    await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE);
+    expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   }, 10_000);
 
   it("builds optimistic KPI target, actual, and status from the saved fillable values", async () => {
