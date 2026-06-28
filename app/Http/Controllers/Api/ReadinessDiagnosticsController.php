@@ -37,6 +37,7 @@ class ReadinessDiagnosticsController extends Controller
             'columns' => [
                 'userFlags' => $this->userFlagColumnsCheck(),
             ],
+            'notifications' => $this->notificationCenterCheck(),
             'dashboard' => $this->dashboardSummary(),
             'queue' => $this->queueSummary(),
             'mail' => $this->mailSummary(),
@@ -228,6 +229,33 @@ class ReadinessDiagnosticsController extends Controller
         return [
             'status' => $missing === [] ? 'ok' : 'failed',
             'missing' => $missing,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function notificationCenterCheck(): array
+    {
+        try {
+            $tableExists = Schema::hasTable('notifications');
+        } catch (\Throwable) {
+            $tableExists = false;
+        }
+
+        $clearedAtColumn = false;
+        if ($tableExists) {
+            try {
+                $clearedAtColumn = Schema::hasColumn('notifications', 'cleared_at');
+            } catch (\Throwable) {
+                $clearedAtColumn = false;
+            }
+        }
+
+        return [
+            'status' => $tableExists && $clearedAtColumn ? 'ok' : 'failed',
+            'table' => $tableExists,
+            'clearedAtColumn' => $clearedAtColumn,
         ];
     }
 

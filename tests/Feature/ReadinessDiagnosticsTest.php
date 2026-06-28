@@ -2,10 +2,13 @@
 
 namespace Tests\Feature;
 
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class ReadinessDiagnosticsTest extends TestCase
 {
+    use RefreshDatabase;
+
     public function test_readiness_diagnostics_are_disabled_without_token_configuration(): void
     {
         config()->set('diagnostics.queue.token', null);
@@ -43,6 +46,9 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.tables.notifications.required', true)
             ->assertJsonPath('checks.tables.jobs.required', true)
             ->assertJsonPath('checks.tables.monitorMfaResetTickets.required', true)
+            ->assertJsonPath('checks.notifications.status', 'ok')
+            ->assertJsonPath('checks.notifications.table', true)
+            ->assertJsonPath('checks.notifications.clearedAtColumn', true)
             ->assertJsonPath('checks.dashboard.tables.schools.required', true)
             ->assertJsonPath('checks.dashboard.tables.users.required', true)
             ->assertJsonPath('checks.dashboard.tables.personalAccessTokens.required', true)

@@ -422,10 +422,11 @@ Then confirm the active database state in Tinker:
 
 ```php
 Schema::hasTable('notifications');
+Schema::hasColumn('notifications', 'cleared_at');
 DB::table('notifications')->count();
 ```
 
-Expected results are `true` and an integer count of `0` or higher. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspams.onrender.com`.
+Expected results are `true`, `true`, and an integer count of `0` or higher. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspams.onrender.com`.
 
 ## Runtime layout
 
