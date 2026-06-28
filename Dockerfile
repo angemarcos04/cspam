@@ -25,8 +25,11 @@ WORKDIR /var/www/html
 
 COPY . .
 
-RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress \
-    && mkdir -p \
+RUN set -eux; \
+    composer clear-cache; \
+    composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader --no-progress \
+    || composer install --no-dev --prefer-source --no-interaction --optimize-autoloader --no-progress; \
+    mkdir -p \
         /run/nginx \
         /var/lib/nginx/tmp/client_body \
         /var/lib/nginx/tmp/fastcgi \
@@ -35,8 +38,8 @@ RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoload
         /var/lib/nginx/tmp/uwsgi \
         /var/log/supervisor \
         storage/logs \
-        bootstrap/cache \
-    && chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
+        bootstrap/cache; \
+    chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 COPY docker/nginx/default.conf.template /etc/nginx/http.d/default.conf.template
 COPY docker/supervisord.conf /etc/supervisord.conf

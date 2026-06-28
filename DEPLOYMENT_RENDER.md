@@ -17,6 +17,27 @@ Leave Pre-Deploy Command blank on Free Tier.
 
 The Dockerfile also defaults to `bash scripts/render-start.sh`, so the same startup path is used if the Docker Command is not overridden.
 
+## Composer / Docker Build Failures
+
+If Render fails during Docker build at `composer install` with a GitHub codeload ZIP error such as `ratchet/rfc6455` returning `HTTP/2 400`, the backend image was not built and Laravel never started. In that state, the frontend service-unavailable message is expected because `/api/health`, login, and dashboard endpoints cannot be served.
+
+The Dockerfile now installs production dependencies with `--prefer-dist` first, then falls back to `--prefer-source` when a dist archive download fails. The image keeps `git` installed so Composer can clone source packages during fallback. If both Composer strategies fail, the Docker build still fails visibly.
+
+After pushing a Dockerfile fix, redeploy from Render with:
+
+```text
+Manual Deploy
+Clear build cache & deploy
+```
+
+If GitHub archive or clone failures persist, configure `COMPOSER_AUTH` as a Render environment variable only:
+
+```text
+COMPOSER_AUTH={"github-oauth":{"github.com":"<github-token>"}}
+```
+
+Do not commit Composer tokens or other secrets.
+
 ## Required Environment Variables
 
 ```env

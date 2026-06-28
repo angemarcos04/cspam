@@ -15,6 +15,27 @@ Set:
 
 The startup script clears cached Laravel configuration before booting the app, which is important after changing Render environment variables such as `MAIL_MAILER`, `RESEND_API_KEY`, or `CSPAMS_MONITOR_MFA_DELIVERY_MODE`.
 
+### Composer / Docker build failures
+
+If Render fails during Docker build at `composer install` with a GitHub codeload ZIP error such as `ratchet/rfc6455` returning `HTTP/2 400`, the backend image was not built. Laravel never starts, so `/api/health`, login, and dashboard routes remain unavailable until the image builds.
+
+The Dockerfile now runs production Composer install with `--prefer-dist` first and falls back to `--prefer-source` if dist archives fail. The image keeps `git` installed for that source fallback, still uses `--no-dev`, and still optimizes the autoloader.
+
+After pushing the fix, redeploy the backend from Render:
+
+```text
+Manual Deploy
+Clear build cache & deploy
+```
+
+If GitHub archive or clone failures continue, set `COMPOSER_AUTH` only in Render environment variables:
+
+```text
+COMPOSER_AUTH={"github-oauth":{"github.com":"<github-token>"}}
+```
+
+Do not commit Composer tokens or secrets.
+
 ### Diagnosing 503 / Service Unavailable
 
 If the School Head or Monitor dashboard reports that the server is temporarily unavailable, the frontend received a backend/proxy `502`, `503`, or `504`. Treat this as a runtime availability issue first, not as a Save/Send/Review workflow validation problem.
