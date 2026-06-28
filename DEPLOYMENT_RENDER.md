@@ -105,7 +105,8 @@ Then verify the active database in Tinker:
 
 ```php
 Schema::hasTable('notifications');
+Schema::hasColumn('notifications', 'cleared_at');
 DB::table('notifications')->count();
 ```
 
-Expected results are `true` for the table check and an integer count of `0` or higher. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspams.onrender.com` and redeploy the frontend.
+Expected results are `true`, `true`, and an integer count of `0` or higher. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspams.onrender.com` and redeploy the frontend.
