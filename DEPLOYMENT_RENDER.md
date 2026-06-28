@@ -52,18 +52,24 @@ Use this order:
 
 1. Confirm `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
 2. Open `https://cspam-eea2.onrender.com/api/health`. A healthy Laravel process returns `200 OK` with `status: ok`.
-3. Check Render service logs at the timestamp of the `503`.
-4. Look for startup failures:
+3. Temporarily set `VITE_CSPAMS_API_DIAGNOSTICS=true` in the frontend environment and redeploy the frontend. The browser message will append safe request metadata such as `Diagnostic: GET /api/dashboard/records returned 503.` without exposing tokens, payloads, or query values.
+4. With the private diagnostics token configured, check protected readiness:
+   ```bash
+   curl -i "https://cspam-eea2.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+   ```
+   This endpoint returns only booleans/statuses for database, queue, mail, notification, and dashboard-critical table/column readiness. Missing, wrong, or unconfigured tokens intentionally return `404`.
+5. Check Render service logs at the timestamp of the `503`.
+6. Look for startup failures:
    - `php artisan migrate --force` failed
    - roles/permissions seeding failed
    - database connection failed
    - `APP_KEY` is missing or invalid
    - config/cache failure
    - container restart loop
-5. Confirm the Render Docker Command is `bash scripts/render-start.sh`.
-6. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and the production frontend URL.
+7. Confirm the Render Docker Command is `bash scripts/render-start.sh`.
+8. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and the production frontend URL.
 
-If `/api/health` is unavailable, fix the backend service or proxy first. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
+If `/api/health` is unavailable, fix the backend service or proxy first. If the response is HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
 
 ## Notification Center Runtime Check
 

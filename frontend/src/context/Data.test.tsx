@@ -63,6 +63,7 @@ describe("DataProvider school record sync recovery", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("fetches school records immediately when an authenticated session becomes available", async () => {
@@ -325,6 +326,24 @@ describe("DataProvider school record sync recovery", () => {
     });
 
     expect(result.current.error).not.toBe("Request failed with status 503.");
+  });
+
+  it("shows the dashboard records endpoint when diagnostics are enabled", async () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "true");
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock.mockRejectedValueOnce(new ApiError("Request failed with status 503.", 503, null, null, {
+      method: "GET",
+      path: "/api/dashboard/records",
+    }));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(
+        `${SERVICE_UNAVAILABLE_MESSAGE}\nDiagnostic: GET /api/dashboard/records returned 503.`,
+      );
+    });
   });
 
   it("keeps permission-specific messages for dashboard record 403 responses", async () => {

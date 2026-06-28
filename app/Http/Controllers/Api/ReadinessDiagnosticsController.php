@@ -37,6 +37,7 @@ class ReadinessDiagnosticsController extends Controller
             'columns' => [
                 'userFlags' => $this->userFlagColumnsCheck(),
             ],
+            'dashboard' => $this->dashboardSummary(),
             'queue' => $this->queueSummary(),
             'mail' => $this->mailSummary(),
             'monitorMfa' => $this->monitorMfaSummary(),
@@ -101,6 +102,79 @@ class ReadinessDiagnosticsController extends Controller
             'status' => $exists ? 'ok' : ($required ? 'failed' : 'warning'),
             'required' => $required,
             'exists' => $exists,
+        ];
+    }
+
+    /**
+     * @param array<int, string> $columns
+     * @return array<string, mixed>
+     */
+    private function columnCheck(string $table, array $columns, bool $required = true): array
+    {
+        $missing = [];
+        $tableExists = false;
+
+        try {
+            $tableExists = Schema::hasTable($table);
+        } catch (\Throwable) {
+            $tableExists = false;
+        }
+
+        if ($tableExists) {
+            foreach ($columns as $column) {
+                try {
+                    if (! Schema::hasColumn($table, $column)) {
+                        $missing[] = $column;
+                    }
+                } catch (\Throwable) {
+                    $missing[] = $column;
+                }
+            }
+        } else {
+            $missing = $columns;
+        }
+
+        return [
+            'status' => $missing === [] ? 'ok' : ($required ? 'failed' : 'warning'),
+            'required' => $required,
+            'missing' => $missing,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function dashboardSummary(): array
+    {
+        $checks = [
+            'tables' => [
+                // FIX: report the shared login/dashboard dependencies that can break both roles.
+                'schools' => $this->tableCheck('schools', true),
+                'users' => $this->tableCheck('users', true),
+                'personalAccessTokens' => $this->tableCheck('personal_access_tokens', true),
+                'academicYears' => $this->tableCheck('academic_years', true),
+                'indicatorSubmissions' => $this->tableCheck('indicator_submissions', true),
+                'indicatorSubmissionScopeReviews' => $this->tableCheck('indicator_submission_scope_reviews', true),
+                'indicatorSubmissionScopeSubmissions' => $this->tableCheck('indicator_submission_scope_submissions', true),
+                'notifications' => $this->tableCheck('notifications', true),
+                'students' => $this->tableCheck('students', true),
+                'teachers' => $this->tableCheck('teachers', true),
+                'jobs' => $this->jobsTableCheck(),
+            ],
+            'columns' => [
+                'schools' => $this->columnCheck('schools', ['id', 'school_code', 'name', 'status']),
+                'users' => $this->columnCheck('users', ['id', 'name', 'email', 'school_id', 'account_type', 'account_status']),
+                'academicYears' => $this->columnCheck('academic_years', ['id', 'name', 'is_current']),
+                'indicatorSubmissions' => $this->columnCheck('indicator_submissions', ['id', 'school_id', 'academic_year_id', 'status', 'updated_at']),
+                'indicatorSubmissionScopeReviews' => $this->columnCheck('indicator_submission_scope_reviews', ['id', 'indicator_submission_id', 'scope_id', 'decision']),
+                'students' => $this->columnCheck('students', ['id', 'school_id', 'academic_year_id', 'status', 'updated_at']),
+                'teachers' => $this->columnCheck('teachers', ['id', 'school_id', 'name', 'updated_at']),
+            ],
+        ];
+
+        return [
+            'status' => $this->overallStatus($checks),
+            ...$checks,
         ];
     }
 

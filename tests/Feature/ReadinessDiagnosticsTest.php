@@ -43,6 +43,17 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.tables.notifications.required', true)
             ->assertJsonPath('checks.tables.jobs.required', true)
             ->assertJsonPath('checks.tables.monitorMfaResetTickets.required', true)
+            ->assertJsonPath('checks.dashboard.tables.schools.required', true)
+            ->assertJsonPath('checks.dashboard.tables.users.required', true)
+            ->assertJsonPath('checks.dashboard.tables.personalAccessTokens.required', true)
+            ->assertJsonPath('checks.dashboard.tables.academicYears.required', true)
+            ->assertJsonPath('checks.dashboard.tables.indicatorSubmissions.required', true)
+            ->assertJsonPath('checks.dashboard.tables.indicatorSubmissionScopeReviews.required', true)
+            ->assertJsonPath('checks.dashboard.tables.indicatorSubmissionScopeSubmissions.required', true)
+            ->assertJsonPath('checks.dashboard.tables.notifications.required', true)
+            ->assertJsonPath('checks.dashboard.tables.students.required', true)
+            ->assertJsonPath('checks.dashboard.tables.teachers.required', true)
+            ->assertJsonPath('checks.dashboard.tables.jobs.required', true)
             ->assertJsonPath('checks.queue.defaultDriver', 'database')
             ->assertJsonPath('checks.mail.defaultDriver', 'resend')
             ->assertJsonPath('checks.mail.fromConfigured', true)
@@ -55,7 +66,13 @@ class ReadinessDiagnosticsTest extends TestCase
         $this->assertIsBool($response->json('checks.tables.notifications.exists'));
         $this->assertIsBool($response->json('checks.tables.jobs.exists'));
         $this->assertIsBool($response->json('checks.tables.monitorMfaResetTickets.exists'));
+        $this->assertIsBool($response->json('checks.dashboard.tables.schools.exists'));
+        $this->assertIsBool($response->json('checks.dashboard.tables.users.exists'));
+        $this->assertIsBool($response->json('checks.dashboard.tables.personalAccessTokens.exists'));
+        $this->assertIsBool($response->json('checks.dashboard.tables.indicatorSubmissions.exists'));
         $this->assertIsArray($response->json('checks.columns.userFlags.missing'));
+        $this->assertIsArray($response->json('checks.dashboard.columns.users.missing'));
+        $this->assertIsArray($response->json('checks.dashboard.columns.indicatorSubmissions.missing'));
 
         $content = $response->getContent();
         $this->assertStringNotContainsString('secret-resend-key', $content);

@@ -23,11 +23,17 @@ Check:
 
 1. `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
 2. `https://cspam-eea2.onrender.com/api/health` returns `200 OK` and `status: ok`.
-3. Render logs around the failure timestamp for migration, seeding, database, `APP_KEY`, config/cache, or restart-loop failures.
-4. Render Docker Command is `bash scripts/render-start.sh`.
-5. Required production env vars are present, including `APP_ENV=production`, `APP_DEBUG=false`, persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and `FRONTEND_URL`.
+3. Temporarily enable `VITE_CSPAMS_API_DIAGNOSTICS=true` in the frontend environment and redeploy the frontend. The visible error will include safe request metadata such as `Diagnostic: GET /api/auth/me returned 503.` Query values are redacted.
+4. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, check protected readiness:
+   ```bash
+   curl -i "https://cspam-eea2.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+   ```
+   Missing, wrong, or unconfigured tokens return `404`; a valid response reports only safe booleans/statuses for database, queue, mail, notifications, and dashboard-critical tables/columns.
+5. Render logs around the failure timestamp for migration, seeding, database, `APP_KEY`, config/cache, or restart-loop failures.
+6. Render Docker Command is `bash scripts/render-start.sh`.
+7. Required production env vars are present, including `APP_ENV=production`, `APP_DEBUG=false`, persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and `FRONTEND_URL`.
 
-If `/api/health` is down, repair the backend service/proxy first. If it is up but a dashboard endpoint fails, inspect the exact endpoint in the browser Network tab and correlate it with Render logs.
+If `/api/health` is down, repair the backend service/proxy first. If it returns HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If it is up but a dashboard endpoint fails, inspect the exact endpoint in the browser Network tab and correlate it with Render logs.
 
 ### Production demo data cleanup
 

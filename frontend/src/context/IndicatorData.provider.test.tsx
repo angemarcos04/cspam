@@ -64,6 +64,7 @@ describe("IndicatorDataProvider API errors", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   it("shows a safe service-unavailable message for indicator 503 responses", async () => {
@@ -83,5 +84,28 @@ describe("IndicatorDataProvider API errors", () => {
     });
 
     expect(result.current.error).not.toBe("Request failed with status 503.");
+  });
+
+  it("shows the indicator submissions endpoint when diagnostics are enabled", async () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "true");
+    vi.mocked(apiRequestRaw).mockRejectedValueOnce(new ApiError("Request failed with status 503.", 503, null, null, {
+      method: "GET",
+      path: "/api/indicators/submissions?per_page=50",
+    }));
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <IndicatorDataProvider>{children}</IndicatorDataProvider>
+    );
+    const { result } = renderHook(() => useIndicatorData(), { wrapper });
+
+    await act(async () => {
+      await expect(result.current.refreshSubmissions()).resolves.toBeUndefined();
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(
+        `${SERVICE_UNAVAILABLE_MESSAGE}\nDiagnostic: GET /api/indicators/submissions?per_page=[redacted] returned 503.`,
+      );
+    });
   });
 });

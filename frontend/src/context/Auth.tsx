@@ -8,7 +8,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { ApiError, apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, isApiError, messageForApiError } from "@/lib/api";
+import { ApiError, apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, displayMessageForApiError, isApiError } from "@/lib/api";
 import { stopRealtimeBridge } from "@/lib/realtime";
 import { clearClientSessionArtifacts } from "@/lib/sessionCleanup";
 import type { ActiveSessionDevice, SessionUser, UserRole } from "@/types";
@@ -317,7 +317,7 @@ function toAuthVerificationError(error: unknown, operationLabel: string): Error 
     }
 
     return new ApiError(
-      `Your ${action} succeeded, but dashboard access could not be verified. ${messageForApiError(error, "Please try again.")}`,
+      `Your ${action} succeeded, but dashboard access could not be verified. ${displayMessageForApiError(error, "Please try again.")}`,
       error.status,
       error.payload,
       error.validationErrors,
@@ -629,7 +629,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setAccountStatus(typeof payload?.accountStatus === "string" ? payload.accountStatus : null);
           } else {
             setUser(null);
-            setAuthError(messageForApiError(err, "Unable to restore your session."));
+            setAuthError(displayMessageForApiError(err, "Unable to restore your session."));
             setAuthErrorCode(err.status);
             setAccountStatus(null);
           }

@@ -5,6 +5,7 @@ import {
   apiRequestRaw,
   apiRequestVoid,
   COOKIE_SESSION_TOKEN,
+  displayMessageForApiError,
   getApiBaseUrl,
   messageForApiError,
   SERVICE_UNAVAILABLE_MESSAGE,
@@ -284,5 +285,57 @@ describe("messageForApiError", () => {
       new ApiError("This file or indicator has been verified.", 422, null),
       "fallback",
     )).toBe("This file or indicator has been verified.");
+  });
+});
+
+describe("displayMessageForApiError", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("keeps normal service-unavailable copy unchanged unless diagnostics are enabled", () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "false");
+
+    const error = new ApiError("Request failed with status 503.", 503, null, null, {
+      method: "GET",
+      path: "/api/dashboard/records?token=secret&page=1",
+    });
+
+    expect(displayMessageForApiError(error, "fallback")).toBe(SERVICE_UNAVAILABLE_MESSAGE);
+  });
+
+  it("adds safe method path and status when diagnostics are enabled", () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "true");
+
+    const error = new ApiError("Request failed with status 503.", 503, null, null, {
+      method: "GET",
+      path: "/api/dashboard/records?token=secret&page=1",
+    });
+
+    expect(displayMessageForApiError(error, "fallback")).toBe(
+      `${SERVICE_UNAVAILABLE_MESSAGE}\nDiagnostic: GET /api/dashboard/records?page=[redacted]&token=[redacted] returned 503.`,
+    );
+  });
+
+  it("adds diagnostics without replacing backend JSON service-unavailable messages", () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "true");
+
+    const error = new ApiError(
+      "Account setup token storage is unavailable. Run database migrations first.",
+      503,
+      {
+        message: "Account setup token storage is unavailable. Run database migrations first.",
+        errorCode: "account_setup_storage_unavailable",
+      },
+      null,
+      {
+        method: "POST",
+        path: "/api/auth/setup-account",
+      },
+    );
+
+    expect(displayMessageForApiError(error, "fallback")).toBe(
+      "Account setup token storage is unavailable. Run database migrations first.\nDiagnostic: POST /api/auth/setup-account returned 503.",
+    );
   });
 });

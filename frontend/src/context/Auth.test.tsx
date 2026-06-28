@@ -173,6 +173,27 @@ describe("AuthProvider logout", () => {
     );
   });
 
+  it("shows the auth restore endpoint when diagnostics are enabled", async () => {
+    vi.stubEnv("VITE_CSPAMS_API_DIAGNOSTICS", "true");
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
+      mode: "cookie",
+    }));
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.authError).toBe(
+      `${SERVICE_UNAVAILABLE_MESSAGE}\nDiagnostic: GET /api/auth/me returned 503.`,
+    );
+  });
+
   it("does not fall back to cookie-session after bearer keepalive failure", async () => {
     window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
       mode: "bearer",

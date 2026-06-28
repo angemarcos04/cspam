@@ -180,6 +180,27 @@ export function messageForApiError(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
+export function displayMessageForApiError(error: unknown, fallback: string): string {
+  const message = messageForApiError(error, fallback);
+
+  if (
+    isApiError(error)
+    && isServiceUnavailableStatus(error.status)
+    && shouldDisplayApiDiagnostics()
+    && error.method
+    && error.path
+  ) {
+    // FIX: expose only safe request metadata when diagnostics mode is enabled.
+    return `${message}\nDiagnostic: ${error.method} ${diagnosticPath(error.path)} returned ${error.status}.`;
+  }
+
+  return message;
+}
+
+function shouldDisplayApiDiagnostics(): boolean {
+  return String(import.meta.env.VITE_CSPAMS_API_DIAGNOSTICS ?? "").toLowerCase() === "true";
+}
+
 function shouldLogApiDiagnostics(): boolean {
   return (
     Boolean(import.meta.env.DEV)
