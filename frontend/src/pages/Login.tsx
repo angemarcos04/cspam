@@ -286,7 +286,7 @@ export function Login() {
           (err.payload as { errorCode?: string } | null)?.errorCode === "mfa_delivery_failed"
         ) {
           clearResetState();
-          setError("Your monitor credentials were accepted, but the verification code email could not be delivered. Check mail configuration or try again.");
+          setError(messageForApiError(err, "Unable to send verification code. Please try again or contact your administrator."));
         } else {
           if (pendingMfa === null) {
             clearResetState();

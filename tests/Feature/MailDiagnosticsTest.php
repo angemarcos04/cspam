@@ -23,6 +23,18 @@ class MailDiagnosticsTest extends TestCase
             ->assertNotFound();
     }
 
+    public function test_mail_diagnostics_report_missing_recipient_with_error_code(): void
+    {
+        config()->set('diagnostics.queue.token', 'diagnostic-token');
+        config()->set('diagnostics.mail.recipient', '');
+
+        $this->postJson('/api/ops/mail-diagnostics/send?token=diagnostic-token')
+            ->assertStatus(503)
+            ->assertJsonPath('status', 'failed')
+            ->assertJsonPath('message', 'CSPAMS_MONITOR_EMAIL is not configured.')
+            ->assertJsonPath('errorCode', 'diagnostics_recipient_missing');
+    }
+
     public function test_mail_diagnostics_send_to_configured_monitor_email(): void
     {
         config()->set('diagnostics.queue.token', 'diagnostic-token');
@@ -59,6 +71,7 @@ class MailDiagnosticsTest extends TestCase
         $response = $this->postJson('/api/ops/mail-diagnostics/send?token=diagnostic-token')
             ->assertStatus(503)
             ->assertJsonPath('status', 'failed')
+            ->assertJsonPath('errorCode', 'mail_diagnostics_failed')
             ->assertJsonPath('exception.message', 'Resend rejected key re_[redacted] password=[redacted]');
 
         $this->assertStringNotContainsString('re_123456', $response->getContent());

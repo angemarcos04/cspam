@@ -6,6 +6,7 @@ use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\MailDiagnosticsController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\QueueDiagnosticsController;
+use App\Http\Controllers\Api\ReadinessDiagnosticsController;
 use App\Http\Controllers\Api\SchoolRecordController;
 use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
@@ -24,6 +25,7 @@ Route::get('/health', static fn (): array => [
 
 Route::get('/ops/queue-diagnostics', QueueDiagnosticsController::class);
 Route::post('/ops/mail-diagnostics/send', MailDiagnosticsController::class);
+Route::get('/ops/readiness', ReadinessDiagnosticsController::class);
 
 Route::prefix('auth')->group(function (): void {
     Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:auth-login');

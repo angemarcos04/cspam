@@ -83,4 +83,30 @@ describe("auth recovery service-unavailable errors", () => {
     expect(await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeTruthy();
     expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   });
+
+  it("preserves account-setup storage messages from backend 503 responses", async () => {
+    authState.completeAccountSetup.mockRejectedValueOnce(
+      new ApiError(
+        "Account setup token storage is unavailable. Run database migrations first.",
+        503,
+        {
+          message: "Account setup token storage is unavailable. Run database migrations first.",
+          errorCode: "account_setup_storage_unavailable",
+        },
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/setup-account?token=setup-token"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <SetupAccount />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("New Password"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Confirm Password"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getByRole("button", { name: /complete setup/i }).closest("form")!);
+
+    expect(await screen.findByText("Account setup token storage is unavailable. Run database migrations first.")).toBeTruthy();
+    expect(screen.queryByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeNull();
+  });
 });

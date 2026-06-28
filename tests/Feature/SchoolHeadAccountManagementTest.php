@@ -479,7 +479,8 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.')
+            ->assertJsonPath('errorCode', 'account_setup_storage_unavailable');
     }
 
     public function test_creating_school_head_account_still_works_when_account_setup_token_storage_is_missing(): void

@@ -112,13 +112,23 @@ export class ApiError extends Error {
   readonly status: number;
   readonly payload: unknown;
   readonly validationErrors: ApiValidationErrors | null;
+  readonly method?: string;
+  readonly path?: string;
 
-  constructor(message: string, status: number, payload: unknown, validationErrors: ApiValidationErrors | null = null) {
+  constructor(
+    message: string,
+    status: number,
+    payload: unknown,
+    validationErrors: ApiValidationErrors | null = null,
+    request?: { method?: string; path?: string },
+  ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.payload = payload;
     this.validationErrors = validationErrors;
+    this.method = request?.method;
+    this.path = request?.path;
   }
 }
 
@@ -133,9 +143,32 @@ function isServiceUnavailableStatus(status: number): boolean {
   return status === 502 || status === 503 || status === 504;
 }
 
+function backendMessageFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("message" in payload)) {
+    return null;
+  }
+
+  const message = (payload as { message?: unknown }).message;
+  return typeof message === "string" && message.trim().length > 0 ? message.trim() : null;
+}
+
+function isGenericServiceUnavailableMessage(message: string): boolean {
+  const normalized = message.trim();
+  return (
+    normalized.length === 0
+    || normalized === SERVICE_UNAVAILABLE_MESSAGE
+    || /^Request failed with status (502|503|504)\.?$/i.test(normalized)
+  );
+}
+
 export function messageForApiError(error: unknown, fallback: string): string {
   if (isApiError(error)) {
     if (isServiceUnavailableStatus(error.status)) {
+      const backendMessage = backendMessageFromPayload(error.payload);
+      if (backendMessage) {
+        return isGenericServiceUnavailableMessage(error.message) ? backendMessage : error.message;
+      }
+
       return SERVICE_UNAVAILABLE_MESSAGE;
     }
 
@@ -145,6 +178,46 @@ export function messageForApiError(error: unknown, fallback: string): string {
   }
 
   return error instanceof Error ? error.message : fallback;
+}
+
+function shouldLogApiDiagnostics(): boolean {
+  return (
+    Boolean(import.meta.env.DEV)
+    || String(import.meta.env.VITE_CSPAMS_API_DIAGNOSTICS ?? "").toLowerCase() === "true"
+  );
+}
+
+function diagnosticPath(path: string): string {
+  const [pathname, query] = path.split("?", 2);
+  if (!query) {
+    return pathname || path;
+  }
+
+  const keys = new URLSearchParams(query).keys();
+  const redactedQuery = Array.from(keys)
+    .sort()
+    .map((key) => `${key}=[redacted]`)
+    .join("&");
+
+  return redactedQuery ? `${pathname}?${redactedQuery}` : (pathname || path);
+}
+
+function warnServiceUnavailable(options: {
+  method: string;
+  path: string;
+  status: number;
+  hasBackendMessage: boolean;
+}): void {
+  if (!shouldLogApiDiagnostics() || typeof console === "undefined") {
+    return;
+  }
+
+  console.warn("[CSPAMS API unavailable]", {
+    method: options.method,
+    path: diagnosticPath(options.path),
+    status: options.status,
+    hasBackendMessage: options.hasBackendMessage,
+  });
 }
 
 function readCookie(name: string): string | null {
@@ -365,16 +438,25 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
       };
     }
 
-    const baseMessage =
-      payload && typeof payload === "object" && "message" in payload && typeof payload.message === "string"
-        ? payload.message
-        : null;
+    const baseMessage = backendMessageFromPayload(payload);
     const validationErrors = parseValidationErrors(payload);
     const firstError = firstValidationMessage(validationErrors);
+    const hasBackendMessage = baseMessage !== null;
 
-    let message = isServiceUnavailableStatus(response.status)
+    if (isServiceUnavailableStatus(response.status)) {
+      warnServiceUnavailable({
+        method,
+        path,
+        status: response.status,
+        hasBackendMessage,
+      });
+    }
+
+    let message = baseMessage !== null
+      ? baseMessage
+      : isServiceUnavailableStatus(response.status)
       ? SERVICE_UNAVAILABLE_MESSAGE
-      : baseMessage ?? `Request failed with status ${response.status}.`;
+      : `Request failed with status ${response.status}.`;
     if (firstError) {
       const isGenericValidationMessage =
         !baseMessage || baseMessage.toLowerCase() === "the given data was invalid.";
@@ -383,7 +465,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
         : `${message} ${firstError}`;
     }
 
-    throw new ApiError(message, response.status, payload, validationErrors);
+    throw new ApiError(message, response.status, payload, validationErrors, { method, path });
   }
 
   return {

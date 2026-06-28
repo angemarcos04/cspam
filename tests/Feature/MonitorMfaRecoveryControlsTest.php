@@ -300,7 +300,8 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $requestReset->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.')
+            ->assertJsonPath('errorCode', 'mfa_reset_storage_unavailable');
     }
 
     public function test_mfa_reset_approval_returns_service_unavailable_when_ticket_storage_is_missing(): void
@@ -319,7 +320,8 @@ class MonitorMfaRecoveryControlsTest extends TestCase
         ]);
 
         $approve->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'MFA recovery request storage is unavailable. Run database migrations first.')
+            ->assertJsonPath('errorCode', 'mfa_reset_storage_unavailable');
     }
 
     private function monitorTokenAfterMfa(string $email, string $password): string

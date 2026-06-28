@@ -878,7 +878,10 @@ class AuthController extends Controller
             );
 
             return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                [
+                    'message' => 'Account setup token storage is unavailable. Run database migrations first.',
+                    'errorCode' => 'account_setup_storage_unavailable',
+                ],
                 Response::HTTP_SERVICE_UNAVAILABLE,
             );
         }
@@ -2972,7 +2975,10 @@ class AuthController extends Controller
         );
 
         return response()->json(
-            ['message' => 'MFA recovery request storage is unavailable. Run database migrations first.'],
+            [
+                'message' => 'MFA recovery request storage is unavailable. Run database migrations first.',
+                'errorCode' => 'mfa_reset_storage_unavailable',
+            ],
             Response::HTTP_SERVICE_UNAVAILABLE,
         );
     }

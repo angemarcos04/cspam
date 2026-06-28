@@ -132,7 +132,10 @@ describe("Login", () => {
     authState.login.mockRejectedValueOnce(new ApiError(
       "Unable to send verification code. Please try again or contact your administrator.",
       503,
-      { errorCode: "mfa_delivery_failed" },
+      {
+        message: "Unable to send verification code. Please try again or contact your administrator.",
+        errorCode: "mfa_delivery_failed",
+      },
     ));
 
     render(
@@ -147,8 +150,9 @@ describe("Login", () => {
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     expect(
-      await screen.findByText("Your monitor credentials were accepted, but the verification code email could not be delivered. Check mail configuration or try again."),
+      await screen.findByText("Unable to send verification code. Please try again or contact your administrator."),
     ).toBeTruthy();
+    expect(screen.queryByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeNull();
   });
 
   it("keeps six-digit email MFA codes numeric and submits them unchanged", async () => {

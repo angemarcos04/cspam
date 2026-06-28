@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ApiError,
   apiRequest,
+  apiRequestRaw,
   apiRequestVoid,
   COOKIE_SESSION_TOKEN,
   getApiBaseUrl,
@@ -145,6 +146,64 @@ describe("api request helpers", () => {
     });
   });
 
+  it("preserves backend JSON messages for known 503 application failures", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: "Account setup token storage is unavailable. Run database migrations first.",
+        errorCode: "account_setup_storage_unavailable",
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(apiRequest("/api/auth/setup-account", {
+      method: "POST",
+      body: {
+        token: "setup-token",
+        password: "Demo@123456",
+        confirmPassword: "Demo@123456",
+      },
+    })).rejects.toMatchObject({
+      message: "Account setup token storage is unavailable. Run database migrations first.",
+      status: 503,
+      payload: {
+        errorCode: "account_setup_storage_unavailable",
+      },
+      method: "POST",
+      path: "/api/auth/setup-account",
+    });
+  });
+
+  it("preserves MFA delivery messages and request metadata from 503 JSON responses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: "Unable to send verification code. Please try again or contact your administrator.",
+        errorCode: "mfa_delivery_failed",
+      }), {
+        status: 503,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(apiRequestRaw("/api/auth/login", {
+      method: "POST",
+      body: {
+        role: "monitor",
+        login: "cspamsmonitor@gmail.com",
+        password: "Demo@123456",
+      },
+    })).rejects.toMatchObject({
+      message: "Unable to send verification code. Please try again or contact your administrator.",
+      status: 503,
+      payload: {
+        errorCode: "mfa_delivery_failed",
+      },
+      method: "POST",
+      path: "/api/auth/login",
+    });
+  });
+
   it("preserves verified-lock workflow messages from validation responses", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
       new Response(JSON.stringify({
@@ -192,6 +251,32 @@ describe("messageForApiError", () => {
       .toBe(SERVICE_UNAVAILABLE_MESSAGE);
     expect(messageForApiError(new ApiError("Gateway timeout", 504, null), "fallback"))
       .toBe(SERVICE_UNAVAILABLE_MESSAGE);
+  });
+
+  it("keeps backend-provided service-unavailable messages actionable", () => {
+    expect(messageForApiError(
+      new ApiError(
+        "Unable to send verification code. Please try again or contact your administrator.",
+        503,
+        {
+          message: "Unable to send verification code. Please try again or contact your administrator.",
+          errorCode: "mfa_delivery_failed",
+        },
+      ),
+      "fallback",
+    )).toBe("Unable to send verification code. Please try again or contact your administrator.");
+
+    expect(messageForApiError(
+      new ApiError(
+        "Request failed with status 503.",
+        503,
+        {
+          message: "Account setup token storage is unavailable. Run database migrations first.",
+          errorCode: "account_setup_storage_unavailable",
+        },
+      ),
+      "fallback",
+    )).toBe("Account setup token storage is unavailable. Run database migrations first.");
   });
 
   it("preserves workflow and validation messages outside infrastructure failures", () => {

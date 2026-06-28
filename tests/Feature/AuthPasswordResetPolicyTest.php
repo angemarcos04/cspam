@@ -113,6 +113,7 @@ class AuthPasswordResetPolicyTest extends TestCase
         ]);
 
         $response->assertStatus(Response::HTTP_SERVICE_UNAVAILABLE)
-            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.');
+            ->assertJsonPath('message', 'Account setup token storage is unavailable. Run database migrations first.')
+            ->assertJsonPath('errorCode', 'account_setup_storage_unavailable');
     }
 }

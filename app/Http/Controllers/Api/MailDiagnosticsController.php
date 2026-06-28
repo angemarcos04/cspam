@@ -29,6 +29,7 @@ class MailDiagnosticsController extends Controller
             return response()->json([
                 'status' => 'failed',
                 'message' => 'CSPAMS_MONITOR_EMAIL is not configured.',
+                'errorCode' => 'diagnostics_recipient_missing',
             ], Response::HTTP_SERVICE_UNAVAILABLE);
         }
 
@@ -47,6 +48,7 @@ class MailDiagnosticsController extends Controller
             return response()->json([
                 'status' => 'failed',
                 'message' => 'Diagnostic email delivery failed.',
+                'errorCode' => 'mail_diagnostics_failed',
                 'mail' => $this->mailSummary(),
                 'recipient' => $recipient,
                 'exception' => [

@@ -82,7 +82,10 @@ class SchoolHeadAccountController extends Controller
             report($exception);
 
             return response()->json(
-                ['message' => 'Unable to send confirmation code. Please try again.'],
+                [
+                    'message' => 'Unable to send confirmation code. Please try again.',
+                    'errorCode' => 'monitor_action_verification_delivery_failed',
+                ],
                 Response::HTTP_SERVICE_UNAVAILABLE,
             );
         }
@@ -179,7 +182,10 @@ class SchoolHeadAccountController extends Controller
 
             if ($reissueAllowed && ! $this->schoolHeadAccountSetupService->storageAvailable()) {
                 return response()->json(
-                    ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                    [
+                        'message' => 'Account setup token storage is unavailable. Run database migrations first.',
+                        'errorCode' => 'account_setup_storage_unavailable',
+                    ],
                     Response::HTTP_SERVICE_UNAVAILABLE,
                 );
             }
@@ -530,7 +536,10 @@ class SchoolHeadAccountController extends Controller
 
         if ($deleteRecordFlagRequested && ! $deleteRecordFlagAvailable) {
             return response()->json(
-                ['message' => 'Delete record flag storage is unavailable. Run database migrations first.'],
+                [
+                    'message' => 'Delete record flag storage is unavailable. Run database migrations first.',
+                    'errorCode' => 'delete_record_flag_storage_unavailable',
+                ],
                 Response::HTTP_SERVICE_UNAVAILABLE,
             );
         }
@@ -834,7 +843,10 @@ class SchoolHeadAccountController extends Controller
     ): JsonResponse {
         if (! $this->schoolHeadAccountSetupService->storageAvailable()) {
             return response()->json(
-                ['message' => 'Account setup token storage is unavailable. Run database migrations first.'],
+                [
+                    'message' => 'Account setup token storage is unavailable. Run database migrations first.',
+                    'errorCode' => 'account_setup_storage_unavailable',
+                ],
                 Response::HTTP_SERVICE_UNAVAILABLE,
             );
         }
