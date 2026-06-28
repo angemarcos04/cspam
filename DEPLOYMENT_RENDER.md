@@ -43,7 +43,7 @@ Do not commit Composer tokens or other secrets.
 ```env
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://cspam-eea2.onrender.com
+APP_URL=https://cspams.onrender.com
 
 MAIL_MAILER=resend
 MAIL_FROM_ADDRESS=onboarding@resend.dev
@@ -71,12 +71,12 @@ A browser message about service unavailability means Vercel or the frontend reac
 
 Use this order:
 
-1. Confirm `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
-2. Open `https://cspam-eea2.onrender.com/api/health`. A healthy Laravel process returns `200 OK` with `status: ok`.
+1. Confirm `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspams.onrender.com`.
+2. Open `https://cspams.onrender.com/api/health`. A healthy Laravel process returns `200 OK` with `status: ok`.
 3. Temporarily set `VITE_CSPAMS_API_DIAGNOSTICS=true` in the frontend environment and redeploy the frontend. The browser message will append safe request metadata such as `Diagnostic: GET /api/dashboard/records returned 503.` without exposing tokens, payloads, or query values.
 4. With the private diagnostics token configured, check protected readiness:
    ```bash
-   curl -i "https://cspam-eea2.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+   curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
    ```
    This endpoint returns only booleans/statuses for database, queue, mail, notification, and dashboard-critical table/column readiness. Missing, wrong, or unconfigured tokens intentionally return `404`.
 5. Check Render service logs at the timestamp of the `503`.
@@ -88,7 +88,7 @@ Use this order:
    - config/cache failure
    - container restart loop
 7. Confirm the Render Docker Command is `bash scripts/render-start.sh`.
-8. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and the production frontend URL.
+8. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspams.onrender.com`, database credentials, and the production frontend URL.
 
 If `/api/health` is unavailable, fix the backend service or proxy first. If the response is HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
 
@@ -108,4 +108,4 @@ Schema::hasTable('notifications');
 DB::table('notifications')->count();
 ```
 
-Expected results are `true` for the table check and an integer count of `0` or higher. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspam-eea2.onrender.com` and redeploy the frontend.
+Expected results are `true` for the table check and an integer count of `0` or higher. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspams.onrender.com` and redeploy the frontend.

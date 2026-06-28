@@ -42,17 +42,17 @@ If the School Head or Monitor dashboard reports that the server is temporarily u
 
 Check:
 
-1. `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
-2. `https://cspam-eea2.onrender.com/api/health` returns `200 OK` and `status: ok`.
+1. `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspams.onrender.com`.
+2. `https://cspams.onrender.com/api/health` returns `200 OK` and `status: ok`.
 3. Temporarily enable `VITE_CSPAMS_API_DIAGNOSTICS=true` in the frontend environment and redeploy the frontend. The visible error will include safe request metadata such as `Diagnostic: GET /api/auth/me returned 503.` Query values are redacted.
 4. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, check protected readiness:
    ```bash
-   curl -i "https://cspam-eea2.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+   curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
    ```
    Missing, wrong, or unconfigured tokens return `404`; a valid response reports only safe booleans/statuses for database, queue, mail, notifications, and dashboard-critical tables/columns.
 5. Render logs around the failure timestamp for migration, seeding, database, `APP_KEY`, config/cache, or restart-loop failures.
 6. Render Docker Command is `bash scripts/render-start.sh`.
-7. Required production env vars are present, including `APP_ENV=production`, `APP_DEBUG=false`, persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and `FRONTEND_URL`.
+7. Required production env vars are present, including `APP_ENV=production`, `APP_DEBUG=false`, persistent `APP_KEY`, `APP_URL=https://cspams.onrender.com`, database credentials, and `FRONTEND_URL`.
 
 If `/api/health` is down, repair the backend service/proxy first. If it returns HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If it is up but a dashboard endpoint fails, inspect the exact endpoint in the browser Network tab and correlate it with Render logs.
 
@@ -210,7 +210,7 @@ Set these on both the web service and the background worker:
 APP_ENV=production
 APP_DEBUG=false
 APP_KEY=<same persistent Laravel app key>
-APP_URL=https://cspam-eea2.onrender.com
+APP_URL=https://cspams.onrender.com
 FRONTEND_URL=https://cspam.vercel.app/
 
 DB_CONNECTION=pgsql
@@ -283,7 +283,7 @@ CSPAMS_SYNC_DEMO_MONITOR_PASSWORD=true
 Use host names, not full URLs, for Sanctum stateful domains:
 
 ```env
-SANCTUM_STATEFUL_DOMAINS=cspam.vercel.app,cspam-eea2.onrender.com
+SANCTUM_STATEFUL_DOMAINS=cspam.vercel.app,cspams.onrender.com
 ```
 
 Use full origins for CORS:
@@ -348,7 +348,7 @@ CSPAMS_DIAGNOSTICS_TOKEN=<random-long-token>
 Redeploy the web service, then open:
 
 ```text
-https://cspam-eea2.onrender.com/api/ops/queue-diagnostics?token=<random-long-token>
+https://cspams.onrender.com/api/ops/queue-diagnostics?token=<random-long-token>
 ```
 
 You can also call it through the Vercel rewrite:
@@ -372,7 +372,7 @@ The endpoint reports mailer, SMTP host/port/scheme, sender, whether SMTP usernam
 To test the configured mail transport without generating an OTP, send a POST request to:
 
 ```text
-https://cspam-eea2.onrender.com/api/ops/mail-diagnostics/send?token=<random-long-token>
+https://cspams.onrender.com/api/ops/mail-diagnostics/send?token=<random-long-token>
 ```
 
 This sends a harmless diagnostic email to `CSPAMS_MONITOR_EMAIL`. If delivery fails, the response includes the sanitized provider error without exposing the Resend API key or mail password.
@@ -425,7 +425,7 @@ Schema::hasTable('notifications');
 DB::table('notifications')->count();
 ```
 
-Expected results are `true` and an integer count of `0` or higher. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspam-eea2.onrender.com`.
+Expected results are `true` and an integer count of `0` or higher. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspams.onrender.com`.
 
 ## Runtime layout
 
