@@ -44,6 +44,27 @@ Demo data seeding is opt-in. Keep `CSPAMS_SEED_DEMO_DATA=false` in production so
 
 For a one-time Render Free Tier purge, set `CSPAMS_PURGE_DEMO_DATA_ON_START=true`, redeploy, verify logs show `Demo data purge completed.`, then set it back to `false`.
 
+## Diagnosing 503 / Service Unavailable
+
+A browser message about service unavailability means Vercel or the frontend reached a backend/proxy `502`, `503`, or `504`; it is not a normal School Head or Monitor workflow validation error.
+
+Use this order:
+
+1. Confirm `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
+2. Open `https://cspam-eea2.onrender.com/api/health`. A healthy Laravel process returns `200 OK` with `status: ok`.
+3. Check Render service logs at the timestamp of the `503`.
+4. Look for startup failures:
+   - `php artisan migrate --force` failed
+   - roles/permissions seeding failed
+   - database connection failed
+   - `APP_KEY` is missing or invalid
+   - config/cache failure
+   - container restart loop
+5. Confirm the Render Docker Command is `bash scripts/render-start.sh`.
+6. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and the production frontend URL.
+
+If `/api/health` is unavailable, fix the backend service or proxy first. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
+
 ## Notification Center Runtime Check
 
 The notification bell depends on the Laravel `notifications` table and the authenticated notification routes. On every backend deploy, confirm migrations ran before testing the frontend dropdown:

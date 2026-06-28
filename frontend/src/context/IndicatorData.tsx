@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
+import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import {
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -1073,7 +1073,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setError(err instanceof Error ? err.message : "Unexpected server error.");
+      setError(messageForApiError(err, "Unexpected server error."));
     },
     [handleUnauthorizedResponse],
   );

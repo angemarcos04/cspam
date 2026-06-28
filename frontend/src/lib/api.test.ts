@@ -1,5 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apiRequest, apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import {
+  ApiError,
+  apiRequest,
+  apiRequestVoid,
+  COOKIE_SESSION_TOKEN,
+  getApiBaseUrl,
+  messageForApiError,
+  SERVICE_UNAVAILABLE_MESSAGE,
+} from "@/lib/api";
 
 describe("api request helpers", () => {
   afterEach(() => {
@@ -126,5 +134,23 @@ describe("api request helpers", () => {
       message: "Submission is incomplete. Missing: FM-QAD-001 file.",
       status: 422,
     });
+  });
+});
+
+describe("messageForApiError", () => {
+  it("maps infrastructure availability errors to safe user copy", () => {
+    expect(messageForApiError(new ApiError("Request failed with status 503.", 503, null), "fallback"))
+      .toBe(SERVICE_UNAVAILABLE_MESSAGE);
+    expect(messageForApiError(new ApiError("Bad gateway", 502, null), "fallback"))
+      .toBe(SERVICE_UNAVAILABLE_MESSAGE);
+    expect(messageForApiError(new ApiError("Gateway timeout", 504, null), "fallback"))
+      .toBe(SERVICE_UNAVAILABLE_MESSAGE);
+  });
+
+  it("preserves workflow and validation messages outside infrastructure failures", () => {
+    expect(messageForApiError(
+      new ApiError("This file or indicator has been verified.", 422, null),
+      "fallback",
+    )).toBe("This file or indicator has been verified.");
   });
 });

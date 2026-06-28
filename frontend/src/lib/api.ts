@@ -126,6 +126,23 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+export const SERVICE_UNAVAILABLE_MESSAGE =
+  "The server is temporarily unavailable. CSPAMS may still be starting. Please wait a moment and try again.";
+
+export function messageForApiError(error: unknown, fallback: string): string {
+  if (isApiError(error)) {
+    if (error.status === 502 || error.status === 503 || error.status === 504) {
+      return SERVICE_UNAVAILABLE_MESSAGE;
+    }
+
+    if (error.status === 500) {
+      return "Something went wrong while contacting the server. Please try again.";
+    }
+  }
+
+  return error instanceof Error ? error.message : fallback;
+}
+
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") {
     return null;

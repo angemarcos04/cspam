@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw, isApiError } from "@/lib/api";
+import { apiRequestRaw, isApiError, messageForApiError } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type { TeacherRecord, TeacherRecordPayload } from "@/types";
 
@@ -388,7 +388,7 @@ export function TeacherDataProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      setError(err instanceof Error ? err.message : "Unexpected server error.");
+      setError(messageForApiError(err, "Unexpected server error."));
     },
     [handleUnauthorizedResponse],
   );

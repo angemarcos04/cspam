@@ -16,6 +16,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
+Route::get('/health', static fn (): array => [
+    'status' => 'ok',
+    'app' => 'cspams',
+    'timestamp' => now()->toIso8601String(),
+]);
+
 Route::get('/ops/queue-diagnostics', QueueDiagnosticsController::class);
 Route::post('/ops/mail-diagnostics/send', MailDiagnosticsController::class);
 

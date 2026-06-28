@@ -15,6 +15,20 @@ Set:
 
 The startup script clears cached Laravel configuration before booting the app, which is important after changing Render environment variables such as `MAIL_MAILER`, `RESEND_API_KEY`, or `CSPAMS_MONITOR_MFA_DELIVERY_MODE`.
 
+### Diagnosing 503 / Service Unavailable
+
+If the School Head or Monitor dashboard reports that the server is temporarily unavailable, the frontend received a backend/proxy `502`, `503`, or `504`. Treat this as a runtime availability issue first, not as a Save/Send/Review workflow validation problem.
+
+Check:
+
+1. `frontend/vercel.json` rewrites `/api`, `/sanctum`, and `/broadcasting` to `https://cspam-eea2.onrender.com`.
+2. `https://cspam-eea2.onrender.com/api/health` returns `200 OK` and `status: ok`.
+3. Render logs around the failure timestamp for migration, seeding, database, `APP_KEY`, config/cache, or restart-loop failures.
+4. Render Docker Command is `bash scripts/render-start.sh`.
+5. Required production env vars are present, including `APP_ENV=production`, `APP_DEBUG=false`, persistent `APP_KEY`, `APP_URL=https://cspam-eea2.onrender.com`, database credentials, and `FRONTEND_URL`.
+
+If `/api/health` is down, repair the backend service/proxy first. If it is up but a dashboard endpoint fails, inspect the exact endpoint in the browser Network tab and correlate it with Render logs.
+
 ### Production demo data cleanup
 
 Production should not recreate sample School Head accounts on every deploy. Keep demo seeding disabled:

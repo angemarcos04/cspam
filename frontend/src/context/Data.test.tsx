@@ -3,17 +3,21 @@ import type { ReactNode } from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { buildDataProviderSessionKey, DataProvider, useData } from "@/context/Data";
 import { useAuth } from "@/context/Auth";
-import { apiRequestRaw } from "@/lib/api";
+import { ApiError, apiRequestRaw, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 
 vi.mock("@/context/Auth", () => ({
   useAuth: vi.fn(),
 }));
 
-vi.mock("@/lib/api", () => ({
-  apiRequestRaw: vi.fn(),
-  isApiError: vi.fn(() => false),
-}));
+vi.mock("@/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/api")>();
+
+  return {
+    ...actual,
+    apiRequestRaw: vi.fn(),
+  };
+});
 
 vi.mock("@/lib/sharedSyncPolling", () => ({
   subscribeSharedSyncPolling: vi.fn(() => () => {}),
@@ -306,6 +310,32 @@ describe("DataProvider school record sync recovery", () => {
       token: "test-token",
       timeoutMs: 60_000,
       extraHeaders: undefined,
+    });
+  });
+
+  it("shows a safe service-unavailable message for dashboard record 503 responses", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock.mockRejectedValueOnce(new ApiError("Request failed with status 503.", 503, null));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe(SERVICE_UNAVAILABLE_MESSAGE);
+    });
+
+    expect(result.current.error).not.toBe("Request failed with status 503.");
+  });
+
+  it("keeps permission-specific messages for dashboard record 403 responses", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock.mockRejectedValueOnce(new ApiError("You may not view these records.", 403, null));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("You may not view these records.");
     });
   });
 });
