@@ -3,7 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, GraduationCap, ClipboardList, ArrowRight } from "lucide-react";
 import { AuthPoweredByFooter } from "@/components/AuthPoweredByFooter";
 import { useAuth } from "@/context/Auth";
-import { getApiBaseUrl, isApiError } from "@/lib/api";
+import { getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
 import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
@@ -291,7 +291,7 @@ export function Login() {
           if (pendingMfa === null) {
             clearResetState();
           }
-          setError(err.message);
+          setError(messageForApiError(err, "Unable to sign in. Check your network and try again."));
         }
       } else {
         if (pendingMfa === null) {

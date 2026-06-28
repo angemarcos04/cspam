@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import { MfaResetComplete } from "@/pages/MfaResetComplete";
 
 const authState = {
@@ -49,5 +50,24 @@ describe("MfaResetComplete", () => {
     await waitFor(() => {
       expect(authState.completeMonitorMfaReset).not.toHaveBeenCalled();
     });
+  });
+
+  it("maps bare 503 failures to safe copy", async () => {
+    authState.completeMonitorMfaReset.mockRejectedValueOnce(
+      new ApiError("Request failed with status 503.", 503, null),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/mfa-reset/complete?email=monitor@cspams.local&request_id=7"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MfaResetComplete />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Current Password"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Recovery Token"), { target: { value: "ABCD1234" } });
+    fireEvent.submit(screen.getByRole("button", { name: /complete recovery/i }).closest("form")!);
+
+    expect(await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   });
 });

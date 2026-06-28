@@ -3,7 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { ArrowRight, Mail, ShieldCheck } from "lucide-react";
 import { AuthPoweredByFooter } from "@/components/AuthPoweredByFooter";
 import { useAuth } from "@/context/Auth";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -60,7 +60,7 @@ export function ForgotPassword() {
       }
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to request a reset link. Check your network and try again."));
       } else {
         setError("Unable to request a reset link. Check your network and try again.");
       }

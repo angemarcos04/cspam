@@ -166,6 +166,22 @@ describe("api request helpers", () => {
       status: 422,
     });
   });
+
+  it("preserves permission messages from 403 responses", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({
+        message: "You do not have permission to access indicator data.",
+      }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
+    ));
+
+    await expect(apiRequest("/api/indicators/submissions")).rejects.toMatchObject({
+      message: "You do not have permission to access indicator data.",
+      status: 403,
+    });
+  });
 });
 
 describe("messageForApiError", () => {

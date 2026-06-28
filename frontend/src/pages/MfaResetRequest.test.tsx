@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import { MfaResetRequest } from "@/pages/MfaResetRequest";
 
 const authState = {
@@ -63,5 +64,23 @@ describe("MfaResetRequest", () => {
     expect(screen.getByText(/one-time recovery token in XXXX-XXXX format/i)).toBeTruthy();
     expect(screen.getByText(/This is not the 6-digit login code/i)).toBeTruthy();
     expect(screen.getByRole("button", { name: /already approved\? complete recovery/i })).toBeTruthy();
+  });
+
+  it("maps bare 503 failures to safe copy", async () => {
+    authState.requestMonitorMfaReset.mockRejectedValueOnce(
+      new ApiError("Request failed with status 503.", 503, null),
+    );
+
+    render(
+      <MemoryRouter initialEntries={["/mfa-reset?email=monitor@cspams.local"]} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <MfaResetRequest />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Current Password"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getByRole("button", { name: /submit recovery request/i }).closest("form")!);
+
+    expect(await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   });
 });

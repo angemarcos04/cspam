@@ -109,6 +109,13 @@ export function isApiError(error: unknown): error is ApiError {
   return error instanceof ApiError;
 }
 
+export const SERVICE_UNAVAILABLE_MESSAGE =
+  "The server is temporarily unavailable. CSPAMS may still be starting. Please wait a moment and try again.";
+
+function isServiceUnavailableStatus(status: number): boolean {
+  return status === 502 || status === 503 || status === 504;
+}
+
 function readCookie(name: string): string | null {
   if (typeof document === "undefined") {
     return null;
@@ -327,7 +334,9 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
     const validationErrors = parseValidationErrors(payload);
     const firstError = firstValidationMessage(validationErrors);
 
-    let message = baseMessage ?? `Request failed with status ${response.status}.`;
+    let message = isServiceUnavailableStatus(response.status)
+      ? SERVICE_UNAVAILABLE_MESSAGE
+      : baseMessage ?? `Request failed with status ${response.status}.`;
     if (firstError) {
       const isGenericValidationMessage =
         !baseMessage || baseMessage.toLowerCase() === "the given data was invalid.";

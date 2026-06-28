@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
+import { ApiError, apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import {
   defaultRequiredSubmissionFileTypesForSchoolType,
@@ -1824,7 +1824,12 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null) as { message?: string } | null;
-          throw new Error(payload?.message?.trim() || `Request failed with status ${response.status}.`);
+          const fallbackMessage = payload?.message?.trim() || `Request failed with status ${response.status}.`;
+          throw new ApiError(
+            messageForApiError(new ApiError(fallbackMessage, response.status, payload), fallbackMessage),
+            response.status,
+            payload,
+          );
         }
 
         const blob = await response.blob();

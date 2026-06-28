@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { ApiError } from "@/lib/api";
+import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import { Login } from "@/pages/Login";
 
 const authState = {
@@ -108,6 +108,24 @@ describe("Login", () => {
     expect(
       await screen.findByText(/Unable to reach the CSPAMS API at .* Check the deployed API URL and network access\./i),
     ).toBeTruthy();
+  });
+
+  it("maps bare service-unavailable login failures to safe copy", async () => {
+    authState.login.mockRejectedValueOnce(new ApiError("Request failed with status 503.", 503, null));
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    expect(await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeTruthy();
+    expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   });
 
   it("shows a monitor MFA delivery message when credentials are accepted but email delivery fails", async () => {

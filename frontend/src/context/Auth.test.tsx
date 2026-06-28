@@ -2,7 +2,7 @@ import { act, renderHook, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthProvider, useAuth } from "@/context/Auth";
-import { COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import * as realtime from "@/lib/realtime";
 
 describe("AuthProvider logout", () => {
@@ -148,6 +148,29 @@ describe("AuthProvider logout", () => {
     expect(headers.get("Authorization")).toBeNull();
     expect(result.current.user?.id).toBe(12);
     expect(result.current.apiToken).toBe(COOKIE_SESSION_TOKEN);
+  });
+
+  it("maps session restore service-unavailable failures to safe copy", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
+      mode: "cookie",
+    }));
+
+    const fetchMock = vi.fn().mockResolvedValueOnce(new Response("", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.authError).toBe(SERVICE_UNAVAILABLE_MESSAGE);
+    expect(result.current.authError).not.toBe("Request failed with status 503.");
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${getApiBaseUrl()}/api/auth/me`,
+      expect.objectContaining({ credentials: "include" }),
+    );
   });
 
   it("does not fall back to cookie-session after bearer keepalive failure", async () => {

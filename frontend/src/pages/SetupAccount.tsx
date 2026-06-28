@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Eye, EyeOff, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 
 export function SetupAccount() {
   const [searchParams] = useSearchParams();
@@ -50,7 +50,7 @@ export function SetupAccount() {
       setConfirmPassword("");
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to complete account setup. Please try again."));
       } else {
         setError("Unable to complete account setup. Please try again.");
       }

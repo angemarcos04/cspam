@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError } from "@/lib/api";
+import { ApiError, apiRequest, apiRequestRaw, COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import type {
   AcademicYearOption,
   IndicatorMetric,
@@ -768,7 +768,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
         if (!response.ok) {
           const payload = await response.json().catch(() => null) as { message?: string } | null;
-          throw new Error(payload?.message?.trim() || `Request failed with status ${response.status}.`);
+          const message = response.status === 502 || response.status === 503 || response.status === 504
+            ? SERVICE_UNAVAILABLE_MESSAGE
+            : payload?.message?.trim() || `Request failed with status ${response.status}.`;
+          throw new ApiError(message, response.status, payload);
         }
 
         const blob = await response.blob();

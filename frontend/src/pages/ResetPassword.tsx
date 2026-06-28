@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ArrowRight, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 
 function isValidEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
@@ -62,7 +62,7 @@ export function ResetPassword() {
       setConfirmPassword("");
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to reset your password. Check your network and try again."));
       } else {
         setError("Unable to reset your password. Check your network and try again.");
       }

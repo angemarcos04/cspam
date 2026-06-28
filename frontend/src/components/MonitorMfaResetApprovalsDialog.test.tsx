@@ -4,11 +4,24 @@ import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetAppr
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
+  serviceUnavailableMessage:
+    "The server is temporarily unavailable. CSPAMS may still be starting. Please wait a moment and try again.",
 }));
 
 vi.mock("@/lib/api", () => ({
   apiRequest: mocks.apiRequest,
   isApiError: (value: unknown) => Boolean(value && typeof value === "object" && "status" in value),
+  messageForApiError: (value: unknown, fallback: string) => {
+    if (value && typeof value === "object" && "status" in value) {
+      const status = Number((value as { status?: unknown }).status);
+      if (status === 502 || status === 503 || status === 504) {
+        return mocks.serviceUnavailableMessage;
+      }
+      const message = (value as { message?: unknown }).message;
+      return typeof message === "string" && message.trim() ? message : fallback;
+    }
+    return fallback;
+  },
 }));
 
 vi.mock("@/context/Auth", () => ({
@@ -77,5 +90,23 @@ describe("MonitorMfaResetApprovalsDialog", () => {
         }),
       );
     });
+  });
+
+  it("maps bare 503 load failures to safe copy", async () => {
+    mocks.apiRequest.mockRejectedValueOnce({
+      status: 503,
+      message: "Request failed with status 503.",
+    });
+
+    render(
+      <MonitorMfaResetApprovalsDialog
+        open
+        isAuthenticated
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText(mocks.serviceUnavailableMessage)).toBeTruthy();
+    expect(screen.queryByText("Request failed with status 503.")).toBeNull();
   });
 });

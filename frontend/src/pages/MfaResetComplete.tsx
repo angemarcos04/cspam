@@ -2,7 +2,7 @@ import { useMemo, useState, type FormEvent } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { ArrowRight, ClipboardList, KeyRound, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { isApiError } from "@/lib/api";
+import { isApiError, messageForApiError } from "@/lib/api";
 
 function normalizeTokenInput(rawValue: string): string {
   const compact = rawValue.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8);
@@ -79,7 +79,7 @@ export function MfaResetComplete() {
       setBackupCodes(result.backupCodes);
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to complete MFA recovery. Check your network and try again."));
       } else {
         setError("Unable to complete MFA recovery. Check your network and try again.");
       }

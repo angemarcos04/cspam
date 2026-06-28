@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { ClipboardList, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { useAuth } from "@/context/Auth";
-import { apiRequest, isApiError } from "@/lib/api";
+import { apiRequest, isApiError, messageForApiError } from "@/lib/api";
 
 interface MonitorMfaResetRequester {
   id: number | null;
@@ -79,7 +79,7 @@ export function MonitorMfaResetApprovalsDialog({
       setItems(Array.isArray(payload.data) ? payload.data : []);
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to load MFA recovery requests. Check your network and try again."));
       } else {
         setError("Unable to load MFA recovery requests. Check your network and try again.");
       }
@@ -137,7 +137,7 @@ export function MonitorMfaResetApprovalsDialog({
       });
     } catch (err) {
       if (isApiError(err)) {
-        setError(err.message);
+        setError(messageForApiError(err, "Unable to approve the request. Check your network and try again."));
       } else {
         setError("Unable to approve the request. Check your network and try again.");
       }
