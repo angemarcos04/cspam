@@ -43,3 +43,21 @@ Real secrets must be set only in Render Environment Variables. Do not commit `.e
 Demo data seeding is opt-in. Keep `CSPAMS_SEED_DEMO_DATA=false` in production so deploys do not recreate `schoolhead1@cspams.local`, `schoolhead2@cspams.local`, or `schoolhead3@cspams.local`.
 
 For a one-time Render Free Tier purge, set `CSPAMS_PURGE_DEMO_DATA_ON_START=true`, redeploy, verify logs show `Demo data purge completed.`, then set it back to `false`.
+
+## Notification Center Runtime Check
+
+The notification bell depends on the Laravel `notifications` table and the authenticated notification routes. On every backend deploy, confirm migrations ran before testing the frontend dropdown:
+
+```bash
+php artisan migrate --force
+php artisan route:list | grep notifications
+```
+
+Then verify the active database in Tinker:
+
+```php
+Schema::hasTable('notifications');
+DB::table('notifications')->count();
+```
+
+Expected results are `true` for the table check and an integer count of `0` or higher. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspam-eea2.onrender.com` and redeploy the frontend.

@@ -368,6 +368,24 @@ php artisan optimize
 
 The config-check command exits with a non-zero code and prints the list of failing checks if the environment is misconfigured, making it safe to gate deploys on it.
 
+### Notification center runtime check
+
+The notification dropdown requires the active backend database to have the Laravel `notifications` table and authenticated notification routes. After deploying the backend, verify:
+
+```bash
+php artisan migrate --force
+php artisan route:list | grep notifications
+```
+
+Then confirm the active database state in Tinker:
+
+```php
+Schema::hasTable('notifications');
+DB::table('notifications')->count();
+```
+
+Expected results are `true` and an integer count of `0` or higher. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspam-eea2.onrender.com`.
+
 ## Runtime layout
 
 The production web service should handle HTTP traffic. The production worker service should process queued jobs.
