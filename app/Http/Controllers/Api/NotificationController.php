@@ -17,9 +17,10 @@ class NotificationController extends Controller
         $user = $this->requireUser($request);
         $perPage = $this->resolvePerPage($request);
         $page = $this->resolvePage($request);
-        $total = $user->notifications()->count();
-        $unreadCount = $user->unreadNotifications()->count();
-        $notifications = $user->notifications()
+        $visibleNotifications = $user->notifications()->whereNull('cleared_at');
+        $total = (clone $visibleNotifications)->count();
+        $unreadCount = (clone $visibleNotifications)->whereNull('read_at')->count();
+        $notifications = (clone $visibleNotifications)
             ->orderByDesc('created_at')
             ->forPage($page, $perPage)
             ->get();
@@ -45,6 +46,7 @@ class NotificationController extends Controller
 
         /** @var DatabaseNotification|null $row */
         $row = $user->notifications()
+            ->whereNull('cleared_at')
             ->whereKey($notification)
             ->first();
 
@@ -64,11 +66,60 @@ class NotificationController extends Controller
     public function markAllAsRead(Request $request): JsonResponse
     {
         $user = $this->requireUser($request);
-        $updated = $user->unreadNotifications()->update(['read_at' => now()]);
+        $updated = $user->notifications()
+            ->whereNull('cleared_at')
+            ->whereNull('read_at')
+            ->update(['read_at' => now()]);
 
         return response()->json([
             'data' => [
                 'updated' => $updated,
+            ],
+        ]);
+    }
+
+    public function clear(Request $request, string $notification): JsonResponse
+    {
+        $user = $this->requireUser($request);
+
+        /** @var DatabaseNotification|null $row */
+        $row = $user->notifications()
+            ->whereNull('cleared_at')
+            ->whereKey($notification)
+            ->first();
+
+        if (! $row) {
+            return response()->json(['message' => 'Notification not found.'], Response::HTTP_NOT_FOUND);
+        }
+
+        $now = now();
+        $row->forceFill([
+            'read_at' => $row->read_at ?? $now,
+            'cleared_at' => $now,
+        ])->save();
+
+        return response()->json([
+            'data' => [
+                'cleared' => 1,
+            ],
+        ]);
+    }
+
+    public function clearAll(Request $request): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $now = now();
+
+        $updated = $user->notifications()
+            ->whereNull('cleared_at')
+            ->update([
+                'read_at' => $now,
+                'cleared_at' => $now,
+            ]);
+
+        return response()->json([
+            'data' => [
+                'cleared' => $updated,
             ],
         ]);
     }

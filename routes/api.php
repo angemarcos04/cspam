@@ -137,7 +137,9 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notifications')->group(function (): void {
     Route::get('/', [NotificationController::class, 'index']);
     Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/clear', [NotificationController::class, 'clearAll']);
     Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/{notification}/clear', [NotificationController::class, 'clear']);
 });
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('submissions')->group(function (): void {

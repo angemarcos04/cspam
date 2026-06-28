@@ -58,6 +58,8 @@ function NotificationsHarness() {
     refreshNotifications,
     markAsRead,
     markAllAsRead,
+    clearNotification,
+    clearAllNotifications,
   } = useNotifications();
 
   return (
@@ -68,6 +70,8 @@ function NotificationsHarness() {
       <button type="button" onClick={() => void refreshNotifications()}>Refresh</button>
       <button type="button" onClick={() => void markAsRead("n1")}>Read one</button>
       <button type="button" onClick={() => void markAllAsRead()}>Read all</button>
+      <button type="button" onClick={() => void clearNotification("n1")}>Clear one</button>
+      <button type="button" onClick={() => void clearAllNotifications()}>Clear all</button>
     </div>
   );
 }
@@ -264,6 +268,116 @@ describe("NotificationProvider", () => {
     fireEvent.click(screen.getByRole("button", { name: "Read one" }));
 
     await waitFor(() => {
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+      expect(screen.getByTestId("notification-error").textContent).toBe(
+        "Unable to load notifications. Try refreshing. If this continues, contact the administrator.",
+      );
+    });
+  });
+
+  it("clears one unread notification and decrements unread count", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockResolvedValueOnce({ data: { cleared: 1 } });
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("1");
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear one" }));
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledWith("/api/notifications/n1/clear", {
+        method: "POST",
+        token: "monitor-token",
+      });
+      expect(screen.getByTestId("notification-count").textContent).toBe("0");
+      expect(screen.getByTestId("unread-count").textContent).toBe("0");
+    });
+  });
+
+  it("clears one read notification without decrementing unread count", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1", "2026-06-26T01:00:00.000Z")], 0))
+      .mockResolvedValueOnce({ data: { cleared: 1 } });
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("1");
+      expect(screen.getByTestId("unread-count").textContent).toBe("0");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear one" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("0");
+      expect(screen.getByTestId("unread-count").textContent).toBe("0");
+    });
+  });
+
+  it("clears all notifications and resets unread count", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([
+        notificationRow("n1"),
+        notificationRow("n2", "2026-06-26T01:00:00.000Z"),
+      ], 1))
+      .mockResolvedValueOnce({ data: { cleared: 2 } });
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("2");
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledWith("/api/notifications/clear", {
+        method: "POST",
+        token: "monitor-token",
+      });
+      expect(screen.getByTestId("notification-count").textContent).toBe("0");
+      expect(screen.getByTestId("unread-count").textContent).toBe("0");
+    });
+  });
+
+  it("keeps notification state intact when clear fails", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockRejectedValueOnce(apiError(500));
+
+    render(
+      <NotificationProvider>
+        <NotificationsHarness />
+      </NotificationProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("1");
+      expect(screen.getByTestId("unread-count").textContent).toBe("1");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear one" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe("1");
       expect(screen.getByTestId("unread-count").textContent).toBe("1");
       expect(screen.getByTestId("notification-error").textContent).toBe(
         "Unable to load notifications. Try refreshing. If this continues, contact the administrator.",

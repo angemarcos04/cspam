@@ -26,6 +26,12 @@ interface NotificationReadAllResponse {
   };
 }
 
+interface NotificationClearResponse {
+  data?: {
+    cleared?: number;
+  };
+}
+
 interface NotificationContextType {
   notifications: AppNotification[];
   unreadCount: number;
@@ -35,6 +41,8 @@ interface NotificationContextType {
   refreshNotifications: () => Promise<void>;
   markAsRead: (id: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  clearNotification: (id: string) => Promise<void>;
+  clearAllNotifications: () => Promise<void>;
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
@@ -181,6 +189,44 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
   }, [token, handleApiError]);
 
+  const clearNotification = useCallback(
+    async (id: string) => {
+      if (!token) return;
+      const target = notifications.find((entry) => entry.id === id);
+
+      try {
+        await apiRequestRaw<NotificationClearResponse>(`/api/notifications/${id}/clear`, {
+          method: "POST",
+          token,
+        });
+
+        setNotifications((current) => current.filter((entry) => entry.id !== id));
+
+        if (target && !target.readAt) {
+          setUnreadCount((current) => Math.max(0, current - 1));
+        }
+      } catch (err) {
+        await handleApiError(err);
+      }
+    },
+    [token, notifications, handleApiError],
+  );
+
+  const clearAllNotifications = useCallback(async () => {
+    if (!token) return;
+
+    try {
+      await apiRequestRaw<NotificationClearResponse>("/api/notifications/clear", {
+        method: "POST",
+        token,
+      });
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (err) {
+      await handleApiError(err);
+    }
+  }, [token, handleApiError]);
+
   useEffect(() => {
     if (!token || !isSyncActive) return;
 
@@ -226,6 +272,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       refreshNotifications,
       markAsRead,
       markAllAsRead,
+      clearNotification,
+      clearAllNotifications,
     }),
     [
       notifications,
@@ -236,6 +284,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
       refreshNotifications,
       markAsRead,
       markAllAsRead,
+      clearNotification,
+      clearAllNotifications,
     ],
   );
 

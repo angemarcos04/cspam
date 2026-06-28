@@ -172,6 +172,181 @@ class NotificationCenterApiTest extends TestCase
             ->assertJsonPath('data.updated', 0);
     }
 
+    public function test_user_can_clear_own_notification_without_deleting_it(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $notification = $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Clear me'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson("/api/notifications/{$notification->id}/clear")
+            ->assertOk()
+            ->assertJsonPath('data.cleared', 1);
+
+        $stored = DB::table('notifications')->where('id', $notification->id)->first();
+        $this->assertNotNull($stored);
+        $this->assertNotNull($stored->read_at);
+        $this->assertNotNull($stored->cleared_at);
+
+        $this->withToken($monitorToken)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('meta.total', 0)
+            ->assertJsonPath('meta.unreadCount', 0);
+    }
+
+    public function test_user_cannot_clear_another_users_notification(): void
+    {
+        $this->seed();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $notification = $schoolHead->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Private notification'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson("/api/notifications/{$notification->id}/clear")
+            ->assertNotFound();
+
+        $stored = DB::table('notifications')->where('id', $notification->id)->first();
+        $this->assertNull($stored?->cleared_at);
+    }
+
+    public function test_clear_all_clears_only_current_users_notifications(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+        $schoolHead->notifications()->delete();
+
+        $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'One'],
+            'read_at' => null,
+        ]);
+        $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Two'],
+            'read_at' => now(),
+        ]);
+        $schoolHeadNotification = $schoolHead->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'School head notice'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson('/api/notifications/clear')
+            ->assertOk()
+            ->assertJsonPath('data.cleared', 2);
+
+        $this->assertSame(0, $monitor->fresh()->notifications()->whereNull('cleared_at')->count());
+        $this->assertSame(2, $monitor->fresh()->notifications()->whereNotNull('cleared_at')->count());
+        $this->assertNull(DB::table('notifications')->where('id', $schoolHeadNotification->id)->value('cleared_at'));
+        $this->assertSame(1, $schoolHead->fresh()->notifications()->whereNull('cleared_at')->count());
+    }
+
+    public function test_mark_all_read_keeps_notifications_visible(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $notification = $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Keep visible'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson('/api/notifications/read-all')
+            ->assertOk()
+            ->assertJsonPath('data.updated', 1);
+
+        $this->withToken($monitorToken)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.unreadCount', 0)
+            ->assertJsonPath('data.0.id', $notification->id);
+
+        $this->assertNull(DB::table('notifications')->where('id', $notification->id)->value('cleared_at'));
+    }
+
+    public function test_cleared_notification_cannot_be_marked_read_again(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $notification = $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Cleared'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->postJson("/api/notifications/{$notification->id}/clear")
+            ->assertOk();
+
+        $this->withToken($monitorToken)->postJson("/api/notifications/{$notification->id}/read")
+            ->assertNotFound();
+    }
+
+    public function test_notification_list_excludes_cleared_notifications(): void
+    {
+        $this->seed();
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $monitor->notifications()->delete();
+
+        $cleared = $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Hidden'],
+            'read_at' => now(),
+        ]);
+        DB::table('notifications')->where('id', $cleared->id)->update(['cleared_at' => now()]);
+
+        $visible = $monitor->notifications()->create([
+            'id' => (string) Str::uuid(),
+            'type' => 'test.notification',
+            'data' => ['title' => 'Visible'],
+            'read_at' => null,
+        ]);
+
+        $this->withToken($monitorToken)->getJson('/api/notifications')
+            ->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('meta.unreadCount', 1)
+            ->assertJsonPath('data.0.id', $visible->id);
+    }
+
     public function test_school_head_can_list_and_mark_notifications_as_read(): void
     {
         $this->seed();
