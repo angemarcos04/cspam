@@ -84,6 +84,17 @@ type MonitorReviewStatusOverride = {
   updatedAt: string | null;
 };
 
+type MonitorDashboardErrorSource = {
+  label: string;
+  message?: string | null;
+};
+
+export function resolveMonitorDashboardError(
+  sources: MonitorDashboardErrorSource[],
+): MonitorDashboardErrorSource | null {
+  return sources.find((source) => Boolean(source.message?.trim())) ?? null;
+}
+
 function normalizeMonitorScopeId(value: string | null | undefined): string {
   return String(value ?? "").trim().toLowerCase();
 }
@@ -483,7 +494,12 @@ export function MonitorDashboard() {
     );
     return maxTime > 0 ? new Date(maxTime).toISOString() : null;
   }, [indicatorLastSyncedAt, lastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
-  const dashboardError = recordError || indicatorError || studentError || teacherError;
+  const dashboardError = resolveMonitorDashboardError([
+    { label: "School records", message: recordError },
+    { label: "Indicator submissions", message: indicatorError },
+    { label: "Student records", message: studentError },
+    { label: "Teacher records", message: teacherError },
+  ]);
   const isDashboardSyncing =
     isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
   const showSubmissionFilters = showAdvancedFilters;
@@ -1105,8 +1121,12 @@ export function MonitorDashboard() {
       }
     >
       {dashboardError && (
-        <section className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700">
-          {dashboardError}
+        <section
+          role="alert"
+          className="mb-5 border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-700"
+        >
+          <span className="font-semibold">{dashboardError.label} failed to refresh.</span>{" "}
+          {dashboardError.message}
         </section>
       )}
 

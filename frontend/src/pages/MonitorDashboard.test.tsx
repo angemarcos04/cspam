@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MonitorDashboard } from "@/pages/MonitorDashboard";
+import { MonitorDashboard, resolveMonitorDashboardError } from "@/pages/MonitorDashboard";
 import { AuditTrailPanel } from "@/pages/monitor/MonitorAuditTrail";
 import { useAuth } from "@/context/Auth";
 import { useData } from "@/context/Data";
@@ -369,6 +369,17 @@ describe("MonitorDashboard School Head delivery flows", () => {
     cleanup();
     vi.clearAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("labels the first failing dashboard data source", () => {
+    expect(resolveMonitorDashboardError([
+      { label: "School records", message: "" },
+      { label: "Indicator submissions", message: "Something went wrong while contacting the server. Please try again." },
+      { label: "Student records", message: "Student fetch failed." },
+    ])).toEqual({
+      label: "Indicator submissions",
+      message: "Something went wrong while contacting the server. Please try again.",
+    });
   });
 
   it("uses delivery metadata only when sending a School Head setup link", async () => {
