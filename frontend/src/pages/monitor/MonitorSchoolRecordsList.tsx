@@ -1,7 +1,7 @@
 import { AlertCircle, Building2 } from "lucide-react";
 import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type { SchoolQuickPreset, RequirementFilter } from "@/pages/monitor/monitorFilters";
-import type { SchoolRecord, SchoolStatus } from "@/types";
+import type { SchoolRecord, SchoolReminderSummary, SchoolStatus } from "@/types";
 
 export interface MonitorSchoolRequirementSummary {
   schoolKey: string;
@@ -21,6 +21,9 @@ export interface MonitorSchoolRequirementSummary {
   missingCount: number;
   lastActivityAt: string | null;
   lastActivityTime: number;
+  hasReminderRecipient?: boolean;
+  reminderRecipientStatus?: "available" | "missing" | "inactive";
+  latestReminder?: SchoolReminderSummary | null;
 }
 
 export interface MonitorSchoolRecordsListRow {

@@ -18,9 +18,9 @@ return [
     | School Reminder Delivery
     |--------------------------------------------------------------------------
     |
-    | Queued delivery is the default production mode, but it requires a queue
-    | worker. Sync mode sends the School Head dashboard notification and email
-    | during the monitor request, which is useful when a worker is unavailable.
+    | Queued delivery is the default production mode. The dashboard
+    | notification is written during the monitor request, while email can be
+    | queued. Sync mode attempts both dashboard and email during the request.
     |
     */
     'school_reminders' => [

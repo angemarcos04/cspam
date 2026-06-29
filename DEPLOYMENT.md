@@ -298,13 +298,13 @@ Queue List reminders use the same School Head notification center and mailer. Th
 CSPAMS_SCHOOL_REMINDER_DELIVERY_MODE=queued
 ```
 
-Queued reminder delivery requires the Render Background Worker because both the email and database notification are queued. If the worker is unavailable, use:
+Queued reminder delivery writes the School Head dashboard notification during the monitor request and queues only the reminder email. The dashboard notification is visible even when the worker is unavailable, but email delivery still requires the Render Background Worker. If you want email delivery to run during the request, use:
 
 ```env
 CSPAMS_SCHOOL_REMINDER_DELIVERY_MODE=sync
 ```
 
-Sync reminder delivery writes the School Head dashboard notification during the monitor request, then attempts email delivery. If the mail provider rejects the email, the monitor still receives a warning and the School Head dashboard notification remains available.
+Sync reminder delivery writes the School Head dashboard notification during the monitor request, then attempts email delivery before returning. If the mail provider rejects the email, the monitor still receives a warning and the School Head dashboard notification remains available.
 
 Blank or delete:
 

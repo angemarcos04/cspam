@@ -43,6 +43,34 @@ function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: s
   }, 80);
 }
 
+function reminderToastForReceipt(receipt: SchoolReminderReceipt): { message: string; tone: ToastTone } {
+  if (receipt.dashboardStatus === "failed") {
+    return {
+      message: `Unable to create School Head dashboard notification for ${receipt.schoolName}.`,
+      tone: "warning",
+    };
+  }
+
+  if (receipt.emailStatus === "queued") {
+    return {
+      message: `Dashboard reminder sent to ${receipt.schoolName}. Email queued.`,
+      tone: "success",
+    };
+  }
+
+  if (receipt.emailStatus === "failed" || receipt.deliveryStatus === "partial") {
+    return {
+      message: `Dashboard reminder sent to ${receipt.schoolName}, but email delivery failed.`,
+      tone: "warning",
+    };
+  }
+
+  return {
+    message: `Reminder sent to ${receipt.schoolName}.`,
+    tone: "success",
+  };
+}
+
 export function useMonitorSchoolActionRouter({
   scopedRecordBySchoolKey,
   recordBySchoolKey,
@@ -66,17 +94,8 @@ export function useMonitorSchoolActionRouter({
       setRemindingSchoolKey(schoolKey);
       try {
         const receipt = await sendReminder(record.id, notes);
-        const recipientLabel = receipt.recipientCount === 1 ? "recipient" : "recipients";
-        if (receipt.deliveryStatus === "partial") {
-          pushToast(
-            `Reminder notification sent to ${receipt.schoolName}, but email delivery failed. ${receipt.deliveryWarning ?? ""}`.trim(),
-            "warning",
-          );
-        } else if (receipt.deliveryStatus === "queued") {
-          pushToast(`Reminder queued for ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
-        } else {
-          pushToast(`Reminder sent to ${receipt.schoolName} (${receipt.recipientCount} ${recipientLabel}).`, "success");
-        }
+        const toast = reminderToastForReceipt(receipt);
+        pushToast(toast.message, toast.tone);
       } catch (err) {
         const message = messageForApiError(err, `Unable to send reminder for ${schoolName}.`);
         pushToast(message, "warning");

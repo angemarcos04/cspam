@@ -6,6 +6,7 @@ use App\Models\AcademicYear;
 use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
+use App\Models\SchoolReminder;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
@@ -367,7 +368,9 @@ class NotificationCenterApiTest extends TestCase
         $listed->assertOk()
             ->assertJsonPath('meta.unreadCount', fn (int $value): bool => $value >= 1)
             ->assertJsonPath('data.0.eventType', 'reminder_sent')
-            ->assertJsonPath('data.0.data.notes', 'Test reminder for notifications center.');
+            ->assertJsonPath('data.0.data.notes', 'Test reminder for notifications center.')
+            ->assertJsonPath('data.0.data.notePreview', 'Test reminder for notifications center.')
+            ->assertJsonPath('data.0.data.actionUrl', '/school-admin');
 
         $notificationId = (string) $listed->json('data.0.id');
 
@@ -378,6 +381,47 @@ class NotificationCenterApiTest extends TestCase
 
         $this->withToken($schoolHeadToken)->postJson('/api/notifications/read-all')
             ->assertStatus(Response::HTTP_OK);
+    }
+
+    public function test_queued_school_reminder_mode_creates_school_head_dashboard_notification_immediately(): void
+    {
+        $this->seed();
+        config()->set('cspams.school_reminders.delivery_mode', 'queued');
+        Queue::fake();
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        /** @var School $school */
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('school_id', $school->id)->firstOrFail();
+        $schoolHeadToken = $schoolHead->createToken('test-school-head')->plainTextToken;
+
+        $this->withToken($monitorToken)->postJson("/api/dashboard/records/{$school->id}/send-reminder", [
+            'notes' => 'Queued reminder note for dashboard notification.',
+        ])->assertOk()
+            ->assertJsonPath('data.deliveryMode', 'queued')
+            ->assertJsonPath('data.dashboardStatus', 'sent')
+            ->assertJsonPath('data.emailStatus', 'queued')
+            ->assertJsonPath('data.deliveryStatus', 'queued')
+            ->assertJsonPath('data.latestReminder.deliveryStatus', 'queued')
+            ->assertJsonPath('data.latestReminder.emailStatus', 'queued');
+
+        $listed = $this->withToken($schoolHeadToken)->getJson('/api/notifications');
+        $listed->assertOk()
+            ->assertJsonPath('data.0.eventType', 'reminder_sent')
+            ->assertJsonPath('data.0.data.notes', 'Queued reminder note for dashboard notification.')
+            ->assertJsonPath('data.0.data.notePreview', 'Queued reminder note for dashboard notification.')
+            ->assertJsonPath('data.0.data.actionUrl', '/school-admin');
+
+        $this->assertDatabaseHas('school_reminders', [
+            'school_id' => $school->id,
+            'sent_by' => User::query()->where('email', 'cspamsmonitor@gmail.com')->value('id'),
+            'recipient_count' => 1,
+            'dashboard_status' => 'sent',
+            'email_status' => 'queued',
+            'delivery_status' => 'queued',
+        ]);
     }
 
     public function test_sync_school_reminder_creates_school_head_notification_without_worker(): void
@@ -398,8 +442,11 @@ class NotificationCenterApiTest extends TestCase
             'notes' => 'Sync reminder note for dashboard notification.',
         ])->assertOk()
             ->assertJsonPath('data.deliveryMode', 'sync')
+            ->assertJsonPath('data.dashboardStatus', 'sent')
+            ->assertJsonPath('data.emailStatus', 'sent')
             ->assertJsonPath('data.deliveryStatus', 'sent')
-            ->assertJsonPath('data.deliveryWarning', null);
+            ->assertJsonPath('data.deliveryWarning', null)
+            ->assertJsonPath('data.latestReminder.deliveryStatus', 'sent');
 
         $listed = $this->withToken($schoolHeadToken)->getJson('/api/notifications');
         $listed->assertOk()
@@ -449,14 +496,91 @@ class NotificationCenterApiTest extends TestCase
             'notes' => 'Please check the returned package.',
         ])->assertOk()
             ->assertJsonPath('data.deliveryMode', 'sync')
+            ->assertJsonPath('data.dashboardStatus', 'sent')
+            ->assertJsonPath('data.emailStatus', 'failed')
             ->assertJsonPath('data.deliveryStatus', 'partial')
-            ->assertJsonPath('data.deliveryWarning', 'Dashboard notification was sent, but email delivery failed. Check mail provider/domain settings.');
+            ->assertJsonPath('data.deliveryWarning', 'Dashboard notification was sent, but email delivery failed. Check mail provider/domain settings.')
+            ->assertJsonPath('data.emailWarning', 'Email delivery failed. Check mail provider/domain settings.')
+            ->assertJsonPath('data.latestReminder.deliveryStatus', 'partial');
 
         $notification = $schoolHead->fresh()->notifications()->latest()->first();
 
         $this->assertNotNull($notification);
         $this->assertSame('reminder_sent', data_get($notification?->data, 'eventType'));
         $this->assertSame('Please check the returned package.', data_get($notification?->data, 'notes'));
+        $this->assertDatabaseHas('school_reminders', [
+            'school_id' => $school->id,
+            'dashboard_status' => 'sent',
+            'email_status' => 'failed',
+            'delivery_status' => 'partial',
+        ]);
+    }
+
+    public function test_school_reminder_requires_active_school_head_recipient(): void
+    {
+        $this->seed();
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var School $school */
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
+        $schoolHeadIds = User::query()
+            ->where('school_id', $school->id)
+            ->pluck('id');
+        User::query()
+            ->whereIn('id', $schoolHeadIds)
+            ->update(['account_status' => 'locked']);
+
+        $this->withToken($monitorToken)->postJson("/api/dashboard/records/{$school->id}/send-reminder", [
+            'notes' => 'This should not send.',
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'No active School Head account is linked to this school.');
+
+        $this->assertSame(0, DB::table('notifications')
+            ->where('notifiable_type', User::class)
+            ->whereIn('notifiable_id', $schoolHeadIds)
+            ->count());
+        $this->assertSame(0, SchoolReminder::query()->where('school_id', $school->id)->count());
+    }
+
+    public function test_school_reminder_note_must_be_500_characters_or_less(): void
+    {
+        $this->seed();
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var School $school */
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
+
+        $this->withToken($monitorToken)->postJson("/api/dashboard/records/{$school->id}/send-reminder", [
+            'notes' => str_repeat('A', 501),
+        ])->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Reminder note must be 500 characters or less.');
+
+        $this->assertSame(0, SchoolReminder::query()->where('school_id', $school->id)->count());
+    }
+
+    public function test_school_reminder_is_exposed_as_latest_reminder_on_school_record(): void
+    {
+        $this->seed();
+        config()->set('cspams.school_reminders.delivery_mode', 'queued');
+        Queue::fake();
+
+        $monitorToken = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        /** @var School $school */
+        $school = School::query()->where('school_code', '900001')->firstOrFail();
+
+        $this->withToken($monitorToken)->postJson("/api/dashboard/records/{$school->id}/send-reminder", [
+            'notes' => 'Latest reminder state.',
+        ])->assertOk();
+
+        $records = $this->withToken($monitorToken)->getJson('/api/dashboard/records');
+        $records->assertOk();
+
+        $row = collect($records->json('data'))->firstWhere('id', (string) $school->id);
+        $this->assertIsArray($row);
+        $this->assertTrue($row['hasReminderRecipient']);
+        $this->assertSame('available', $row['reminderRecipientStatus']);
+        $this->assertSame('queued', data_get($row, 'latestReminder.deliveryStatus'));
+        $this->assertSame('queued', data_get($row, 'latestReminder.emailStatus'));
     }
 
     public function test_monitor_receives_full_package_submitted_notification(): void

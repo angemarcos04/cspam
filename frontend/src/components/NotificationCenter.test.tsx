@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NotificationCenter } from "@/components/NotificationCenter";
 
@@ -8,11 +8,16 @@ const notificationMocks = vi.hoisted(() => ({
   markAllAsRead: vi.fn(),
   clearNotification: vi.fn(),
   clearAllNotifications: vi.fn(),
+  navigate: vi.fn(),
   state: {} as Record<string, unknown>,
 }));
 
 vi.mock("@/context/Notifications", () => ({
   useNotifications: () => notificationMocks.state,
+}));
+
+vi.mock("react-router-dom", () => ({
+  useNavigate: () => notificationMocks.navigate,
 }));
 
 function setNotificationState(overrides: Record<string, unknown> = {}) {
@@ -21,6 +26,7 @@ function setNotificationState(overrides: Record<string, unknown> = {}) {
   notificationMocks.markAllAsRead.mockReset();
   notificationMocks.clearNotification.mockReset();
   notificationMocks.clearAllNotifications.mockReset();
+  notificationMocks.navigate.mockReset();
   notificationMocks.state = {
     notifications: [],
     unreadCount: 0,
@@ -69,6 +75,7 @@ describe("NotificationCenter", () => {
   });
 
   it("renders unread notifications and marks an opened notification as read", () => {
+    notificationMocks.markAsRead.mockResolvedValue(undefined);
     setNotificationState({
       unreadCount: 1,
       notifications: [
@@ -99,6 +106,40 @@ describe("NotificationCenter", () => {
     fireEvent.click(screen.getByText("BMEF sent for review").closest("button") as HTMLButtonElement);
 
     expect(notificationMocks.markAsRead).toHaveBeenCalledWith("n1");
+  });
+
+  it("renders reminder note previews and navigates to action url after marking read", async () => {
+    notificationMocks.markAsRead.mockResolvedValue(undefined);
+    setNotificationState({
+      unreadCount: 1,
+      notifications: [
+        {
+          id: "n-reminder",
+          type: "database",
+          eventType: "reminder_sent",
+          title: "Submission reminder",
+          message: "Division Monitor sent a reminder to update and submit your school's latest CSPAMS records.",
+          readAt: null,
+          createdAt: null,
+          data: {
+            notePreview: "Please submit your BMEF and SMEA before Friday.",
+            actionUrl: "/school-admin",
+          },
+        },
+      ],
+    });
+
+    render(<NotificationCenter />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+    expect(screen.getByText("Note: Please submit your BMEF and SMEA before Friday.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Submission reminder").closest("button") as HTMLButtonElement);
+
+    expect(notificationMocks.markAsRead).toHaveBeenCalledWith("n-reminder");
+    await waitFor(() => {
+      expect(notificationMocks.navigate).toHaveBeenCalledWith("/school-admin");
+    });
   });
 
   it("calls clear all from the dropdown action", () => {
@@ -150,6 +191,7 @@ describe("NotificationCenter", () => {
 
     expect(notificationMocks.clearNotification).toHaveBeenCalledWith("n1");
     expect(notificationMocks.markAsRead).not.toHaveBeenCalled();
+    expect(notificationMocks.navigate).not.toHaveBeenCalled();
   });
 
   it("calls mark all read from the dropdown action", () => {

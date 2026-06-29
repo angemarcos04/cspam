@@ -44,6 +44,9 @@ class SchoolRecordResource extends JsonResource
             'lastUpdated' => ($this->submitted_at ?? $this->updated_at)?->toISOString(),
             'deletedAt' => $this->deleted_at?->toISOString(),
             'schoolHeadAccount' => $this->serializeSchoolHeadAccount(),
+            'hasReminderRecipient' => $this->hasReminderRecipient(),
+            'reminderRecipientStatus' => $this->reminderRecipientStatus(),
+            'latestReminder' => $this->serializeLatestReminder(),
             'indicatorLatest' => $this->serializeIndicatorLatest($request),
         ];
     }
@@ -219,6 +222,50 @@ class SchoolRecordResource extends JsonResource
             'deleteRecordFlaggedAt' => $account->delete_record_flagged_at?->toISOString(),
             'deleteRecordReason' => $account->delete_record_flag_reason,
             'setupLinkExpiresAt' => $setupLinkExpiresAt,
+        ];
+    }
+
+    private function hasReminderRecipient(): bool
+    {
+        if (! $this->relationLoaded('schoolHeadAccounts')) {
+            return false;
+        }
+
+        return $this->schoolHeadAccounts
+            ->contains(static fn (User $account): bool => $account->canAuthenticate());
+    }
+
+    private function reminderRecipientStatus(): string
+    {
+        if (! $this->relationLoaded('schoolHeadAccounts') || $this->schoolHeadAccounts->isEmpty()) {
+            return 'missing';
+        }
+
+        return $this->hasReminderRecipient() ? 'available' : 'inactive';
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function serializeLatestReminder(): ?array
+    {
+        if (! $this->relationLoaded('latestReminder') || ! $this->latestReminder) {
+            return null;
+        }
+
+        $reminder = $this->latestReminder;
+
+        return [
+            'id' => (string) $reminder->id,
+            'remindedAt' => $reminder->created_at?->toISOString(),
+            'sentByName' => $reminder->relationLoaded('sentBy') ? $reminder->sentBy?->name : null,
+            'recipientCount' => (int) $reminder->recipient_count,
+            'dashboardStatus' => (string) $reminder->dashboard_status,
+            'emailStatus' => (string) $reminder->email_status,
+            'deliveryMode' => (string) $reminder->delivery_mode,
+            'deliveryStatus' => (string) $reminder->delivery_status,
+            'deliveryWarning' => $reminder->delivery_warning,
+            'emailWarning' => $reminder->email_warning,
         ];
     }
 

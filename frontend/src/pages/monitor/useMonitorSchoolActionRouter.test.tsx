@@ -29,6 +29,56 @@ function makeRouter(sendReminder = vi.fn()) {
 }
 
 describe("useMonitorSchoolActionRouter", () => {
+  it("shows dashboard sent and email queued reminder feedback", async () => {
+    const sendReminder = vi.fn().mockResolvedValue({
+      schoolId: "401777",
+      schoolName: "AMA Computer College - Santiago",
+      recipientCount: 1,
+      recipientEmails: ["head@example.com"],
+      remindedAt: "2026-06-30T00:00:00.000Z",
+      deliveryMode: "queued",
+      deliveryStatus: "queued",
+      dashboardStatus: "sent",
+      emailStatus: "queued",
+    });
+    const { result, pushToast } = makeRouter(sendReminder);
+
+    await act(async () => {
+      await result.current.handleSendReminder({
+        schoolKey: "401777",
+        schoolName: "AMA Computer College - Santiago",
+      });
+    });
+
+    expect(pushToast).toHaveBeenCalledWith("Dashboard reminder sent to AMA Computer College - Santiago. Email queued.", "success");
+    expect(result.current.remindingSchoolKey).toBeNull();
+  });
+
+  it("shows warning when dashboard reminder succeeds but email fails", async () => {
+    const sendReminder = vi.fn().mockResolvedValue({
+      schoolId: "401777",
+      schoolName: "AMA Computer College - Santiago",
+      recipientCount: 1,
+      recipientEmails: ["head@example.com"],
+      remindedAt: "2026-06-30T00:00:00.000Z",
+      deliveryMode: "sync",
+      deliveryStatus: "partial",
+      dashboardStatus: "sent",
+      emailStatus: "failed",
+    });
+    const { result, pushToast } = makeRouter(sendReminder);
+
+    await act(async () => {
+      await result.current.handleSendReminder({
+        schoolKey: "401777",
+        schoolName: "AMA Computer College - Santiago",
+      });
+    });
+
+    expect(pushToast).toHaveBeenCalledWith("Dashboard reminder sent to AMA Computer College - Santiago, but email delivery failed.", "warning");
+    expect(result.current.remindingSchoolKey).toBeNull();
+  });
+
   it("shows safe service-unavailable copy when reminder delivery receives a raw 503 ApiError", async () => {
     const sendReminder = vi.fn().mockRejectedValue(
       new ApiError("Request failed with status 503.", 503, null),
@@ -44,5 +94,6 @@ describe("useMonitorSchoolActionRouter", () => {
 
     expect(pushToast).toHaveBeenCalledWith(SERVICE_UNAVAILABLE_MESSAGE, "warning");
     expect(pushToast).not.toHaveBeenCalledWith("Request failed with status 503.", "warning");
+    expect(result.current.remindingSchoolKey).toBeNull();
   });
 });

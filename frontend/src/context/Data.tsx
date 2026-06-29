@@ -790,7 +790,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Reminder response is empty.");
         }
 
-        return response.data.data;
+        const receipt = response.data.data;
+        if (receipt.latestReminder) {
+          setRecords((current) =>
+            current.map((record) => {
+              const matchesRecord =
+                record.id === id ||
+                record.schoolId === receipt.schoolId ||
+                record.schoolCode === receipt.schoolId;
+
+              return matchesRecord
+                ? {
+                    ...record,
+                    latestReminder: receipt.latestReminder ?? null,
+                    hasReminderRecipient: true,
+                    reminderRecipientStatus: "available",
+                  }
+                : record;
+            }),
+          );
+        }
+
+        return receipt;
       } catch (err) {
         await handleApiError(err);
         throw err;

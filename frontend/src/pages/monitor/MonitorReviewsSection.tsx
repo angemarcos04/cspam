@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { StatCard } from "@/components/StatCard";
 import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
-import type { SchoolStatus } from "@/types";
+import type { SchoolReminderSummary, SchoolStatus } from "@/types";
 
 interface ReviewQueueRow {
   schoolKey: string;
@@ -25,6 +25,9 @@ interface ReviewQueueRow {
   missingCount: number;
   lastActivityAt: string | null;
   lastActivityTime: number;
+  hasReminderRecipient?: boolean;
+  reminderRecipientStatus?: "available" | "missing" | "inactive";
+  latestReminder?: SchoolReminderSummary | null;
 }
 
 interface MonitorReviewsSectionProps {
@@ -56,6 +59,29 @@ interface MonitorReviewsSectionProps {
 }
 
 const REMINDER_NOTE_MAX_LENGTH = 500;
+const NO_REMINDER_RECIPIENT_MESSAGE = "No active School Head account is linked to this school.";
+
+function canSendReminder(row: ReviewQueueRow): boolean {
+  return row.hasReminderRecipient !== false && row.reminderRecipientStatus !== "missing" && row.reminderRecipientStatus !== "inactive";
+}
+
+function reminderStatusLabel(reminder: SchoolReminderSummary): string {
+  if (reminder.dashboardStatus === "failed" || reminder.deliveryStatus === "failed") {
+    return "Dashboard failed";
+  }
+
+  if (reminder.emailStatus === "queued") return "Email queued";
+  if (reminder.emailStatus === "failed") return "Email failed";
+  if (reminder.emailStatus === "skipped") return "Email skipped";
+  return "Email sent";
+}
+
+function latestReminderText(row: ReviewQueueRow, formatDateTime: (value: string) => string): string | null {
+  const reminder = row.latestReminder;
+  if (!reminder?.remindedAt) return null;
+
+  return `Last reminded: ${formatDateTime(reminder.remindedAt)} - ${reminderStatusLabel(reminder)}`;
+}
 
 export function MonitorReviewsSection({
   isMobileViewport,
@@ -95,6 +121,7 @@ export function MonitorReviewsSection({
   const isReminderSubmitting = reminderTarget !== null && remindingSchoolKey === reminderTarget.schoolKey;
 
   const openReminderModal = (row: ReviewQueueRow) => {
+    if (!canSendReminder(row)) return;
     setReminderTarget(row);
     setReminderNote("");
   };
@@ -198,6 +225,9 @@ export function MonitorReviewsSection({
                     </span>
                     {row.awaitingReviewCount > 0 && <span className="text-slate-600">Ready: {row.awaitingReviewCount}</span>}
                   </div>
+                  {latestReminderText(row, formatDateTime) && (
+                    <p className="mt-2 text-[11px] font-semibold text-amber-700">{latestReminderText(row, formatDateTime)}</p>
+                  )}
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button
                       type="button"
@@ -210,7 +240,8 @@ export function MonitorReviewsSection({
                     <button
                       type="button"
                       onClick={() => openReminderModal(row)}
-                      disabled={remindingSchoolKey === row.schoolKey}
+                      disabled={remindingSchoolKey === row.schoolKey || !canSendReminder(row)}
+                      title={canSendReminder(row) ? "Send reminder" : NO_REMINDER_RECIPIENT_MESSAGE}
                       className="inline-flex items-center justify-center gap-1 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                     >
                       <BellRing className="h-3.5 w-3.5" />
@@ -250,6 +281,9 @@ export function MonitorReviewsSection({
                       <td className="px-2 py-2">
                         <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
                         <p className="text-xs text-slate-500">{row.schoolCode}</p>
+                        {latestReminderText(row, formatDateTime) && (
+                          <p className="mt-1 text-[11px] font-semibold text-amber-700">{latestReminderText(row, formatDateTime)}</p>
+                        )}
                       </td>
                       <td className="px-2 py-2 text-sm text-slate-700">{row.region}</td>
                       <td className="px-2 py-2 text-center">
@@ -288,7 +322,8 @@ export function MonitorReviewsSection({
                           <button
                             type="button"
                             onClick={() => openReminderModal(row)}
-                            disabled={remindingSchoolKey === row.schoolKey}
+                            disabled={remindingSchoolKey === row.schoolKey || !canSendReminder(row)}
+                            title={canSendReminder(row) ? "Send reminder" : NO_REMINDER_RECIPIENT_MESSAGE}
                             className="inline-flex items-center gap-1 whitespace-nowrap rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700 disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             <BellRing className="h-3.5 w-3.5" />

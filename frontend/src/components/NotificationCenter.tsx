@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Bell, CheckCheck, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { useNotifications } from "@/context/Notifications";
+import type { AppNotification } from "@/types";
 
 function formatRelativeTime(value: string | null): string {
   if (!value) return "Just now";
@@ -15,7 +17,20 @@ function formatRelativeTime(value: string | null): string {
   return `${Math.floor(diffMs / 86_400_000)}d ago`;
 }
 
+function notificationNotePreview(notification: AppNotification): string | null {
+  const value = notification.data?.notePreview;
+
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function notificationActionUrl(notification: AppNotification): string | null {
+  const value = notification.data?.actionUrl;
+
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
 export function NotificationCenter() {
+  const navigate = useNavigate();
   const {
     notifications,
     unreadCount,
@@ -52,6 +67,16 @@ export function NotificationCenter() {
     setOpen(next);
     if (next) {
       void refreshNotifications();
+    }
+  };
+
+  const handleNotificationClick = async (notification: AppNotification) => {
+    await markAsRead(notification.id);
+
+    const actionUrl = notificationActionUrl(notification);
+    if (actionUrl) {
+      setOpen(false);
+      navigate(actionUrl);
     }
   };
 
@@ -115,11 +140,14 @@ export function NotificationCenter() {
                 >
                   <button
                     type="button"
-                    onClick={() => void markAsRead(notification.id)}
+                    onClick={() => void handleNotificationClick(notification)}
                     className="min-w-0 flex-1 text-left"
                   >
                     <p className="text-xs font-semibold text-slate-900">{notification.title}</p>
                     <p className="mt-0.5 text-xs text-slate-600">{notification.message}</p>
+                    {notificationNotePreview(notification) && (
+                      <p className="mt-1 text-xs text-slate-700">Note: {notificationNotePreview(notification)}</p>
+                    )}
                     <p className="mt-1 text-[11px] text-slate-500">{formatRelativeTime(notification.createdAt)}</p>
                   </button>
                   <button

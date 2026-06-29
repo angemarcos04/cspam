@@ -125,6 +125,16 @@ class School extends Model
         return $this->hasMany(IndicatorSubmission::class);
     }
 
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(SchoolReminder::class);
+    }
+
+    public function latestReminder(): HasOne
+    {
+        return $this->hasOne(SchoolReminder::class)->latestOfMany();
+    }
+
     public function latestIndicatorSubmission(): HasOne
     {
         return $this->hasOne(IndicatorSubmission::class)->ofMany([

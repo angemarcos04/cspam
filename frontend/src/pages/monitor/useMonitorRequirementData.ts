@@ -334,6 +334,9 @@ export function useMonitorRequirementData({
           missingCount: 2,
           lastActivityAt: null,
           lastActivityTime: 0,
+          hasReminderRecipient: false,
+          reminderRecipientStatus: "missing",
+          latestReminder: null,
         };
         rows.set(key, row);
       } else {
@@ -372,6 +375,9 @@ export function useMonitorRequirementData({
 
       row.hasComplianceRecord = true;
       row.schoolStatus = record.status;
+      row.hasReminderRecipient = record.hasReminderRecipient ?? true;
+      row.reminderRecipientStatus = record.reminderRecipientStatus ?? (row.hasReminderRecipient ? "available" : "missing");
+      row.latestReminder = record.latestReminder ?? null;
       setLastActivity(row, record.lastUpdated);
 
       const indicatorLatest = record.indicatorLatest ?? null;

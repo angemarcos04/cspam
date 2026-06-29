@@ -4,15 +4,11 @@ namespace App\Notifications;
 
 use App\Models\School;
 use App\Models\User;
-use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
-use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Str;
 
-class SchoolSubmissionReminderNotification extends Notification implements ShouldQueue
+class SchoolSubmissionReminderNotification extends Notification
 {
-    use Queueable;
-
     public function __construct(
         private readonly School $school,
         private readonly User $monitor,
@@ -25,29 +21,7 @@ class SchoolSubmissionReminderNotification extends Notification implements Shoul
      */
     public function via(object $notifiable): array
     {
-        return ['mail', 'database'];
-    }
-
-    public function toMail(object $notifiable): MailMessage
-    {
-        $schoolCode = (string) ($this->school->school_code ?? 'N/A');
-        $schoolName = (string) ($this->school->name ?? 'Your school');
-        $monitorName = (string) ($this->monitor->name ?? 'Division Monitor');
-
-        $mail = (new MailMessage())
-            ->subject("CSPAMS Reminder: {$schoolName} ({$schoolCode})")
-            ->greeting('Hello ' . ((string) ($notifiable->name ?? 'School Head')) . ',')
-            ->line("{$monitorName} sent a reminder to update and submit your school's latest CSPAMS records.")
-            ->line("School: {$schoolName}")
-            ->line("School Code: {$schoolCode}");
-
-        if ($this->notes !== null && $this->notes !== '') {
-            $mail->line('Reminder note: ' . $this->notes);
-        }
-
-        return $mail
-            ->action('Open CSPAMS', url('/'))
-            ->line('Please review your pending requirements and submit as soon as possible.');
+        return ['database'];
     }
 
     /**
@@ -58,16 +32,28 @@ class SchoolSubmissionReminderNotification extends Notification implements Shoul
         $schoolCode = (string) ($this->school->school_code ?? 'N/A');
         $schoolName = (string) ($this->school->name ?? 'Your school');
         $monitorName = (string) ($this->monitor->name ?? 'Division Monitor');
+        $notePreview = is_string($this->notes) && trim($this->notes) !== ''
+            ? Str::limit(trim($this->notes), 180)
+            : null;
 
         return [
             'eventType' => 'reminder_sent',
             'title' => 'Submission reminder',
-            'message' => "{$monitorName} sent a reminder to update and submit your school's latest CSPAMS records.",
+            'message' => "Division Monitor sent a reminder to update and submit your school's latest CSPAMS records.",
             'schoolId' => (string) $this->school->id,
             'schoolCode' => $schoolCode,
             'schoolName' => $schoolName,
             'monitorName' => $monitorName,
             'notes' => $this->notes,
+            'notePreview' => $notePreview,
+            'actionLabel' => 'Open School Head workspace',
+            'actionUrl' => '/school-admin',
+            'target' => [
+                'dashboard' => 'school_head',
+                'section' => 'requirements',
+                'schoolId' => (string) $this->school->id,
+                'schoolCode' => $schoolCode,
+            ],
             'createdAt' => now()->toISOString(),
         ];
     }

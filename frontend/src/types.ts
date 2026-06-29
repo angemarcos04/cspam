@@ -37,6 +37,9 @@ export interface SchoolRecord {
   lastUpdated: string;
   deletedAt?: string | null;
   schoolHeadAccount?: SchoolHeadAccountSummary | null;
+  hasReminderRecipient?: boolean;
+  reminderRecipientStatus?: "available" | "missing" | "inactive";
+  latestReminder?: SchoolReminderSummary | null;
   indicatorLatest?: {
     id: string;
     status: WorkflowStatus | string | null;
@@ -243,8 +246,25 @@ export interface SchoolReminderReceipt {
   recipientEmails: string[];
   remindedAt: string;
   deliveryMode?: "queued" | "sync";
-  deliveryStatus?: "queued" | "sent" | "partial";
+  deliveryStatus?: "queued" | "sent" | "partial" | "failed";
   deliveryWarning?: string | null;
+  dashboardStatus?: "sent" | "failed";
+  emailStatus?: "sent" | "queued" | "failed" | "skipped";
+  emailWarning?: string | null;
+  latestReminder?: SchoolReminderSummary | null;
+}
+
+export interface SchoolReminderSummary {
+  id: string;
+  remindedAt: string | null;
+  sentByName: string | null;
+  recipientCount: number;
+  dashboardStatus: "sent" | "failed" | string;
+  emailStatus: "sent" | "queued" | "failed" | "skipped" | string;
+  deliveryMode?: "queued" | "sync" | string;
+  deliveryStatus: "queued" | "sent" | "partial" | "failed" | string;
+  deliveryWarning: string | null;
+  emailWarning?: string | null;
 }
 
 export interface SchoolBulkImportRowPayload {
