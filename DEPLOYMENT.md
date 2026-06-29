@@ -79,6 +79,23 @@ In the browser, open DevTools -> Network -> `GET /api/dashboard/students`. If th
 
 Operational note: rolling academic-year maintenance is currently best-effort during student dashboard refresh. It should eventually move to a scheduled command, deployment task, admin maintenance endpoint, or queue job.
 
+### Submission file persistent storage
+
+School Head report uploads are stored on the configurable CSPAMS submission-file disk. On Render, attach a persistent disk and point CSPAMS at that mount:
+
+```env
+CSPAMS_SUBMISSION_FILE_DISK=submissions
+CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions
+```
+
+After changing either value, redeploy or restart the backend and run:
+
+```bash
+php artisan optimize:clear
+```
+
+If CSPAMS shows uploaded file metadata but disables preview/download with a storage-missing message, the database row still exists but the physical file is not on the configured disk. Check the Render persistent disk mount, `CSPAMS_SUBMISSION_STORAGE_PATH`, and whether files were removed outside CSPAMS.
+
 ### Production demo data cleanup
 
 Production should not recreate sample School Head accounts on every deploy. Keep demo seeding disabled:

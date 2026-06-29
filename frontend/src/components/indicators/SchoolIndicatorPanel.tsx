@@ -6352,6 +6352,8 @@ function SchoolIndicatorPanelComponent({
                           filename: fileEntry.originalFilename,
                           sizeBytes: fileEntry.sizeBytes,
                           uploadedAt: fileEntry.uploadedAt,
+                          available: fileEntry.available,
+                          missingFromStorage: fileEntry.missingFromStorage,
                         }
                         : null}
                       pendingFile={pendingFile
@@ -6361,7 +6363,7 @@ function SchoolIndicatorPanelComponent({
                         }
                         : null}
                       submitted={uploaded}
-                      canViewReport={uploaded}
+                      canViewReport={uploaded && fileEntry?.available !== false && Boolean(fileEntry?.viewUrl || fileEntry?.downloadUrl)}
                       isUploading={isUploading}
                       disabled={uploadDisabled}
                       mutationDisabled={uploadMutationDisabled}

@@ -940,6 +940,36 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(finalSubmitButton.disabled).toBe(true);
   }, 10_000);
 
+  it("shows missing-storage state for uploaded files without preview access", async () => {
+    const missingFileSubmission = buildFileWorkspaceSubmission();
+    missingFileSubmission.files.fm_qad_001 = {
+      ...missingFileSubmission.files.fm_qad_001,
+      available: false,
+      missingFromStorage: true,
+      originalFilename: "fm-qad-001.pdf",
+      downloadUrl: null,
+      viewUrl: null,
+    };
+    mockIndicatorPanelData([missingFileSubmission]);
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+
+    expect(await screen.findByText("The saved file is missing from storage. Re-upload the file or ask the administrator to check persistent storage.")).toBeTruthy();
+    expect(screen.getByText(/fm-qad-001\.pdf/)).toBeTruthy();
+
+    const viewFileButton = await screen.findByRole("button", { name: /View FM-QAD-001.*File/i }) as HTMLButtonElement;
+    const downloadButton = await screen.findByRole("button", { name: /Download FM-QAD-001.*report/i }) as HTMLButtonElement;
+    expect(viewFileButton.disabled).toBe(true);
+    expect(downloadButton.disabled).toBe(true);
+  }, 10_000);
+
   it("lets an unverified active file scope return to normal toolbar behavior", async () => {
     const verifiedSubmission = buildFileWorkspaceSubmission({
       submittedScopeIds: ["fm_qad_001"],

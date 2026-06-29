@@ -7,6 +7,8 @@ interface UploadFileMetadata {
   filename: string | null;
   sizeBytes: number | null;
   uploadedAt: string | null;
+  available?: boolean;
+  missingFromStorage?: boolean;
 }
 
 interface PendingUploadFileMetadata {
@@ -56,7 +58,8 @@ export function FileUploadField({
   onDownloadClick,
   error = "",
 }: FileUploadFieldProps) {
-  const isDownloadDisabled = disabled || !submitted;
+  const isMissingFromStorage = submitted && Boolean(file?.missingFromStorage);
+  const isDownloadDisabled = disabled || !submitted || !canViewReport;
   const isMutationDisabled = disabled || mutationDisabled;
   const conciseLabel = actionLabel ?? label;
   const hasPendingFile = Boolean(pendingFile);
@@ -71,26 +74,36 @@ export function FileUploadField({
         <span
           className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${
             submitted
-              ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+              ? isMissingFromStorage
+                ? "border border-rose-300 bg-rose-50 text-rose-700"
+                : "border border-emerald-300 bg-emerald-50 text-emerald-700"
               : "border border-amber-300 bg-amber-50 text-amber-700"
           }`}
         >
-          {hasPendingFile ? "Ready to Save" : submitted ? "Uploaded" : "Not Uploaded"}
+          {hasPendingFile ? "Ready to Save" : submitted ? isMissingFromStorage ? "Storage Missing" : "Uploaded" : "Not Uploaded"}
         </span>
       </div>
 
       {submitted ? (
         <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center">
           <p className="text-sm font-semibold text-slate-700">
-            {label} file is uploaded to this draft package. You can view or download it anytime.
+            {isMissingFromStorage
+              ? `${label} file metadata is saved, but the stored file is missing.`
+              : `${label} file is uploaded to this draft package. You can view or download it anytime.`}
           </p>
           <p className="mt-1 text-xs text-slate-500">
             {file?.filename || `${label} report`}
             {file?.uploadedAt ? ` | ${formatUploadedAt(file.uploadedAt)}` : ""}
           </p>
-          <p className="mt-1 text-xs text-slate-500">
-            Final Submit sends the full package to the monitor for review.
-          </p>
+          {isMissingFromStorage ? (
+            <p className="mt-2 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+              The saved file is missing from storage. Re-upload the file or ask the administrator to check persistent storage.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">
+              Final Submit sends the full package to the monitor for review.
+            </p>
+          )}
           <div className="mt-3 flex items-center justify-center gap-2">
             <button
               type="button"

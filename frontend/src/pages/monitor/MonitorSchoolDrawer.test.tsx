@@ -286,6 +286,34 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.queryByText(/Compliance is submitted\. Active private package/i)).toBeNull();
   });
 
+  it("keeps monitor file view disabled when the file is missing from storage", () => {
+    render(
+      <MonitorSchoolDrawer
+        {...reviewableDrawerProps({
+          id: "fm_qad_001",
+          submissionId: "sub-1",
+          label: "FM-QAD-001",
+          kind: "file",
+          statusLabel: "For Review",
+          tone: "info",
+          submittedAt: "2026-06-14T06:39:00.000Z",
+          detail: "fm-qad-001.pdf",
+          viewUrl: null,
+          downloadUrl: null,
+          actionLabel: null,
+          actionTarget: null,
+          canReview: true,
+        })}
+      />,
+    );
+
+    const viewButton = screen.getByRole("button", { name: "View" }) as HTMLButtonElement;
+    expect(viewButton.disabled).toBe(true);
+    expect(screen.getByRole("button", { name: "Verify" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Return" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
+  });
+
   it("keeps the no-indicator-data history state plain without package details", () => {
     render(
       <MonitorSchoolDrawer

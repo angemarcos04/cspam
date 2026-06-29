@@ -497,6 +497,8 @@ export type GroupBWorkspaceResetTarget =
 export interface IndicatorSubmissionFileEntry {
   type: IndicatorSubmissionFileType;
   uploaded: boolean;
+  available?: boolean;
+  missingFromStorage?: boolean;
   path: string | null;
   originalFilename: string | null;
   sizeBytes: number | null;

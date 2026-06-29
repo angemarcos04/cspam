@@ -551,16 +551,21 @@ function mergeSubmissionFileEntryPreservingDetails(
       || incoming.sizeBytes
       || incoming.uploadedAt
       || incoming.downloadUrl
-      || incoming.viewUrl,
+      || incoming.viewUrl
+      || typeof incoming.available === "boolean"
+      || typeof incoming.missingFromStorage === "boolean",
     );
 
     if (existing?.uploaded && !incomingHasFileDetails && resetWorkspace !== type) {
+      const existingAvailable = existing.available ?? Boolean(existing.downloadUrl || existing.viewUrl);
       return {
         ...existing,
         type,
         uploaded: true,
-        downloadUrl: existing.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`,
-        viewUrl: existing.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`,
+        available: existingAvailable,
+        missingFromStorage: existing.missingFromStorage ?? false,
+        downloadUrl: existingAvailable ? (existing.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`) : null,
+        viewUrl: existingAvailable ? (existing.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`) : null,
       };
     }
 
@@ -568,6 +573,8 @@ function mergeSubmissionFileEntryPreservingDetails(
       ...incoming,
       type,
       uploaded: false,
+      available: false,
+      missingFromStorage: false,
       path: null,
       originalFilename: null,
       sizeBytes: null,
@@ -577,17 +584,32 @@ function mergeSubmissionFileEntryPreservingDetails(
     };
   }
 
+  const explicitlyUnavailable = incoming.available === false
+    || (
+      incoming.available === undefined
+      && existing?.available === false
+      && !incoming.downloadUrl
+      && !incoming.viewUrl
+    );
+  const available = explicitlyUnavailable
+    ? false
+    : incoming.available ?? existing?.available ?? true;
+  const missingFromStorage = incoming.missingFromStorage
+    ?? (available ? false : existing?.missingFromStorage ?? false);
+
   return {
     ...existing,
     ...incoming,
     type,
     uploaded: true,
+    available,
+    missingFromStorage,
     path: incoming.path ?? existing?.path ?? null,
     originalFilename: incoming.originalFilename ?? existing?.originalFilename ?? null,
     sizeBytes: incoming.sizeBytes ?? existing?.sizeBytes ?? null,
     uploadedAt: incoming.uploadedAt ?? existing?.uploadedAt ?? null,
-    downloadUrl: incoming.downloadUrl ?? existing?.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`,
-    viewUrl: incoming.viewUrl ?? existing?.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`,
+    downloadUrl: available ? (incoming.downloadUrl ?? existing?.downloadUrl ?? `/api/submissions/${submissionId}/download/${type}`) : null,
+    viewUrl: available ? (incoming.viewUrl ?? existing?.viewUrl ?? `/api/submissions/${submissionId}/view/${type}`) : null,
   };
 }
 
@@ -748,12 +770,15 @@ export function patchSubmissionWithLightweightPayload(
             : type === "smea"
               ? nextCompletion.hasSmeaFile
               : Boolean(nextCompletion.uploadedFileTypes?.includes(type));
+          const available = uploaded && (currentEntry.available ?? true);
 
           accumulator[type] = {
             ...currentEntry,
             uploaded,
-            downloadUrl: uploaded ? `/api/submissions/${patch.id}/download/${type}` : null,
-            viewUrl: uploaded ? `/api/submissions/${patch.id}/view/${type}` : null,
+            available,
+            missingFromStorage: uploaded ? (available ? false : currentEntry.missingFromStorage ?? false) : false,
+            downloadUrl: available ? (currentEntry.downloadUrl ?? `/api/submissions/${patch.id}/download/${type}`) : null,
+            viewUrl: available ? (currentEntry.viewUrl ?? `/api/submissions/${patch.id}/view/${type}`) : null,
           };
 
           return accumulator;
@@ -824,16 +849,19 @@ export function materializeSubmissionFromLightweightPayload(
         ? hasSmeaFile
         : uploadedFileTypes.includes(type);
     const patchFile = patch.files?.[type];
+    const available = uploaded && (patchFile?.available ?? true);
 
     accumulator[type] = {
       type,
       uploaded,
+      available,
+      missingFromStorage: uploaded ? (patchFile?.missingFromStorage ?? !available) : false,
       path: null,
       originalFilename: patchFile?.originalFilename ?? null,
       sizeBytes: patchFile?.sizeBytes ?? null,
       uploadedAt: patchFile?.uploadedAt ?? null,
-      downloadUrl: uploaded ? `/api/submissions/${patch.id}/download/${type}` : null,
-      viewUrl: uploaded ? `/api/submissions/${patch.id}/view/${type}` : null,
+      downloadUrl: available ? (patchFile?.downloadUrl ?? `/api/submissions/${patch.id}/download/${type}`) : null,
+      viewUrl: available ? (patchFile?.viewUrl ?? `/api/submissions/${patch.id}/view/${type}`) : null,
     };
 
     return accumulator;

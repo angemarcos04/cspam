@@ -2455,6 +2455,124 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertStringContainsString('attachment;', (string) $download->headers->get('content-disposition'));
     }
 
+    public function test_submission_file_upload_uses_configured_storage_disk_and_reset_deletes_that_file(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('local');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
+        $upload->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.available', true)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false)
+            ->assertJsonPath('data.files.fm_qad_001.viewUrl', "/api/submissions/{$submissionId}/view/fm_qad_001")
+            ->assertJsonPath('data.files.fm_qad_001.downloadUrl', "/api/submissions/{$submissionId}/download/fm_qad_001");
+
+        $storedPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+        $this->assertNotSame('', $storedPath);
+        Storage::disk('submissions')->assertExists($storedPath);
+        Storage::disk('local')->assertMissing($storedPath);
+
+        $reset = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/reset-workspace", [
+            'workspace' => 'fm_qad_001',
+        ]);
+
+        $reset->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
+            ->assertJsonPath('data.files.fm_qad_001.available', false)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false)
+            ->assertJsonPath('data.files.fm_qad_001.viewUrl', null)
+            ->assertJsonPath('data.files.fm_qad_001.downloadUrl', null);
+        Storage::disk('submissions')->assertMissing($storedPath);
+    }
+
+    public function test_submission_file_metadata_reports_missing_storage_without_exposing_unsent_monitor_file(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+
+        $created->assertStatus(Response::HTTP_CREATED);
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
+            ->assertOk();
+
+        $storedPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $monitor->createToken('missing-storage-monitor', ['role:monitor'])->plainTextToken;
+
+        $monitorShowBeforeSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowBeforeSend->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', false)
+            ->assertJsonPath('data.files.fm_qad_001.available', false)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false)
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', null)
+            ->assertJsonPath('data.files.fm_qad_001.viewUrl', null);
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['fm_qad_001'],
+        ])->assertOk();
+
+        Storage::disk('submissions')->delete($storedPath);
+
+        $schoolHeadShow = $this->withToken($schoolHeadToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $schoolHeadShow->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.available', false)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', true)
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'fm-qad-001.pdf')
+            ->assertJsonPath('data.files.fm_qad_001.viewUrl', null)
+            ->assertJsonPath('data.files.fm_qad_001.downloadUrl', null);
+
+        $monitorShowAfterSend = $this->withToken($monitorToken)->getJson("/api/indicators/submissions/{$submissionId}");
+        $monitorShowAfterSend->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.available', false)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', true)
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'fm-qad-001.pdf')
+            ->assertJsonPath('data.files.fm_qad_001.viewUrl', null)
+            ->assertJsonPath('data.files.fm_qad_001.downloadUrl', null);
+
+        $this->withToken($monitorToken)
+            ->get("/api/submissions/{$submissionId}/view/fm_qad_001")
+            ->assertStatus(Response::HTTP_NOT_FOUND);
+    }
+
     public function test_fm_qad_reset_removes_database_record_storage_file_and_uses_clean_history_labels(): void
     {
         Storage::fake('local');

@@ -9,6 +9,7 @@ use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
+use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
 use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
@@ -191,15 +192,19 @@ class IndicatorSubmissionResource extends JsonResource
             $uploaded = $this->hasSubmissionFileType($type);
             $visible = ! $redactUnsentMonitorData || in_array($type, $monitorVisibleScopes, true);
             $visibleUploaded = $uploaded && $visible;
+            $available = $visibleUploaded && app(SubmissionFileStorage::class)->exists($this->resource, $type);
+            $missingFromStorage = $visibleUploaded && app(SubmissionFileStorage::class)->missingFromStorage($this->resource, $type);
             $files[$type] = [
                 'type' => $type,
                 'uploaded' => $visibleUploaded,
+                'available' => $available,
+                'missingFromStorage' => $missingFromStorage,
                 'path' => $visibleUploaded ? $this->submissionFilePathForType($type) : null,
                 'originalFilename' => $visibleUploaded ? $this->submissionFileOriginalNameForType($type) : null,
                 'sizeBytes' => $visibleUploaded ? $this->submissionFileSizeForType($type) : null,
                 'uploadedAt' => $visibleUploaded ? optional($this->submissionFileUploadedAtForType($type))->toISOString() : null,
-                'downloadUrl' => $visibleUploaded ? "/api/submissions/{$this->id}/download/{$type}" : null,
-                'viewUrl' => $visibleUploaded ? "/api/submissions/{$this->id}/view/{$type}" : null,
+                'downloadUrl' => $available ? "/api/submissions/{$this->id}/download/{$type}" : null,
+                'viewUrl' => $available ? "/api/submissions/{$this->id}/view/{$type}" : null,
             ];
         }
 

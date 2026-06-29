@@ -29,11 +29,13 @@ use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
+use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Filesystem\FilesystemAdapter;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -42,7 +44,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -603,8 +604,8 @@ class IndicatorSubmissionController extends Controller
         }
 
         $existingPath = $this->filePathForType($submission, $fileType);
-        if (is_string($existingPath) && $existingPath !== '' && Storage::disk('local')->exists($existingPath)) {
-            Storage::disk('local')->delete($existingPath);
+        if ($this->submissionFilePathExists($existingPath)) {
+            $this->submissionFileDisk()->delete($existingPath);
         }
 
         $extension = strtolower((string) $file->getClientOriginalExtension());
@@ -617,7 +618,7 @@ class IndicatorSubmissionController extends Controller
             $timestamp,
             $extension !== '' ? $extension : 'bin',
         );
-        $path = $file->storeAs('submissions', $filename, 'local');
+        $path = $file->storeAs('submissions', $filename, $this->submissionFileDiskName());
         $sizeBytes = max(0, (int) $file->getSize());
         $originalFilename = trim((string) $file->getClientOriginalName());
 
@@ -702,7 +703,7 @@ class IndicatorSubmissionController extends Controller
 
         $path = $this->filePathForType($submission, $fileType);
         $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
-        if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
+        if (! $this->submissionFilePathExists($path)) {
             abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
         }
 
@@ -720,7 +721,7 @@ class IndicatorSubmissionController extends Controller
             ? trim($originalFilename)
             : $fallbackFilename;
 
-        return Storage::disk('local')->download($path, $downloadFilename);
+        return $this->submissionFileDisk()->download($path, $downloadFilename);
     }
 
     public function viewFile(Request $request, IndicatorSubmission $submission, string $type)
@@ -737,7 +738,7 @@ class IndicatorSubmissionController extends Controller
 
         $path = $this->filePathForType($submission, $fileType);
         $originalFilename = $this->fileOriginalNameForType($submission, $fileType);
-        if (! is_string($path) || trim($path) === '' || ! Storage::disk('local')->exists($path)) {
+        if (! $this->submissionFilePathExists($path)) {
             abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
         }
 
@@ -750,11 +751,11 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $absolutePath = Storage::disk('local')->path($path);
+        $absolutePath = $this->submissionFileDisk()->path($path);
         $filename = is_string($originalFilename) && trim($originalFilename) !== ''
             ? trim($originalFilename)
             : basename($path);
-        $mimeType = Storage::disk('local')->mimeType($path) ?: 'application/octet-stream';
+        $mimeType = $this->submissionFileDisk()->mimeType($path) ?: 'application/octet-stream';
 
         return response()->file($absolutePath, [
             'Content-Type' => $mimeType,
@@ -1955,6 +1956,31 @@ class IndicatorSubmissionController extends Controller
         return $submission->submissionFileOriginalNameForType($type);
     }
 
+    private function submissionFileDiskName(): string
+    {
+        return app(SubmissionFileStorage::class)->diskName();
+    }
+
+    private function submissionFileDisk(): FilesystemAdapter
+    {
+        return app(SubmissionFileStorage::class)->disk();
+    }
+
+    private function submissionFilePathExists(?string $path): bool
+    {
+        return app(SubmissionFileStorage::class)->pathExists($path);
+    }
+
+    private function submissionFileExistsForType(IndicatorSubmission $submission, string $type): bool
+    {
+        return app(SubmissionFileStorage::class)->exists($submission, $type);
+    }
+
+    private function submissionFileMissingFromStorage(IndicatorSubmission $submission, string $type): bool
+    {
+        return app(SubmissionFileStorage::class)->missingFromStorage($submission, $type);
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -1962,8 +1988,8 @@ class IndicatorSubmissionController extends Controller
     {
         $existingPath = $this->filePathForType($submission, $workspace);
         $deletedFile = false;
-        if (is_string($existingPath) && $existingPath !== '' && Storage::disk('local')->exists($existingPath)) {
-            $deletedFile = Storage::disk('local')->delete($existingPath);
+        if ($this->submissionFilePathExists($existingPath)) {
+            $deletedFile = $this->submissionFileDisk()->delete($existingPath);
         }
 
         if ($workspace === GroupBWorkspaceDefinition::BMEF) {
@@ -2046,15 +2072,19 @@ class IndicatorSubmissionController extends Controller
 
         foreach (SubmissionFileDefinition::types() as $type) {
             $uploaded = $submission->hasSubmissionFileType($type);
+            $available = $uploaded && $this->submissionFileExistsForType($submission, $type);
+            $missingFromStorage = $uploaded && $this->submissionFileMissingFromStorage($submission, $type);
             $files[$type] = [
                 'type' => $type,
                 'uploaded' => $uploaded,
+                'available' => $available,
+                'missingFromStorage' => $missingFromStorage,
                 'path' => $includeInternalPath ? $submission->submissionFilePathForType($type) : null,
                 'originalFilename' => $submission->submissionFileOriginalNameForType($type),
                 'sizeBytes' => $submission->submissionFileSizeForType($type),
                 'uploadedAt' => optional($submission->submissionFileUploadedAtForType($type))->toISOString(),
-                'downloadUrl' => $uploaded ? "/api/submissions/{$submission->id}/download/{$type}" : null,
-                'viewUrl' => $uploaded ? "/api/submissions/{$submission->id}/view/{$type}" : null,
+                'downloadUrl' => $available ? "/api/submissions/{$submission->id}/download/{$type}" : null,
+                'viewUrl' => $available ? "/api/submissions/{$submission->id}/view/{$type}" : null,
             ];
         }
 

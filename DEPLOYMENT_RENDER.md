@@ -115,6 +115,23 @@ In the browser, open DevTools -> Network -> `GET /api/dashboard/students`. If th
 
 Operational note: rolling academic-year maintenance is currently best-effort during student dashboard refresh. It should eventually move to a scheduled command, deployment task, admin maintenance endpoint, or queue job.
 
+## Submission File Persistent Storage
+
+School Head report uploads are stored on the configurable CSPAMS submission-file disk. On Render, attach a persistent disk and configure:
+
+```env
+CSPAMS_SUBMISSION_FILE_DISK=submissions
+CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions
+```
+
+Do not hardcode the path in code. The `submissions` disk reads this mount from the environment. After changing either setting, restart or redeploy the backend and run:
+
+```bash
+php artisan optimize:clear
+```
+
+If CSPAMS shows uploaded file metadata but preview/download is disabled with a storage-missing message, the database metadata is present but the physical file is missing from the configured disk. Check the Render persistent disk mount, `CSPAMS_SUBMISSION_STORAGE_PATH`, and whether files were removed outside CSPAMS.
+
 ## Notification Center Runtime Check
 
 The notification bell depends on the Laravel `notifications` table and the authenticated notification routes. On every backend deploy, confirm migrations ran before testing the frontend dropdown:

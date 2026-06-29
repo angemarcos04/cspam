@@ -11,6 +11,7 @@ return [
     |
     */
     'submission_file_max_kb' => (int) env('CSPAMS_SUBMISSION_FILE_MAX_KB', 10240),
+    'submission_file_disk' => env('CSPAMS_SUBMISSION_FILE_DISK', 'local'),
 
     /*
     |--------------------------------------------------------------------------
