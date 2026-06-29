@@ -152,6 +152,19 @@ function backendMessageFromPayload(payload: unknown): string | null {
   return typeof message === "string" && message.trim().length > 0 ? message.trim() : null;
 }
 
+function backendErrorCodeFromPayload(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || !("errorCode" in payload)) {
+    return null;
+  }
+
+  const errorCode = (payload as { errorCode?: unknown }).errorCode;
+  return typeof errorCode === "string" && errorCode.trim().length > 0 ? errorCode.trim() : null;
+}
+
+const SAFE_INTERNAL_ERROR_CODES = new Set([
+  "student_records_refresh_failed",
+]);
+
 function isGenericServiceUnavailableMessage(message: string): boolean {
   const normalized = message.trim();
   return (
@@ -173,6 +186,13 @@ export function messageForApiError(error: unknown, fallback: string): string {
     }
 
     if (error.status === 500) {
+      const backendMessage = backendMessageFromPayload(error.payload);
+      const backendErrorCode = backendErrorCodeFromPayload(error.payload);
+
+      if (backendMessage && backendErrorCode && SAFE_INTERNAL_ERROR_CODES.has(backendErrorCode)) {
+        return backendMessage;
+      }
+
       return "Something went wrong while contacting the server. Please try again.";
     }
   }

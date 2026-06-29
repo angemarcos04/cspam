@@ -75,6 +75,8 @@ curl -i -H "Authorization: Bearer <MONITOR_TOKEN>" "https://cspams.onrender.com/
 
 Expected result: HTTP `200`, `Content-Type: application/json`, plus `data` and `meta` keys. If readiness is ok but the route still returns `500`, inspect Render logs for `GET /api/dashboard/students`, `student_records_refresh_failed`, `SQLSTATE`, undefined columns/tables, `ValueError`, or `UnexpectedValueException` at the failure timestamp.
 
+In the browser, open DevTools -> Network -> `GET /api/dashboard/students`. If the JSON body contains `errorCode: "student_records_refresh_failed"`, the frontend and safe backend handler are current, and the real exception is in Render logs. If that code is missing, verify the backend deploy, frontend rewrites/API base URL, and `/api/health`.
+
 Operational note: rolling academic-year maintenance is currently best-effort during student dashboard refresh. It should eventually move to a scheduled command, deployment task, admin maintenance endpoint, or queue job.
 
 ### Production demo data cleanup

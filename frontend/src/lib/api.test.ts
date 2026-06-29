@@ -286,6 +286,41 @@ describe("messageForApiError", () => {
       "fallback",
     )).toBe("This file or indicator has been verified.");
   });
+
+  it("uses trusted backend messages for whitelisted internal server errors", () => {
+    expect(messageForApiError(
+      new ApiError(
+        "Request failed with status 500.",
+        500,
+        {
+          message: "Unable to refresh student records right now. Please try again.",
+          errorCode: "student_records_refresh_failed",
+        },
+      ),
+      "fallback",
+    )).toBe("Unable to refresh student records right now. Please try again.");
+  });
+
+  it("keeps untrusted internal server errors generic", () => {
+    expect(messageForApiError(
+      new ApiError(
+        "Request failed with status 500.",
+        500,
+        {
+          message: "SQLSTATE[42S22]: Column not found: 1054 Unknown column.",
+          errorCode: "unexpected_database_failure",
+        },
+      ),
+      "fallback",
+    )).toBe("Something went wrong while contacting the server. Please try again.");
+  });
+
+  it("keeps bare internal server errors generic", () => {
+    expect(messageForApiError(
+      new ApiError("Request failed with status 500.", 500, null),
+      "fallback",
+    )).toBe("Something went wrong while contacting the server. Please try again.");
+  });
 });
 
 describe("displayMessageForApiError", () => {
