@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\Domain\StudentRiskLevel;
+use App\Support\Domain\StudentStatus;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -175,12 +177,100 @@ class ReadinessDiagnosticsController extends Controller
                 'performanceMetrics' => $this->columnCheck('performance_metrics', ['id', 'input_schema', 'data_type', 'is_active']),
                 'indicatorSubmissionItems' => $this->columnCheck('indicator_submission_items', ['id', 'performance_metric_id', 'target_typed_value', 'actual_typed_value']),
             ],
+            'data' => [
+                'students' => $this->studentDataValidityCheck(),
+            ],
         ];
 
         return [
             'status' => $this->overallStatus($checks),
             ...$checks,
         ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function studentDataValidityCheck(): array
+    {
+        if (! $this->hasTableAndColumns('students', ['status', 'risk_level'])) {
+            return [
+                'status' => 'failed',
+                'invalidStatuses' => [],
+                'invalidRiskLevels' => [],
+                'invalidStatusCount' => 0,
+                'invalidRiskLevelCount' => 0,
+            ];
+        }
+
+        try {
+            $allowedStatuses = array_column(StudentStatus::cases(), 'value');
+            $allowedRiskLevels = array_column(StudentRiskLevel::cases(), 'value');
+
+            $invalidStatuses = DB::table('students')
+                ->whereNotNull('status')
+                ->whereNotIn('status', $allowedStatuses)
+                ->distinct()
+                ->orderBy('status')
+                ->pluck('status')
+                ->map(static fn (mixed $value): string => (string) $value)
+                ->values()
+                ->all();
+
+            $invalidRiskLevels = DB::table('students')
+                ->whereNotNull('risk_level')
+                ->whereNotIn('risk_level', $allowedRiskLevels)
+                ->distinct()
+                ->orderBy('risk_level')
+                ->pluck('risk_level')
+                ->map(static fn (mixed $value): string => (string) $value)
+                ->values()
+                ->all();
+
+            return [
+                'status' => $invalidStatuses === [] && $invalidRiskLevels === [] ? 'ok' : 'warning',
+                'invalidStatuses' => $invalidStatuses,
+                'invalidRiskLevels' => $invalidRiskLevels,
+                'invalidStatusCount' => DB::table('students')
+                    ->whereNotNull('status')
+                    ->whereNotIn('status', $allowedStatuses)
+                    ->count(),
+                'invalidRiskLevelCount' => DB::table('students')
+                    ->whereNotNull('risk_level')
+                    ->whereNotIn('risk_level', $allowedRiskLevels)
+                    ->count(),
+            ];
+        } catch (\Throwable) {
+            return [
+                'status' => 'failed',
+                'invalidStatuses' => [],
+                'invalidRiskLevels' => [],
+                'invalidStatusCount' => 0,
+                'invalidRiskLevelCount' => 0,
+            ];
+        }
+    }
+
+    /**
+     * @param array<int, string> $columns
+     */
+    private function hasTableAndColumns(string $table, array $columns): bool
+    {
+        try {
+            if (! Schema::hasTable($table)) {
+                return false;
+            }
+
+            foreach ($columns as $column) {
+                if (! Schema::hasColumn($table, $column)) {
+                    return false;
+                }
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**

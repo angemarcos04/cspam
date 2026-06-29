@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ReadinessDiagnosticsTest extends TestCase
@@ -67,6 +68,9 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.dashboard.columns.academicYears.status', 'ok')
             ->assertJsonPath('checks.dashboard.columns.performanceMetrics.status', 'ok')
             ->assertJsonPath('checks.dashboard.columns.indicatorSubmissionItems.status', 'ok')
+            ->assertJsonPath('checks.dashboard.data.students.status', 'ok')
+            ->assertJsonPath('checks.dashboard.data.students.invalidStatusCount', 0)
+            ->assertJsonPath('checks.dashboard.data.students.invalidRiskLevelCount', 0)
             ->assertJsonPath('checks.queue.defaultDriver', 'database')
             ->assertJsonPath('checks.mail.defaultDriver', 'resend')
             ->assertJsonPath('checks.mail.fromConfigured', true)
@@ -88,6 +92,8 @@ class ReadinessDiagnosticsTest extends TestCase
         $this->assertSame([], $response->json('checks.dashboard.columns.schools.missing'));
         $this->assertSame([], $response->json('checks.dashboard.columns.performanceMetrics.missing'));
         $this->assertSame([], $response->json('checks.dashboard.columns.indicatorSubmissionItems.missing'));
+        $this->assertSame([], $response->json('checks.dashboard.data.students.invalidStatuses'));
+        $this->assertSame([], $response->json('checks.dashboard.data.students.invalidRiskLevels'));
         $this->assertIsArray($response->json('checks.dashboard.columns.users.missing'));
         $this->assertIsArray($response->json('checks.dashboard.columns.indicatorSubmissions.missing'));
 
@@ -97,6 +103,71 @@ class ReadinessDiagnosticsTest extends TestCase
         $this->assertStringNotContainsString('diagnostic-token', $content);
         $this->assertStringNotContainsString('password', strtolower($content));
         $this->assertStringNotContainsString('token_hash', $content);
+    }
+
+    public function test_readiness_reports_invalid_student_status_data_without_identity_leaks(): void
+    {
+        config()->set('diagnostics.queue.token', 'diagnostic-token');
+
+        DB::table('schools')->insert([
+            'id' => 50001,
+            'school_code' => '990001',
+            'school_code_normalized' => '990001',
+            'name' => 'Private Student Validity School',
+            'district' => 'Private District',
+            'status' => 'active',
+            'region' => 'Region II',
+            'type' => 'public',
+            'level' => 'Elementary',
+            'reported_student_count' => 0,
+            'reported_teacher_count' => 0,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('academic_years')->insert([
+            'id' => 50001,
+            'name' => '2099-2100',
+            'start_date' => '2099-06-01',
+            'end_date' => '2100-03-31',
+            'is_current' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        DB::table('students')->insert([
+            'school_id' => 50001,
+            'academic_year_id' => 50001,
+            'lrn' => 'PRIVATE-LRN-900001',
+            'first_name' => 'Private',
+            'middle_name' => null,
+            'last_name' => 'Learner',
+            'sex' => 'female',
+            'birth_date' => '2012-01-01',
+            'status' => 'legacy_invalid_status',
+            'risk_level' => 'legacy_invalid_risk',
+            'tracked_from_level' => 'Grade 1',
+            'current_level' => 'Grade 6',
+            'section_name' => 'Private Section',
+            'teacher_name' => 'Private Teacher',
+            'last_status_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $response = $this->getJson('/api/ops/readiness?token=diagnostic-token')
+            ->assertOk()
+            ->assertJsonPath('checks.dashboard.data.students.status', 'warning')
+            ->assertJsonPath('checks.dashboard.data.students.invalidStatuses', ['legacy_invalid_status'])
+            ->assertJsonPath('checks.dashboard.data.students.invalidRiskLevels', ['legacy_invalid_risk'])
+            ->assertJsonPath('checks.dashboard.data.students.invalidStatusCount', 1)
+            ->assertJsonPath('checks.dashboard.data.students.invalidRiskLevelCount', 1);
+
+        $content = $response->getContent();
+        $this->assertStringNotContainsString('PRIVATE-LRN-900001', $content);
+        $this->assertStringNotContainsString('Private Learner', $content);
+        $this->assertStringNotContainsString('Private Student Validity School', $content);
+        $this->assertStringNotContainsString('Private Teacher', $content);
     }
 
     public function test_readiness_diagnostics_accept_header_token(): void

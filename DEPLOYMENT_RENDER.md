@@ -101,7 +101,17 @@ php artisan migrate --force
 php artisan optimize:clear
 ```
 
-Then call the protected readiness endpoint. It should report `checks.dashboard.columns.students.status: ok`, `checks.dashboard.columns.schools.status: ok`, and `checks.dashboard.columns.performanceMetrics.status: ok`. If those pass but `/api/dashboard/students` still returns `500`, use Render logs for that route and timestamp to identify the exact backend exception.
+Then call the protected readiness endpoint. It should report `checks.dashboard.columns.students.status: ok`, `checks.dashboard.columns.schools.status: ok`, `checks.dashboard.columns.performanceMetrics.status: ok`, `checks.dashboard.columns.indicatorSubmissionItems.status: ok`, and `checks.dashboard.data.students.status: ok`.
+
+Smoke-test the endpoint with a Monitor token:
+
+```bash
+curl -i -H "Authorization: Bearer <MONITOR_TOKEN>" "https://cspams.onrender.com/api/dashboard/students?per_page=25"
+```
+
+Expected result: HTTP `200`, `Content-Type: application/json`, plus `data` and `meta` keys. If readiness is ok but `/api/dashboard/students` still returns `500`, use Render logs for `GET /api/dashboard/students`, `student_records_refresh_failed`, `SQLSTATE`, undefined columns/tables, `ValueError`, or `UnexpectedValueException` at the failure timestamp.
+
+Operational note: rolling academic-year maintenance is currently best-effort during student dashboard refresh. It should eventually move to a scheduled command, deployment task, admin maintenance endpoint, or queue job.
 
 ## Notification Center Runtime Check
 

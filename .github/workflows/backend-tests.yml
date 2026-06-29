@@ -1,0 +1,57 @@
+name: Backend Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  targeted-backend-tests:
+    runs-on: ubuntu-latest
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_MAINTENANCE_DRIVER: file
+      BCRYPT_ROUNDS: 4
+      BROADCAST_CONNECTION: log
+      CACHE_STORE: array
+      DB_CONNECTION: sqlite
+      DB_DATABASE: ":memory:"
+      MAIL_MAILER: array
+      CSPAMS_MONITOR_MFA_ENABLED: false
+      PULSE_ENABLED: false
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      TELESCOPE_ENABLED: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_sqlite, sqlite3
+          coverage: none
+
+      - name: Cache Composer packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: composer-${{ runner.os }}-${{ hashFiles('composer.lock') }}
+          restore-keys: composer-${{ runner.os }}-
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run dashboard boot tests
+        run: php artisan test --filter=DashboardBootEndpointsTest
+
+      - name: Run student dashboard resilience tests
+        run: php artisan test --filter=StudentDashboardRefreshResilienceTest
+
+      - name: Run readiness diagnostics tests
+        run: php artisan test --filter=ReadinessDiagnosticsTest
+
+      - name: Run student authorization tests
+        run: php artisan test --filter=StudentCrudAuthorizationTest
