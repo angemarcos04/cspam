@@ -56,6 +56,17 @@ Check:
 
 If `/api/health` is down, repair the backend service/proxy first. If it returns HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If it is up but a dashboard endpoint fails, inspect the exact endpoint in the browser Network tab and correlate it with Render logs.
 
+### Student records refresh diagnostics
+
+If the Monitor dashboard shows `Student records failed to refresh`, the failing backend route is `GET /api/dashboard/students`. First run:
+
+```bash
+php artisan migrate --force
+php artisan optimize:clear
+```
+
+Then check the protected readiness endpoint. It should report `checks.dashboard.columns.students.status: ok`, `checks.dashboard.columns.schools.status: ok`, and `checks.dashboard.columns.performanceMetrics.status: ok`. If readiness is ok but the route still returns `500`, inspect Render logs for `GET /api/dashboard/students` at the failure timestamp.
+
 ### Production demo data cleanup
 
 Production should not recreate sample School Head accounts on every deploy. Keep demo seeding disabled:

@@ -92,6 +92,17 @@ Use this order:
 
 If `/api/health` is unavailable, fix the backend service or proxy first. If the response is HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
 
+## Student Records Refresh Diagnostics
+
+If the Monitor dashboard shows `Student records failed to refresh`, the backend route to check is `GET /api/dashboard/students`. After every deploy, run:
+
+```bash
+php artisan migrate --force
+php artisan optimize:clear
+```
+
+Then call the protected readiness endpoint. It should report `checks.dashboard.columns.students.status: ok`, `checks.dashboard.columns.schools.status: ok`, and `checks.dashboard.columns.performanceMetrics.status: ok`. If those pass but `/api/dashboard/students` still returns `500`, use Render logs for that route and timestamp to identify the exact backend exception.
+
 ## Notification Center Runtime Check
 
 The notification bell depends on the Laravel `notifications` table and the authenticated notification routes. On every backend deploy, confirm migrations ran before testing the frontend dropdown:

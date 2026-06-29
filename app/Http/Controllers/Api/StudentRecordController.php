@@ -55,7 +55,25 @@ class StudentRecordController extends Controller
             return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
-        $this->syncRollingAcademicYears();
+        try {
+            return $this->indexForAuthorizedUser($request, $user, $isSchoolHead, $isMonitor);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return response()->json([
+                'message' => 'Unable to refresh student records right now. Please try again.',
+                'errorCode' => 'student_records_refresh_failed',
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private function indexForAuthorizedUser(
+        Request $request,
+        User $user,
+        bool $isSchoolHead,
+        bool $isMonitor,
+    ): JsonResponse {
+        $this->safelySyncRollingAcademicYears();
         [$academicYearFilterMode, $academicYearFilterId] = $this->resolveAcademicYearFilter($request);
         $academicYearScope = $academicYearFilterMode === 'all'
             ? 'academic-year:all'
@@ -715,6 +733,15 @@ class StudentRecordController extends Controller
             $this->runRollingAcademicYearSync();
         } finally {
             $lock->release();
+        }
+    }
+
+    private function safelySyncRollingAcademicYears(): void
+    {
+        try {
+            $this->syncRollingAcademicYears();
+        } catch (\Throwable $exception) {
+            report($exception);
         }
     }
 

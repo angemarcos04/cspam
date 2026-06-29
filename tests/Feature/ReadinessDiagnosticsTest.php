@@ -59,7 +59,14 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.dashboard.tables.notifications.required', true)
             ->assertJsonPath('checks.dashboard.tables.students.required', true)
             ->assertJsonPath('checks.dashboard.tables.teachers.required', true)
+            ->assertJsonPath('checks.dashboard.tables.performanceMetrics.required', true)
+            ->assertJsonPath('checks.dashboard.tables.indicatorSubmissionItems.required', true)
             ->assertJsonPath('checks.dashboard.tables.jobs.required', true)
+            ->assertJsonPath('checks.dashboard.columns.students.status', 'ok')
+            ->assertJsonPath('checks.dashboard.columns.schools.status', 'ok')
+            ->assertJsonPath('checks.dashboard.columns.academicYears.status', 'ok')
+            ->assertJsonPath('checks.dashboard.columns.performanceMetrics.status', 'ok')
+            ->assertJsonPath('checks.dashboard.columns.indicatorSubmissionItems.status', 'ok')
             ->assertJsonPath('checks.queue.defaultDriver', 'database')
             ->assertJsonPath('checks.mail.defaultDriver', 'resend')
             ->assertJsonPath('checks.mail.fromConfigured', true)
@@ -77,6 +84,10 @@ class ReadinessDiagnosticsTest extends TestCase
         $this->assertIsBool($response->json('checks.dashboard.tables.personalAccessTokens.exists'));
         $this->assertIsBool($response->json('checks.dashboard.tables.indicatorSubmissions.exists'));
         $this->assertIsArray($response->json('checks.columns.userFlags.missing'));
+        $this->assertSame([], $response->json('checks.dashboard.columns.students.missing'));
+        $this->assertSame([], $response->json('checks.dashboard.columns.schools.missing'));
+        $this->assertSame([], $response->json('checks.dashboard.columns.performanceMetrics.missing'));
+        $this->assertSame([], $response->json('checks.dashboard.columns.indicatorSubmissionItems.missing'));
         $this->assertIsArray($response->json('checks.dashboard.columns.users.missing'));
         $this->assertIsArray($response->json('checks.dashboard.columns.indicatorSubmissions.missing'));
 

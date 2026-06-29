@@ -160,22 +160,70 @@ class ReadinessDiagnosticsController extends Controller
                 'notifications' => $this->tableCheck('notifications', true),
                 'students' => $this->tableCheck('students', true),
                 'teachers' => $this->tableCheck('teachers', true),
+                'performanceMetrics' => $this->tableCheck('performance_metrics', true),
+                'indicatorSubmissionItems' => $this->tableCheck('indicator_submission_items', true),
                 'jobs' => $this->jobsTableCheck(),
             ],
             'columns' => [
-                'schools' => $this->columnCheck('schools', ['id', 'school_code', 'name', 'status']),
+                'schools' => $this->columnCheck('schools', $this->schoolDashboardColumns()),
                 'users' => $this->columnCheck('users', ['id', 'name', 'email', 'school_id', 'account_type', 'account_status']),
-                'academicYears' => $this->columnCheck('academic_years', ['id', 'name', 'is_current']),
+                'academicYears' => $this->columnCheck('academic_years', ['id', 'name', 'start_date', 'end_date', 'is_current']),
                 'indicatorSubmissions' => $this->columnCheck('indicator_submissions', ['id', 'school_id', 'academic_year_id', 'status', 'updated_at']),
                 'indicatorSubmissionScopeReviews' => $this->columnCheck('indicator_submission_scope_reviews', ['id', 'indicator_submission_id', 'scope_id', 'decision']),
-                'students' => $this->columnCheck('students', ['id', 'school_id', 'academic_year_id', 'status', 'updated_at']),
+                'students' => $this->columnCheck('students', $this->studentDashboardColumns()),
                 'teachers' => $this->columnCheck('teachers', ['id', 'school_id', 'name', 'updated_at']),
+                'performanceMetrics' => $this->columnCheck('performance_metrics', ['id', 'input_schema', 'data_type', 'is_active']),
+                'indicatorSubmissionItems' => $this->columnCheck('indicator_submission_items', ['id', 'performance_metric_id', 'target_typed_value', 'actual_typed_value']),
             ],
         ];
 
         return [
             'status' => $this->overallStatus($checks),
             ...$checks,
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function studentDashboardColumns(): array
+    {
+        return [
+            'id',
+            'school_id',
+            'section_id',
+            'academic_year_id',
+            'lrn',
+            'first_name',
+            'middle_name',
+            'last_name',
+            'sex',
+            'birth_date',
+            'status',
+            'risk_level',
+            'tracked_from_level',
+            'current_level',
+            'section_name',
+            'teacher_name',
+            'last_status_at',
+            'created_at',
+            'updated_at',
+            'deleted_at',
+            'archived_original_lrn',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function schoolDashboardColumns(): array
+    {
+        return [
+            'id',
+            'school_code',
+            'school_code_normalized',
+            'name',
+            'status',
         ];
     }
 
