@@ -51,11 +51,11 @@ final class SubmissionFileRequirementResolver
      */
     public function missingTypesForSubmission(IndicatorSubmission $submission): array
     {
-        $uploadedFileTypes = $submission->uploadedSubmissionFileTypes();
+        $availableFileTypes = app(SubmissionFileStorage::class)->availableTypesForSubmission($submission);
 
         return array_values(array_filter(
             $this->requiredTypesForSubmission($submission),
-            static fn (string $type): bool => ! in_array($type, $uploadedFileTypes, true),
+            static fn (string $type): bool => ! in_array($type, $availableFileTypes, true),
         ));
     }
 
@@ -70,8 +70,11 @@ final class SubmissionFileRequirementResolver
             $missingRequirements[] = 'I-META / Group A form data';
         }
 
+        $fileStorage = app(SubmissionFileStorage::class);
         foreach ($this->missingTypesForSubmission($submission) as $type) {
-            $missingRequirements[] = SubmissionFileDefinition::shortLabelFor($type) . ' file';
+            $missingRequirements[] = $fileStorage->missingFromStorage($submission, $type)
+                ? SubmissionFileDefinition::shortLabelFor($type) . ' file is missing from storage; re-upload before submitting'
+                : SubmissionFileDefinition::shortLabelFor($type) . ' file';
         }
 
         return $missingRequirements;

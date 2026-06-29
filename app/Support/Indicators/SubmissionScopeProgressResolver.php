@@ -47,6 +47,14 @@ final class SubmissionScopeProgressResolver
 
         foreach ($normalizedScopeIds as $scopeId) {
             if (! $this->isScopeComplete($submission, $scopeId)) {
+                if (
+                    SubmissionFileDefinition::isValidType($scopeId)
+                    && app(SubmissionFileStorage::class)->missingFromStorage($submission, $scopeId)
+                ) {
+                    $missing[] = $this->scopeLabel($scopeId) . ' is missing from storage; re-upload before sending';
+                    continue;
+                }
+
                 $missing[] = $this->scopeLabel($scopeId);
             }
         }
@@ -57,7 +65,7 @@ final class SubmissionScopeProgressResolver
     public function isScopeComplete(IndicatorSubmission $submission, string $scopeId): bool
     {
         if (SubmissionFileDefinition::isValidType($scopeId)) {
-            return $submission->hasSubmissionFileType($scopeId);
+            return app(SubmissionFileStorage::class)->exists($submission, $scopeId);
         }
 
         if (! GroupBWorkspaceDefinition::isMetricWorkspace($scopeId)) {

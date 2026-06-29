@@ -46,6 +46,9 @@ export interface MonitorDrawerPackageRow {
   tone: "success" | "warning" | "info";
   submittedAt: string | null;
   detail: string;
+  available?: boolean;
+  missingFromStorage?: boolean;
+  fileUnavailableReason?: string | null;
   viewUrl: string | null;
   downloadUrl: string | null;
   actionLabel: string | null;

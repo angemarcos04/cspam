@@ -298,19 +298,26 @@ describe("MonitorSchoolDrawer", () => {
           tone: "info",
           submittedAt: "2026-06-14T06:39:00.000Z",
           detail: "fm-qad-001.pdf",
+          available: false,
+          missingFromStorage: true,
+          fileUnavailableReason: "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.",
           viewUrl: null,
           downloadUrl: null,
           actionLabel: null,
           actionTarget: null,
-          canReview: true,
+          canReview: false,
         })}
       />,
     );
 
     const viewButton = screen.getByRole("button", { name: "View" }) as HTMLButtonElement;
+    const verifyButton = screen.getByRole("button", { name: "Verify" }) as HTMLButtonElement;
+    const returnButton = screen.getByRole("button", { name: "Return" }) as HTMLButtonElement;
     expect(viewButton.disabled).toBe(true);
-    expect(screen.getByRole("button", { name: "Verify" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Return" })).toBeTruthy();
+    expect(viewButton.title).toBe("The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.");
+    expect(screen.getByText("The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.")).toBeTruthy();
+    expect(verifyButton.disabled).toBe(true);
+    expect(returnButton.disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();
   });
 

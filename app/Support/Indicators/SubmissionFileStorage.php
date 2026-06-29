@@ -46,4 +46,26 @@ class SubmissionFileStorage
         return $this->hasMetadata($submission, $type)
             && ! $this->exists($submission, $type);
     }
+
+    /**
+     * @return list<string>
+     */
+    public function availableTypesForSubmission(IndicatorSubmission $submission): array
+    {
+        return array_values(array_filter(
+            SubmissionFileDefinition::types(),
+            fn (string $type): bool => $this->exists($submission, $type),
+        ));
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function missingStorageTypesForSubmission(IndicatorSubmission $submission): array
+    {
+        return array_values(array_filter(
+            SubmissionFileDefinition::types(),
+            fn (string $type): bool => $this->missingFromStorage($submission, $type),
+        ));
+    }
 }

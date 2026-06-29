@@ -105,8 +105,15 @@ function disabledPackageActionTitle(row: MonitorDrawerPackageRow): string {
     return "No submission yet.";
   }
 
+  if (row.kind === "file" && row.missingFromStorage) {
+    return row.fileUnavailableReason
+      ?? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.";
+  }
+
   if (row.kind === "file" && !row.viewUrl && !row.downloadUrl) {
-    return "File has not been uploaded yet.";
+    return row.available === false
+      ? "File is unavailable for preview."
+      : "File has not been uploaded yet.";
   }
 
   return "This requirement must be submitted before review.";
@@ -653,6 +660,12 @@ export function MonitorSchoolDrawer({
                                 <td className="px-3 py-3 align-top">
                                   <p className="font-semibold text-slate-900">{displayRow.label}</p>
                                   <p className="mt-0.5 text-xs text-slate-500">{displayRow.detail}</p>
+                                  {displayRow.kind === "file" && displayRow.missingFromStorage && (
+                                    <p className="mt-2 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700">
+                                      {displayRow.fileUnavailableReason
+                                        ?? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it."}
+                                    </p>
+                                  )}
                                   {displayRow.reviewDecision === "returned" && displayRow.reviewNotes && (
                                     <p className="mt-2 rounded-sm border border-amber-200 bg-amber-50 px-2 py-1 text-xs font-medium text-amber-800">
                                       Return note: {displayRow.reviewNotes}

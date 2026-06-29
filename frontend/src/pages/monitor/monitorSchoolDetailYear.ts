@@ -482,11 +482,16 @@ function buildMonitorPackageRows(
     if (item.kind === "file") {
       const fileEntry = sourceSubmission?.files?.[item.id as IndicatorSubmissionFileType] ?? null;
       const hasUploadedFile = Boolean(fileEntry?.uploaded);
+      const fileAvailable = hasUploadedFile && (fileEntry?.available ?? Boolean(fileEntry?.viewUrl || fileEntry?.downloadUrl));
+      const fileMissingFromStorage = hasUploadedFile && Boolean(fileEntry?.missingFromStorage || fileEntry?.available === false);
       const isScopeSent = sentScopeIds.has(normalizeScopeId(item.id));
       const statusLabel = overlayStatusLabel ?? (hasSubmission ? item.statusLabel : "Not Submitted");
-      const canExposeFile = hasUploadedFile && !isReturnedReview && (canUseFullPackageForVisibility || isScopeSent);
+      const canExposeFile = hasUploadedFile && fileAvailable && !isReturnedReview && (canUseFullPackageForVisibility || isScopeSent);
       const fileViewUrl = canExposeFile ? (fileEntry?.viewUrl ?? null) : null;
       const fileDownloadUrl = canExposeFile ? (fileEntry?.downloadUrl ?? null) : null;
+      const fileUnavailableReason = fileMissingFromStorage
+        ? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it."
+        : null;
 
       return {
         id: item.id,
@@ -498,14 +503,19 @@ function buildMonitorPackageRows(
         submittedAt: hasUploadedFile ? (fileEntry?.uploadedAt ?? submittedAt) : null,
         detail: isReturnedReview
           ? "Returned by monitor. Waiting for School Head correction and resend."
+          : fileMissingFromStorage
+            ? "Submitted file record exists, but the stored file is missing."
           : hasUploadedFile
             ? (fileEntry?.originalFilename ?? item.detail)
             : item.detail,
+        available: fileAvailable,
+        missingFromStorage: fileMissingFromStorage,
+        fileUnavailableReason,
         viewUrl: fileViewUrl,
         downloadUrl: fileDownloadUrl,
         actionLabel: null,
         actionTarget: null,
-        canReview: hasUploadedFile && !isReviewed && (canUseFullPackageForReview || isScopeSent),
+        canReview: hasUploadedFile && fileAvailable && !isReviewed && (canUseFullPackageForReview || isScopeSent),
         reviewDecision,
         reviewNotes: review?.notes ?? null,
         reviewedAt: review?.reviewedAt ?? null,

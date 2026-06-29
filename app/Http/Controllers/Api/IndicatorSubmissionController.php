@@ -1058,12 +1058,6 @@ class IndicatorSubmissionController extends Controller
         }
 
         $scopeId = $normalizedScopeIds[0];
-        if (! $scopeProgressResolver->isScopeComplete($submission, $scopeId)) {
-            throw ValidationException::withMessages([
-                'scopeId' => 'Only submitted file or data requirements can be reviewed.',
-            ]);
-        }
-
         $decision = $request->string('decision')->toString();
         $currentReview = IndicatorSubmissionScopeReview::query()
             ->where('indicator_submission_id', $submission->id)
@@ -1077,6 +1071,7 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        $scopeType = $this->scopeTypeFor($scopeId);
         $fromStatus = $this->statusValue($submission->status);
         $scopeProgress = $scopeProgressResolver->buildScopeProgressForSubmission($submission);
         $submittedScopeIds = is_array($scopeProgress['submittedScopeIds'] ?? null)
@@ -1088,11 +1083,24 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        if ($decision !== 'unverified') {
+            if ($scopeType === 'file' && $this->submissionFileMissingFromStorage($submission, $scopeId)) {
+                throw ValidationException::withMessages([
+                    'scopeId' => 'This submitted file is missing from storage. Ask the School Head to re-upload and resend it before review.',
+                ]);
+            }
+
+            if (! $scopeProgressResolver->isScopeComplete($submission, $scopeId)) {
+                throw ValidationException::withMessages([
+                    'scopeId' => 'Only submitted file or data requirements can be reviewed.',
+                ]);
+            }
+        }
+
         $notes = $request->filled('notes')
             ? trim($request->string('notes')->toString())
             : null;
         $scopeLabel = $scopeProgressResolver->scopeLabel($scopeId);
-        $scopeType = $this->scopeTypeFor($scopeId);
 
         $historyAction = match ($decision) {
             'verified' => 'scope_verified',
