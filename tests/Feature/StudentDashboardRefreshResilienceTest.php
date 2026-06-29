@@ -8,6 +8,7 @@ use App\Support\Indicators\RollingIndicatorYearWindow;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -35,6 +36,36 @@ class StudentDashboardRefreshResilienceTest extends TestCase
                     'total',
                 ],
             ]);
+    }
+
+    public function test_student_sync_fingerprint_query_does_not_reuse_listing_select_columns(): void
+    {
+        $this->seed();
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+        $queries = [];
+
+        DB::listen(static function ($query) use (&$queries): void {
+            $queries[] = strtolower($query->sql);
+        });
+
+        $this->withToken($token)
+            ->getJson('/api/dashboard/students?page=1&per_page=25')
+            ->assertOk()
+            ->assertHeader('X-Sync-Scope', 'division')
+            ->assertHeader('X-Sync-Etag')
+            ->assertHeader('X-Synced-At');
+
+        $aggregateQuery = collect($queries)
+            ->first(static fn (string $sql): bool => str_contains($sql, 'aggregate_count'));
+
+        $this->assertIsString($aggregateQuery, 'Expected the student sync aggregate query to run.');
+        $this->assertStringContainsString('count(*) as aggregate_count', $aggregateQuery);
+        $this->assertStringNotContainsString('students.id', $aggregateQuery);
+        $this->assertStringNotContainsString('students"."id', $aggregateQuery);
+        $this->assertStringNotContainsString('lrn', $aggregateQuery);
+        $this->assertStringNotContainsString('first_name', $aggregateQuery);
+        $this->assertStringNotContainsString('teacher_name', $aggregateQuery);
     }
 
     public function test_school_head_student_dashboard_endpoint_returns_json(): void

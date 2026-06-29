@@ -1028,8 +1028,13 @@ class StudentRecordController extends Controller
      */
     private function buildSyncFingerprint(Builder $query): array
     {
-        $probe = $query
+        $aggregateQuery = clone $query;
+        // FIX: the listing query has explicit selected columns; clear them before aggregate selects.
+        $aggregateQuery->getQuery()->columns = null;
+
+        $probe = $aggregateQuery
             ->reorder()
+            ->withoutEagerLoads()
             ->selectRaw('COUNT(*) as aggregate_count')
             ->selectRaw('MAX(updated_at) as latest_updated_at')
             ->selectRaw('MAX(last_status_at) as latest_status_changed_at')
