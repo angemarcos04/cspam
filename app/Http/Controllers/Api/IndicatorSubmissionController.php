@@ -32,6 +32,7 @@ use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
 use App\Support\Indicators\TargetsMetAutoCalculator;
+use App\Support\Indicators\TargetsMetReportBuilder;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
@@ -198,6 +199,16 @@ class IndicatorSubmissionController extends Controller
 
         return response()->json([
             'data' => (new IndicatorSubmissionResource($submission))->resolve(),
+        ]);
+    }
+
+    public function targetsMetReport(Request $request, IndicatorSubmission $submission): JsonResponse
+    {
+        $user = $this->requireUser($request);
+        $this->assertCanView($user, $submission->school_id);
+
+        return response()->json([
+            'data' => app(TargetsMetReportBuilder::class)->build($submission, $user),
         ]);
     }
 

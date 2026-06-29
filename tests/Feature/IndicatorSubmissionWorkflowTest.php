@@ -2616,6 +2616,55 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
     }
 
+    public function test_private_school_final_submit_fails_when_required_fm_qad_storage_is_missing(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+        /** @var PerformanceMetric $metric */
+        $metric = PerformanceMetric::query()->where('code', 'IMETA_HEAD_NAME')->firstOrFail();
+        $year = (string) collect($metric->input_schema['years'] ?? [])->first();
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+            'indicators' => [
+                [
+                    'metric_code' => 'IMETA_HEAD_NAME',
+                    'actual' => ['values' => [$year => 'Maria Santos']],
+                ],
+            ],
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+        $this->uploadSubmissionFiles($token, $submissionId, SubmissionFileDefinition::nonCoreTypes());
+
+        $missingPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+        Storage::disk('submissions')->assertExists($missingPath);
+        Storage::disk('submissions')->delete($missingPath);
+
+        $submit = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
+        $submit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath(
+                'errors.submission.0',
+                'Submission is incomplete. Missing: ' . SubmissionFileDefinition::shortLabelFor('fm_qad_001') . ' file is missing from storage; re-upload before submitting.',
+            );
+
+        $this->assertDatabaseHas('indicator_submissions', [
+            'id' => (int) $submissionId,
+            'status' => 'draft',
+        ]);
+    }
+
     public function test_file_scope_send_fails_when_physical_file_is_missing(): void
     {
         config()->set('cspams.submission_file_disk', 'submissions');
@@ -2662,6 +2711,48 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('errors.submission.0', 'Only sent indicator scopes can be reviewed.');
     }
 
+    public function test_private_school_fm_qad_scope_send_fails_when_storage_is_missing(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
+            ->assertOk();
+        $missingPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+        Storage::disk('submissions')->delete($missingPath);
+
+        $send = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['fm_qad_001'],
+        ]);
+        $send->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath(
+                'errors.targets.0',
+                'Submission scope is incomplete. Missing: ' . SubmissionFileDefinition::shortLabelFor('fm_qad_001') . ' file is missing from storage; re-upload before sending.',
+            );
+
+        $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => (int) $submissionId,
+            'scope_id' => 'fm_qad_001',
+        ]);
+    }
+
     public function test_monitor_cannot_review_sent_file_when_storage_is_missing(): void
     {
         config()->set('cspams.submission_file_disk', 'submissions');
@@ -2705,6 +2796,55 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseMissing('indicator_submission_scope_reviews', [
             'indicator_submission_id' => (int) $submissionId,
             'scope_id' => 'bmef',
+            'decision' => 'verified',
+        ]);
+    }
+
+    public function test_monitor_cannot_review_sent_private_fm_qad_when_storage_is_missing(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        School::query()->whereKey($schoolHead->school_id)->update(['type' => 'private']);
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ]);
+        $created->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
+            ->assertOk();
+        $storedPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['fm_qad_001'],
+        ])->assertOk();
+        Storage::disk('submissions')->delete($storedPath);
+
+        /** @var User $monitor */
+        $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
+        $monitorToken = $monitor->createToken('missing-storage-fm-qad-review-monitor', ['role:monitor'])->plainTextToken;
+
+        $review = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'fm_qad_001',
+            'decision' => 'verified',
+        ]);
+        $review->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('errors.scopeId.0', 'This submitted file is missing from storage. Ask the School Head to re-upload and resend it before review.');
+
+        $this->assertDatabaseMissing('indicator_submission_scope_reviews', [
+            'indicator_submission_id' => (int) $submissionId,
+            'scope_id' => 'fm_qad_001',
             'decision' => 'verified',
         ]);
     }
