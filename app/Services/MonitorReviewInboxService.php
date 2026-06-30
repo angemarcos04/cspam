@@ -37,16 +37,16 @@ class MonitorReviewInboxService
             ))
             ->values();
 
-        $laneRows = $actionRows
+        $displayRows = $filteredRows
             ->filter(fn (array $row): bool => $this->matchesLane($row, (string) ($filters['lane'] ?? 'all')))
             ->sort($this->sortRows(...))
             ->values();
 
-        $total = $laneRows->count();
+        $total = $displayRows->count();
         $lastPage = max(1, (int) ceil($total / $perPage));
         $safePage = min($page, $lastPage);
         $offset = ($safePage - 1) * $perPage;
-        $pageRows = $laneRows->slice($offset, $perPage)->values();
+        $pageRows = $displayRows->slice($offset, $perPage)->values();
 
         return [
             'data' => $pageRows
@@ -70,11 +70,7 @@ class MonitorReviewInboxService
                 'queueLaneCounts' => $this->queueLaneCounts($actionRows),
                 'schoolPresetCounts' => $this->schoolPresetCounts($filteredRows),
                 'schoolCategoryCounts' => $this->schoolCategoryCounts($baseRows),
-                'needsActionCount' => $baseRows->filter(static fn (array $row): bool => (
-                    (int) ($row['missingCount'] ?? 0) > 0
-                    || (int) ($row['awaitingReviewCount'] ?? 0) > 0
-                    || ($row['indicatorStatus'] ?? null) === FormSubmissionStatus::RETURNED->value
-                ))->count(),
+                'needsActionCount' => $actionRows->count(),
             ],
             'filters' => $this->serializeFilters($filters),
         ];

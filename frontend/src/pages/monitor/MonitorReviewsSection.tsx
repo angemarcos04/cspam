@@ -171,8 +171,8 @@ export function MonitorReviewsSection({
         {paginatedRequirementRows.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 px-5 py-14 text-slate-500">
             <AlertCircle className="h-9 w-9 text-slate-400" />
-            <p className="text-sm font-semibold">No Missing, Returned, or For Review schools found.</p>
-            <p className="text-xs text-slate-400">Current filters may be hiding results.</p>
+            <p className="text-sm font-semibold">No schools found.</p>
+            <p className="text-xs text-slate-400">Current filters may be hiding schools.</p>
             <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
               <button
                 type="button"

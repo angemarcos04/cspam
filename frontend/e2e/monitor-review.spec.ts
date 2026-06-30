@@ -54,8 +54,9 @@ function buildRecord(state: ReviewState) {
 }
 
 function buildReviewInboxResponse(state: ReviewState) {
-  const rowVisible = state !== "verified";
-  const indicatorStatus = state === "returned" ? "returned" : "submitted";
+  const indicatorStatus = state === "verified" ? "validated" : state === "returned" ? "returned" : "submitted";
+  const awaitingReviewCount = state === "forReview" || state === "unverified" ? 1 : 0;
+  const needsActionCount = state === "returned" || awaitingReviewCount > 0 ? 1 : 0;
   const row = {
     schoolKey: "code:401777",
     schoolId: "record-1",
@@ -71,7 +72,7 @@ function buildReviewInboxResponse(state: ReviewState) {
     hasActivePackageSubmission: true,
     hasAnySubmitted: true,
     isComplete: state !== "returned",
-    awaitingReviewCount: state === "returned" ? 0 : 1,
+    awaitingReviewCount,
     missingCount: 0,
     lastActivityAt: nowIso,
     lastActivityTime: 1781419140000,
@@ -81,20 +82,20 @@ function buildReviewInboxResponse(state: ReviewState) {
   };
 
   return {
-    data: rowVisible ? [row] : [],
+    data: [row],
     meta: {
       currentPage: 1,
       lastPage: 1,
       perPage: 10,
-      total: rowVisible ? 1 : 0,
-      from: rowVisible ? 1 : null,
-      to: rowVisible ? 1 : null,
+      total: 1,
+      from: 1,
+      to: 1,
       hasMorePages: false,
       requirementCounts: {
         total: 1,
         submittedAny: 1,
         complete: state === "verified" ? 1 : 0,
-        awaitingReview: state === "forReview" || state === "unverified" ? 1 : 0,
+        awaitingReview: awaitingReviewCount,
         missing: 0,
         returned: state === "returned" ? 1 : 0,
       },
@@ -113,13 +114,13 @@ function buildReviewInboxResponse(state: ReviewState) {
         pending: 0,
       },
       queueLaneCounts: {
-        all: rowVisible ? 1 : 0,
+        all: needsActionCount,
         urgent: state === "returned" ? 1 : 0,
         returned: state === "returned" ? 1 : 0,
-        for_review: state === "forReview" || state === "unverified" ? 1 : 0,
+        for_review: awaitingReviewCount,
         waiting_data: 0,
       },
-      needsActionCount: rowVisible ? 1 : 0,
+      needsActionCount,
     },
   };
 }
@@ -535,13 +536,15 @@ test.describe("monitor review smoke flow", () => {
 
     await fileRow.getByRole("button", { name: "Verify", exact: true }).click();
 
-    await expect(page.getByText("No Missing, Returned, or For Review schools found.")).toBeVisible();
-    await page.getByRole("button", { name: "Open Schools" }).click();
-    const schoolCard = page.locator("article", { hasText: "AMA Computer College-Santiago City" }).first();
-    await expect(schoolCard).toBeVisible();
-    await expect(schoolCard.getByText(/For review/i)).toHaveCount(0);
-    await expect(schoolCard.getByText(/Returned/i)).toHaveCount(0);
-    await expect(schoolCard.getByText(/Incomplete/i)).toHaveCount(0);
+    const inbox = page.locator("#monitor-requirements-table");
+    const validatedRow = inbox.locator("tr", { hasText: "AMA Computer College-Santiago City" }).first();
+    await expect(validatedRow).toBeVisible();
+    await expect(validatedRow.getByText("Validated")).toBeVisible();
+    await expect(validatedRow.getByText(/For Review/i)).toHaveCount(0);
+    await expect(validatedRow.getByText(/Returned/i)).toHaveCount(0);
+
+    await validatedRow.getByRole("button", { name: "Review" }).click();
+    await expect(page.locator("aside", { hasText: "School Detail" }).getByText("FM-QAD-001")).toBeVisible();
   });
 
   test("reopens a verified file with Unverify and can verify it again", async ({ page }) => {

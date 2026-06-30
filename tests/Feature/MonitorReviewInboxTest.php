@@ -41,7 +41,9 @@ class MonitorReviewInboxTest extends TestCase
             ->assertJsonPath('meta.currentPage', 1)
             ->assertJsonPath('meta.lastPage', 2)
             ->assertJsonPath('meta.perPage', 2)
-            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.total', 4)
+            ->assertJsonPath('meta.queueLaneCounts.all', 3)
+            ->assertJsonPath('meta.needsActionCount', 3)
             ->assertJsonPath('data.0.schoolName', 'Review Inbox API Returned')
             ->assertJsonPath('data.0.indicatorStatus', FormSubmissionStatus::RETURNED->value)
             ->assertJsonPath('data.1.schoolName', 'Review Inbox API Missing')
@@ -55,7 +57,9 @@ class MonitorReviewInboxTest extends TestCase
         $secondPage->assertOk()
             ->assertJsonPath('meta.currentPage', 2)
             ->assertJsonPath('data.0.schoolName', 'Review Inbox API Waiting')
-            ->assertJsonPath('data.0.awaitingReviewCount', 1);
+            ->assertJsonPath('data.0.awaitingReviewCount', 1)
+            ->assertJsonPath('data.1.schoolName', 'Review Inbox API Validated')
+            ->assertJsonPath('data.1.indicatorStatus', FormSubmissionStatus::VALIDATED->value);
     }
 
     public function test_monitor_review_inbox_supports_computed_filters(): void
@@ -108,7 +112,7 @@ class MonitorReviewInboxTest extends TestCase
             ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id=' . $academicYear->id);
 
         $currentYearScoped->assertOk()
-            ->assertJsonPath('meta.total', 3)
+            ->assertJsonPath('meta.total', 4)
             ->assertJsonPath('data.0.indicatorStatus', FormSubmissionStatus::RETURNED->value);
     }
 
