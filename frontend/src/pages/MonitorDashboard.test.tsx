@@ -538,7 +538,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
-    expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
     expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
 
@@ -559,14 +559,11 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
-    const reviewsHeadings = await screen.findAllByRole("heading", { name: "Reviews" });
-    const topReviewsToolbar = reviewsHeadings[0]?.closest("section");
-
-    expect(topReviewsToolbar).toBeTruthy();
-    expect(within(topReviewsToolbar as HTMLElement).queryByRole("button", { name: "Review" })).toBeNull();
-    expect(within(topReviewsToolbar as HTMLElement).queryByRole("button", { name: "Filters" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+    expect(document.getElementById("monitor-action-queue")).toBeNull();
+    expect(screen.queryByText("Needs Action")).toBeNull();
     expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Queue List" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Queue List" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Review Workspace" })).toBeNull();
     expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
     expect(screen.queryByRole("button", { name: "Details" })).toBeNull();
@@ -577,7 +574,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     fireEvent.change(globalSearch, { target: { value: "Santiago" } });
     expect(globalSearch.value).toBe("Santiago");
 
-    expect(await screen.findByRole("heading", { name: "Queue List" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "School Data" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
@@ -596,9 +593,6 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const schoolDetail = screen.getByText("School Detail").closest("aside");
     expect(schoolDetail).toBeTruthy();
     expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "Queue List" }));
-    expect(scrollIntoViewMock).toHaveBeenCalled();
   });
 
   it("opens the monitor audit trail and renders safe workflow events", async () => {

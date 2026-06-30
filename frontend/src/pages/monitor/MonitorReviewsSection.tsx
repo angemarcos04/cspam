@@ -1,14 +1,9 @@
 import { useState, type Dispatch, type SetStateAction } from "react";
 import {
   AlertCircle,
-  AlertTriangle,
-  ArrowDown,
   BellRing,
-  CheckCircle2,
   Eye,
 } from "lucide-react";
-import { StatCard } from "@/components/StatCard";
-import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
 import type { SchoolReminderSummary, SchoolStatus } from "@/types";
 
 interface ReviewQueueRow {
@@ -32,11 +27,7 @@ interface ReviewQueueRow {
 
 interface MonitorReviewsSectionProps {
   isMobileViewport: boolean;
-  quickJumpBindings: MonitorQuickJumpBindings;
   sectionFocusClass: (targetId: string) => string;
-  needsActionCount: number;
-  returnedCount: number;
-  submittedCount: number;
   paginatedRequirementRows: ReviewQueueRow[];
   laneFilteredQueueRows: ReviewQueueRow[];
   schoolDrawerKey: string | null;
@@ -85,11 +76,7 @@ function latestReminderText(row: ReviewQueueRow, formatDateTime: (value: string)
 
 export function MonitorReviewsSection({
   isMobileViewport,
-  quickJumpBindings,
   sectionFocusClass,
-  needsActionCount,
-  returnedCount,
-  submittedCount,
   paginatedRequirementRows,
   laneFilteredQueueRows,
   schoolDrawerKey,
@@ -143,26 +130,11 @@ export function MonitorReviewsSection({
 
   return (
     <>
-      <section id="monitor-action-queue" className={`dashboard-shell mb-5 rounded-sm p-4 ${sectionFocusClass("monitor-action-queue")}`}>
-        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-          <div>
-            <h2 className="text-base font-bold text-slate-900">Reviews</h2>
-          </div>
-          {!isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile={false} />}
-        </div>
-        {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
-        <div className="mt-3 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-          <StatCard label="Needs Action" value={needsActionCount.toLocaleString()} icon={<AlertTriangle className="h-5 w-5" />} tone="warning" />
-          <StatCard label="Returned" value={returnedCount.toLocaleString()} icon={<ArrowDown className="h-5 w-5" />} tone="warning" />
-          <StatCard label="Submitted" value={submittedCount.toLocaleString()} icon={<CheckCircle2 className="h-5 w-5" />} tone="success" />
-        </div>
-      </section>
-
-      <section id="monitor-requirements-table" className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
+      <section id="monitor-requirements-table" className={`surface-panel dashboard-shell animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <h2 className="text-base font-bold text-slate-900">Queue List</h2>
+              <h2 className="text-base font-bold text-slate-900">Review Inbox</h2>
             </div>
           </div>
         </div>

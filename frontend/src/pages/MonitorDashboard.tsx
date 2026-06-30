@@ -503,8 +503,6 @@ export function MonitorDashboard() {
   const isDashboardSyncing =
     isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
   const showSubmissionFilters = showAdvancedFilters;
-  const returnedCount = requirementCounts.returned;
-  const submittedCount = requirementCounts.submittedAny;
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
   const navigatorBadges = useMemo<
@@ -518,7 +516,7 @@ export function MonitorDashboard() {
       schools: { urgency: "none" },
       audit: { urgency: "none" },
     }),
-    [needsActionCount, requirementCounts.missing, returnedCount],
+    [needsActionCount, requirementCounts.missing],
   );
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
@@ -1191,11 +1189,7 @@ export function MonitorDashboard() {
           {!showNavigatorManual && activeTopNavigator === "reviews" && (
             <MonitorReviewsSection
               isMobileViewport={isMobileViewport}
-              quickJumpBindings={quickJumpBindings}
               sectionFocusClass={sectionFocusClass}
-              needsActionCount={needsActionCount}
-              returnedCount={returnedCount}
-              submittedCount={submittedCount}
               paginatedRequirementRows={paginatedRequirementRows}
               laneFilteredQueueRows={laneFilteredQueueRows}
               schoolDrawerKey={schoolDrawerKey}

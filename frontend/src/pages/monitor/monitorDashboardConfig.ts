@@ -107,7 +107,7 @@ export const SCHOOL_QUICK_PRESET_OPTIONS: Array<{
 export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]> = {
   reviews: [
     { id: "filters_queue", label: "Filters", targetId: "monitor-submission-filters", icon: Filter },
-    { id: "queue_list", label: "Queue List", targetId: "monitor-requirements-table", icon: ListChecks },
+    { id: "queue_list", label: "Review Inbox", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
   schools: [],
   audit: [],
