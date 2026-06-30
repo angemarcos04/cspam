@@ -53,6 +53,77 @@ function buildRecord(state: ReviewState) {
   };
 }
 
+function buildReviewInboxResponse(state: ReviewState) {
+  const rowVisible = state !== "verified";
+  const indicatorStatus = state === "returned" ? "returned" : "submitted";
+  const row = {
+    schoolKey: "code:401777",
+    schoolId: "record-1",
+    schoolCode: "401777",
+    schoolName: "AMA Computer College-Santiago City",
+    region: "Region II",
+    schoolStatus: "active",
+    packageSchoolType: "private",
+    requirementModeLabel: "Active package requirements: FM-QAD uploads only.",
+    activePackageLabel: "FM-QAD uploads only",
+    hasComplianceRecord: true,
+    indicatorStatus,
+    hasActivePackageSubmission: true,
+    hasAnySubmitted: true,
+    isComplete: state !== "returned",
+    awaitingReviewCount: state === "returned" ? 0 : 1,
+    missingCount: 0,
+    lastActivityAt: nowIso,
+    lastActivityTime: 1781419140000,
+    hasReminderRecipient: true,
+    reminderRecipientStatus: "available",
+    latestReminder: null,
+  };
+
+  return {
+    data: rowVisible ? [row] : [],
+    meta: {
+      currentPage: 1,
+      lastPage: 1,
+      perPage: 10,
+      total: rowVisible ? 1 : 0,
+      from: rowVisible ? 1 : null,
+      to: rowVisible ? 1 : null,
+      hasMorePages: false,
+      requirementCounts: {
+        total: 1,
+        submittedAny: 1,
+        complete: state === "verified" ? 1 : 0,
+        awaitingReview: state === "forReview" || state === "unverified" ? 1 : 0,
+        missing: 0,
+        returned: state === "returned" ? 1 : 0,
+      },
+      workflowStatusCounts: {
+        all: 1,
+        missing: 0,
+        waiting: state === "forReview" || state === "unverified" ? 1 : 0,
+        returned: state === "returned" ? 1 : 0,
+        submitted: 0,
+        validated: state === "verified" ? 1 : 0,
+      },
+      schoolStatusCounts: {
+        all: 1,
+        active: 1,
+        inactive: 0,
+        pending: 0,
+      },
+      queueLaneCounts: {
+        all: rowVisible ? 1 : 0,
+        urgent: state === "returned" ? 1 : 0,
+        returned: state === "returned" ? 1 : 0,
+        for_review: state === "forReview" || state === "unverified" ? 1 : 0,
+        waiting_data: 0,
+      },
+      needsActionCount: rowVisible ? 1 : 0,
+    },
+  };
+}
+
 function buildTargetsMetItem(code: string, name: string, actualDisplay: string) {
   return {
     id: `item-${code}`,
@@ -302,6 +373,10 @@ async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState
           },
         }),
       });
+    }
+
+    if (path === "/api/dashboard/review-inbox") {
+      return jsonResponse(route, buildReviewInboxResponse(stateRef.value));
     }
 
     if (path === "/api/indicators/submissions") {

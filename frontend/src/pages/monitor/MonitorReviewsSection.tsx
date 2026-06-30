@@ -46,6 +46,7 @@ interface MonitorReviewsSectionProps {
   formatDateTime: (value: string) => string;
   safeRequirementsPage: number;
   totalRequirementPages: number;
+  totalRequirementRows: number;
   setRequirementsPage: Dispatch<SetStateAction<number>>;
 }
 
@@ -95,6 +96,7 @@ export function MonitorReviewsSection({
   formatDateTime,
   safeRequirementsPage,
   totalRequirementPages,
+  totalRequirementRows,
   setRequirementsPage,
 }: MonitorReviewsSectionProps) {
   const [reminderTarget, setReminderTarget] = useState<ReviewQueueRow | null>(null);
@@ -311,7 +313,7 @@ export function MonitorReviewsSection({
           </>
         )}
 
-        {laneFilteredQueueRows.length > 0 && (
+        {totalRequirementRows > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-slate-200 bg-slate-50 px-4 py-3">
             <p className="text-xs text-slate-600">
               Page <span className="font-semibold text-slate-900">{safeRequirementsPage}</span> of{" "}

@@ -9,6 +9,7 @@ interface UseMonitorDashboardGlobalCommandsArgs {
   refreshSubmissions: (options?: RefreshOptions) => Promise<unknown>;
   refreshStudents: (options?: RefreshOptions) => Promise<unknown>;
   refreshTeachers: (options?: RefreshOptions) => Promise<unknown>;
+  refreshReviewInbox?: (options?: RefreshOptions) => Promise<unknown>;
   onToast: (message: string, tone?: DashboardToastTone) => void;
   setShowNavigatorManual: Dispatch<SetStateAction<boolean>>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
@@ -33,6 +34,7 @@ export function useMonitorDashboardGlobalCommands({
   refreshSubmissions,
   refreshStudents,
   refreshTeachers,
+  refreshReviewInbox,
   onToast,
   setShowNavigatorManual,
   setActiveTopNavigator,
@@ -42,16 +44,18 @@ export function useMonitorDashboardGlobalCommands({
 }: UseMonitorDashboardGlobalCommandsArgs): UseMonitorDashboardGlobalCommandsResult {
   const handleRefreshDashboard = useCallback(async () => {
     const manualRefreshOptions: RefreshOptions = { force: true, throwOnError: true };
+    const reviewInboxTasks = refreshReviewInbox ? [() => refreshReviewInbox(manualRefreshOptions)] : [];
     const results = await runRefreshBatches([
       [() => refreshRecords(manualRefreshOptions)],
       [() => refreshSubmissions(manualRefreshOptions)],
+      reviewInboxTasks,
       [() => refreshStudents(manualRefreshOptions), () => refreshTeachers(manualRefreshOptions)],
     ]);
 
     if (results.some((result) => result.status === "rejected")) {
       onToast("Some dashboard data failed to refresh. Please try again.", "warning");
     }
-  }, [onToast, refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [onToast, refreshRecords, refreshReviewInbox, refreshSubmissions, refreshStudents, refreshTeachers]);
 
   const handleMonitorTopNavigate = useCallback(
     (id: MonitorTopNavigatorId) => {

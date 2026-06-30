@@ -75,6 +75,74 @@ const bulkImportRecordsMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
+const defaultReviewInboxRow = {
+  schoolKey: "code:900001",
+  schoolId: "1",
+  schoolCode: "900001",
+  schoolName: "Santiago Elementary",
+  region: "Region II",
+  schoolStatus: "active",
+  packageSchoolType: "public",
+  requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+  activePackageLabel: "BMEF and SMEA",
+  hasComplianceRecord: true,
+  indicatorStatus: null,
+  hasActivePackageSubmission: false,
+  hasAnySubmitted: false,
+  isComplete: false,
+  awaitingReviewCount: 0,
+  missingCount: 1,
+  lastActivityAt: "2026-03-27T09:00:00.000Z",
+  lastActivityTime: 1774602000000,
+  hasReminderRecipient: true,
+  reminderRecipientStatus: "available",
+  latestReminder: null,
+};
+
+function defaultReviewInboxResponse() {
+  return {
+    data: [defaultReviewInboxRow],
+    meta: {
+      currentPage: 1,
+      lastPage: 1,
+      perPage: 10,
+      total: 1,
+      from: 1,
+      to: 1,
+      hasMorePages: false,
+      requirementCounts: {
+        total: 1,
+        submittedAny: 0,
+        complete: 0,
+        awaitingReview: 0,
+        missing: 1,
+        returned: 0,
+      },
+      workflowStatusCounts: {
+        all: 1,
+        missing: 1,
+        waiting: 0,
+        returned: 0,
+        submitted: 0,
+        validated: 0,
+      },
+      schoolStatusCounts: {
+        all: 1,
+        active: 1,
+        inactive: 0,
+        pending: 0,
+      },
+      queueLaneCounts: {
+        all: 1,
+        urgent: 1,
+        returned: 0,
+        for_review: 0,
+        waiting_data: 1,
+      },
+      needsActionCount: 1,
+    },
+  };
+}
 
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
@@ -87,6 +155,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     refreshSubmissionsMock.mockReset();
     scrollIntoViewMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(defaultReviewInboxResponse()), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
     issueSchoolHeadSetupLinkMock.mockResolvedValue({
       account: {
         id: "account-1",
@@ -450,6 +522,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       "",
       "/monitor/dashboard?tab=reviews&q=Santiago&status=active&from=2026-01-01&to=2026-12-31&school=code%3A900001",
     );
+    const fetchMock = vi.mocked(fetch);
 
     render(<MonitorDashboard />);
 
@@ -470,6 +543,20 @@ describe("MonitorDashboard School Head delivery flows", () => {
             && filters?.schoolId === "1";
         }),
       ).toBe(true);
+    });
+
+    await waitFor(() => {
+      const reviewInboxUrl = fetchMock.mock.calls
+        .map(([input]) => String(input))
+        .find((url) => url.includes("/api/dashboard/review-inbox") && url.includes("search=Santiago"));
+      expect(reviewInboxUrl).toBeTruthy();
+      expect(reviewInboxUrl).toContain("search=Santiago");
+      expect(reviewInboxUrl).toContain("status=active");
+      expect(reviewInboxUrl).toContain("date_from=2026-01-01");
+      expect(reviewInboxUrl).toContain("date_to=2026-12-31");
+      expect(reviewInboxUrl).toContain("school_id=1");
+      expect(reviewInboxUrl).toContain("page=1");
+      expect(reviewInboxUrl).toContain("per_page=10");
     });
   });
 

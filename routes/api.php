@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
 use App\Http\Controllers\Api\MailDiagnosticsController;
+use App\Http\Controllers\Api\MonitorReviewInboxController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\QueueDiagnosticsController;
 use App\Http\Controllers\Api\ReadinessDiagnosticsController;
@@ -68,6 +69,7 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->post('/broadcas
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->get('/audit-logs', [AuditLogController::class, 'index']);
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
+    Route::get('/review-inbox', [MonitorReviewInboxController::class, 'index']);
     Route::get('/records', [SchoolRecordController::class, 'index']);
     Route::post('/records', [SchoolRecordController::class, 'store']);
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);

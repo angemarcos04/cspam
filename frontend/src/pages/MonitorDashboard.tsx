@@ -63,6 +63,7 @@ import { useMonitorPageStateGuard } from "@/pages/monitor/useMonitorPageStateGua
 import { useMonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import { useMonitorQuickJump } from "@/pages/monitor/useMonitorQuickJump";
 import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirementData";
+import { useMonitorReviewInbox } from "@/pages/monitor/useMonitorReviewInbox";
 import { refreshMonitorReviewData } from "@/pages/monitor/monitorReviewDataRefresh";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
@@ -364,22 +365,6 @@ export function MonitorDashboard() {
       }),
     [refreshRecords, schoolRecordRefreshFilters],
   );
-  const {
-    handleRefreshDashboard,
-    handleMonitorTopNavigate,
-  } = useMonitorDashboardGlobalCommands({
-    refreshRecords: refreshRecordsForCurrentFilters,
-    refreshSubmissions,
-    refreshStudents,
-    refreshTeachers,
-    onToast: pushToast,
-    setShowNavigatorManual,
-    setActiveTopNavigator,
-    focusAndScrollTo,
-    isMobileViewport,
-    setIsNavigatorVisible,
-  });
-
   useEffect(() => {
     if (!filtersHydrated) {
       return;
@@ -514,27 +499,127 @@ export function MonitorDashboard() {
     allSchoolScopeKey: ALL_SCHOOL_SCOPE,
     requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
   });
+  const reviewInboxFilters = useMemo(() => ({
+    search: effectiveSearch,
+    status: statusFilter,
+    workflow: requirementFilter,
+    lane: queueLane,
+    preset: schoolQuickPreset,
+    sector: schoolSectorFilter,
+    level: schoolLevelFilter,
+    schoolId: selectedSchoolScope?.id ?? null,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+  }), [
+    effectiveSearch,
+    filterDateFrom,
+    filterDateTo,
+    queueLane,
+    requirementFilter,
+    schoolLevelFilter,
+    schoolQuickPreset,
+    schoolSectorFilter,
+    selectedSchoolScope?.id,
+    statusFilter,
+  ]);
+  const isReviewInboxActive = activeTopNavigator === "reviews";
+  const {
+    rows: reviewInboxRows,
+    meta: reviewInboxMeta,
+    isLoading: isReviewInboxLoading,
+    error: reviewInboxError,
+    lastSyncedAt: reviewInboxLastSyncedAt,
+    refresh: refreshReviewInbox,
+  } = useMonitorReviewInbox({
+    enabled: filtersHydrated && isAuthenticated && isReviewInboxActive,
+    filters: reviewInboxFilters,
+    page: requirementsPage,
+    perPage: REQUIREMENT_PAGE_SIZE,
+  });
+  const reviewInboxRequirementByKey = useMemo(() => {
+    const map = new Map(schoolRequirementByKey);
+    for (const row of reviewInboxRows) {
+      map.set(row.schoolKey, row);
+    }
+    return map;
+  }, [reviewInboxRows, schoolRequirementByKey]);
+  const effectivePaginatedRequirementRows = isReviewInboxActive ? reviewInboxRows : paginatedRequirementRows;
+  const effectiveLaneFilteredQueueRows = isReviewInboxActive ? reviewInboxRows : laneFilteredQueueRows;
+  const effectiveActionQueueRows = isReviewInboxActive ? reviewInboxRows : actionQueueRows;
+  const effectiveTotalRequirementPages = isReviewInboxActive ? reviewInboxMeta.lastPage : totalRequirementPages;
+  const effectiveSafeRequirementsPage = isReviewInboxActive ? reviewInboxMeta.currentPage : safeRequirementsPage;
+  const effectiveTotalRequirementRows = isReviewInboxActive ? reviewInboxMeta.total : laneFilteredQueueRows.length;
+  const effectiveNeedsActionCount = isReviewInboxActive
+    ? (reviewInboxMeta.needsActionCount ?? reviewInboxMeta.total)
+    : needsActionCount;
+  const effectiveMissingCount = isReviewInboxActive
+    ? (reviewInboxMeta.requirementCounts?.missing ?? requirementCounts.missing)
+    : requirementCounts.missing;
+  const effectiveSchoolStatusCounts = useMemo(() => {
+    if (!isReviewInboxActive || !reviewInboxMeta.schoolStatusCounts) {
+      return schoolStatusCounts;
+    }
+
+    return {
+      all: reviewInboxMeta.schoolStatusCounts.all ?? 0,
+      active: reviewInboxMeta.schoolStatusCounts.active ?? 0,
+      inactive: reviewInboxMeta.schoolStatusCounts.inactive ?? 0,
+      pending: reviewInboxMeta.schoolStatusCounts.pending ?? 0,
+    };
+  }, [isReviewInboxActive, reviewInboxMeta.schoolStatusCounts, schoolStatusCounts]);
+  const effectiveQueueLaneCounts = useMemo(() => {
+    if (!isReviewInboxActive || !reviewInboxMeta.queueLaneCounts) {
+      return queueLaneCounts;
+    }
+
+    return {
+      all: reviewInboxMeta.queueLaneCounts.all ?? 0,
+      urgent: reviewInboxMeta.queueLaneCounts.urgent ?? 0,
+      returned: reviewInboxMeta.queueLaneCounts.returned ?? 0,
+      for_review: reviewInboxMeta.queueLaneCounts.for_review ?? 0,
+      waiting_data: reviewInboxMeta.queueLaneCounts.waiting_data ?? 0,
+    };
+  }, [isReviewInboxActive, queueLaneCounts, reviewInboxMeta.queueLaneCounts]);
+  const {
+    handleRefreshDashboard,
+    handleMonitorTopNavigate,
+  } = useMonitorDashboardGlobalCommands({
+    refreshRecords: refreshRecordsForCurrentFilters,
+    refreshSubmissions,
+    refreshStudents,
+    refreshTeachers,
+    refreshReviewInbox,
+    onToast: pushToast,
+    setShowNavigatorManual,
+    setActiveTopNavigator,
+    focusAndScrollTo,
+    isMobileViewport,
+    setIsNavigatorVisible,
+  });
   const dashboardLastSyncedAt = useMemo(() => {
     const recordTime = lastSyncedAt ? Date.parse(lastSyncedAt) : Number.NaN;
     const indicatorTime = indicatorLastSyncedAt ? Date.parse(indicatorLastSyncedAt) : Number.NaN;
     const studentTime = studentLastSyncedAt ? Date.parse(studentLastSyncedAt) : Number.NaN;
     const teacherTime = teacherLastSyncedAt ? Date.parse(teacherLastSyncedAt) : Number.NaN;
+    const reviewInboxTime = reviewInboxLastSyncedAt ? Date.parse(reviewInboxLastSyncedAt) : Number.NaN;
     const maxTime = Math.max(
       Number.isFinite(recordTime) ? recordTime : 0,
       Number.isFinite(indicatorTime) ? indicatorTime : 0,
       Number.isFinite(studentTime) ? studentTime : 0,
       Number.isFinite(teacherTime) ? teacherTime : 0,
+      Number.isFinite(reviewInboxTime) ? reviewInboxTime : 0,
     );
     return maxTime > 0 ? new Date(maxTime).toISOString() : null;
-  }, [indicatorLastSyncedAt, lastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
+  }, [indicatorLastSyncedAt, lastSyncedAt, reviewInboxLastSyncedAt, studentLastSyncedAt, teacherLastSyncedAt]);
   const dashboardError = resolveMonitorDashboardError([
     { label: "School records", message: recordError },
     { label: "Indicator submissions", message: indicatorError },
+    { label: "Review inbox", message: reviewInboxError },
     { label: "Student records", message: studentError },
     { label: "Teacher records", message: teacherError },
   ]);
   const isDashboardSyncing =
-    isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading;
+    isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading || isReviewInboxLoading;
   const showSubmissionFilters = showAdvancedFilters;
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
@@ -543,13 +628,13 @@ export function MonitorDashboard() {
   >(
     () => ({
       reviews: {
-        primary: needsActionCount,
-        urgency: requirementCounts.missing > 0 ? "high" : needsActionCount > 0 ? "medium" : "none",
+        primary: effectiveNeedsActionCount,
+        urgency: effectiveMissingCount > 0 ? "high" : effectiveNeedsActionCount > 0 ? "medium" : "none",
       },
       schools: { urgency: "none" },
       audit: { urgency: "none" },
     }),
-    [needsActionCount, requirementCounts.missing],
+    [effectiveMissingCount, effectiveNeedsActionCount],
   );
   const quickJumpItems = useMemo(
     () => MONITOR_QUICK_JUMPS[activeTopNavigator] ?? [],
@@ -590,7 +675,7 @@ export function MonitorDashboard() {
         return directRecord;
       }
 
-      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const summary = reviewInboxRequirementByKey.get(schoolKey) ?? null;
       const normalizedKey = schoolKey.trim().toLowerCase();
       const keyCode = normalizedKey.startsWith("code:") ? normalizedKey.slice("code:".length).trim().toUpperCase() : "";
       const keyName = normalizedKey.startsWith("name:") ? normalizedKey.slice("name:".length).trim() : "";
@@ -609,7 +694,7 @@ export function MonitorDashboard() {
         );
       }) ?? null;
     },
-    [recordBySchoolKey, recordsWithReviewStatusOverrides, schoolRequirementByKey],
+    [recordBySchoolKey, recordsWithReviewStatusOverrides, reviewInboxRequirementByKey],
   );
 
   const resolveSchoolDrawerRecordId = useCallback(
@@ -625,11 +710,11 @@ export function MonitorDashboard() {
         return "";
       }
 
-      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const summary = reviewInboxRequirementByKey.get(schoolKey) ?? null;
       const record = resolveSchoolDrawerRecord(schoolKey);
       return (summary?.schoolCode ?? record?.schoolId ?? record?.schoolCode ?? "").trim();
     },
-    [resolveSchoolDrawerRecord, schoolRequirementByKey],
+    [resolveSchoolDrawerRecord, reviewInboxRequirementByKey],
   );
 
   const resolveSchoolDrawerLatestIndicatorSubmissionId = useCallback(
@@ -644,7 +729,7 @@ export function MonitorDashboard() {
         return latestRecordSubmissionId;
       }
 
-      const summary = schoolRequirementByKey.get(schoolKey) ?? null;
+      const summary = reviewInboxRequirementByKey.get(schoolKey) ?? null;
       const normalizedSchoolCode = String(summary?.schoolCode ?? record?.schoolCode ?? record?.schoolId ?? "")
         .trim()
         .toUpperCase();
@@ -669,7 +754,7 @@ export function MonitorDashboard() {
 
       return String(matchingSubmissions[0]?.id ?? "").trim();
     },
-    [allSubmissions, resolveSchoolDrawerRecord, schoolRequirementByKey],
+    [allSubmissions, resolveSchoolDrawerRecord, reviewInboxRequirementByKey],
   );
 
   const {
@@ -748,7 +833,7 @@ export function MonitorDashboard() {
     selectedSchoolDrawerYear,
     schoolDrawerSubmissions: schoolDrawerIndicatorSubmissions,
     schoolDrawerSubmissionsError,
-    schoolRequirementByKey,
+    schoolRequirementByKey: reviewInboxRequirementByKey,
     recordBySchoolKey,
     studentStatsBySchoolKey,
     accurateSyncedCountsBySchoolKey,
@@ -772,8 +857,9 @@ export function MonitorDashboard() {
       refreshSchoolDrawer,
       refreshSubmissions,
       refreshRecords,
+      refreshReviewInbox,
     });
-  }, [refreshRecords, refreshSchoolDrawer, refreshSubmissions]);
+  }, [refreshRecords, refreshReviewInbox, refreshSchoolDrawer, refreshSubmissions]);
 
   useEffect(() => {
     if (!latestRealtimeBatch) {
@@ -797,8 +883,9 @@ export function MonitorDashboard() {
       refreshSchoolDrawer,
       refreshSubmissions,
       refreshRecords: refreshRecordsForCurrentFilters,
+      refreshReviewInbox,
     });
-  }, [latestRealtimeBatch, refreshRecordsForCurrentFilters, refreshSchoolDrawer, refreshSubmissions]);
+  }, [latestRealtimeBatch, refreshRecordsForCurrentFilters, refreshReviewInbox, refreshSchoolDrawer, refreshSubmissions]);
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
     focusedSectionId,
@@ -858,7 +945,7 @@ export function MonitorDashboard() {
     statusFilter,
     requirementsPage,
     recordsPage,
-    totalRequirementPages,
+    totalRequirementPages: effectiveTotalRequirementPages,
     totalRecordPages,
     visibleRequirementFilterIds,
     setRequirementsPage,
@@ -905,7 +992,7 @@ export function MonitorDashboard() {
   } = useMonitorSchoolActionRouter({
     scopedRecordBySchoolKey,
     recordBySchoolKey,
-    schoolRequirementByKey,
+    schoolRequirementByKey: reviewInboxRequirementByKey,
     setActiveTopNavigator,
     openSchoolDrawer,
     focusAndScrollTo,
@@ -933,9 +1020,9 @@ export function MonitorDashboard() {
   } = useMonitorDashboardCommands({
     activeTopNavigator,
     compactSchoolRows,
-    laneFilteredQueueRows,
-    actionQueueRows,
-    schoolRequirementByKey,
+    laneFilteredQueueRows: effectiveLaneFilteredQueueRows,
+    actionQueueRows: effectiveActionQueueRows,
+    schoolRequirementByKey: reviewInboxRequirementByKey,
     selectedSchoolScopeKey,
     schoolDrawerKey,
     globalSearchInputRef,
@@ -1223,8 +1310,8 @@ export function MonitorDashboard() {
             <MonitorReviewsSection
               isMobileViewport={isMobileViewport}
               sectionFocusClass={sectionFocusClass}
-              paginatedRequirementRows={paginatedRequirementRows}
-              laneFilteredQueueRows={laneFilteredQueueRows}
+              paginatedRequirementRows={effectivePaginatedRequirementRows}
+              laneFilteredQueueRows={effectiveLaneFilteredQueueRows}
               schoolDrawerKey={schoolDrawerKey}
               remindingSchoolKey={remindingSchoolKey}
               resetQueueFilters={resetQueueFilters}
@@ -1239,8 +1326,9 @@ export function MonitorDashboard() {
               isUrgentRequirement={isUrgentRequirement}
               sanitizeAnchorToken={sanitizeAnchorToken}
               formatDateTime={formatDateTime}
-              safeRequirementsPage={safeRequirementsPage}
-              totalRequirementPages={totalRequirementPages}
+              safeRequirementsPage={effectiveSafeRequirementsPage}
+              totalRequirementPages={effectiveTotalRequirementPages}
+              totalRequirementRows={effectiveTotalRequirementRows}
               setRequirementsPage={setRequirementsPage}
             />
           )}
