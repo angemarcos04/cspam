@@ -246,7 +246,15 @@ describe("MonitorSchoolDrawer", () => {
     expect(screen.getByRole("button", { name: "Submissions" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Indicator History" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Snapshot" })).toBeNull();
-    expect(screen.getByText("Submitted Packages")).toBeTruthy();
+    expect(screen.queryByText("Submitted Packages")).toBeNull();
+    expect(screen.queryByText(/Required files and form sections/i)).toBeNull();
+    expect(screen.queryByText("Package status")).toBeNull();
+    expect(screen.queryByText("Critical Alerts")).toBeNull();
+    expect(screen.queryByText("Missing Indicators")).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Requirement" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Submitted" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Action" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "View School Achievements" })).toBeNull();
     expect(screen.queryByRole("button", { name: "View FM-QAD-001" })).toBeNull();
     fireEvent.click(screen.getAllByRole("button", { name: "View" })[0]);
@@ -784,7 +792,8 @@ describe("MonitorSchoolDrawer", () => {
       kpiRows: [{ key: "k2", label: "Net Enrollment Rate", target: "100.00%", actual: "99.00%", status: "met" }],
     };
 
-    expect(screen.getAllByText("Viewing SY 2025-2026.").length).toBeGreaterThan(0);
+    expect((screen.getByLabelText("Monitor school detail academic year") as HTMLSelectElement).value).toBe("2025-2026");
+    expect(screen.queryByText("Viewing SY 2025-2026.")).toBeNull();
     expect(screen.getByText("bmef.pdf")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
     expect(screen.getAllByRole("button", { name: "View" }).length).toBeGreaterThanOrEqual(1);
@@ -804,7 +813,8 @@ describe("MonitorSchoolDrawer", () => {
       />,
     );
 
-    expect(screen.getAllByText("Viewing SY 2026-2027.").length).toBeGreaterThan(0);
+    expect((screen.getByLabelText("Monitor school detail academic year") as HTMLSelectElement).value).toBe("2026-2027");
+    expect(screen.queryByText("Viewing SY 2026-2027.")).toBeNull();
     expect(screen.getByText("bmef-2026.pdf")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "View BMEF" })).toBeNull();
     expect(screen.queryByText("bmef.pdf")).toBeNull();

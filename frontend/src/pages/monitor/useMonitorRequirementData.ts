@@ -321,6 +321,8 @@ export function useMonitorRequirementData({
           schoolCode: normalizedCode,
           schoolName: normalizedName,
           region: normalizedRegion,
+          schoolLevel: null,
+          schoolType: null,
           schoolStatus,
           packageSchoolType: "public",
           requirementModeLabel: "Active package requirements: BMEF and SMEA.",
@@ -375,6 +377,8 @@ export function useMonitorRequirementData({
 
       row.hasComplianceRecord = true;
       row.schoolStatus = record.status;
+      row.schoolLevel = record.level ?? null;
+      row.schoolType = record.type ?? null;
       row.hasReminderRecipient = record.hasReminderRecipient ?? true;
       row.reminderRecipientStatus = record.reminderRecipientStatus ?? (row.hasReminderRecipient ? "available" : "missing");
       row.latestReminder = record.latestReminder ?? null;

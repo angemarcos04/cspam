@@ -304,7 +304,6 @@ export function MonitorSchoolDrawer({
     schoolDetail,
     availableSchoolDrawerYears,
     schoolDrawerYearDetail,
-    schoolDrawerCriticalAlerts,
   } = data;
   const {
     setActiveSchoolDrawerTab,
@@ -312,7 +311,7 @@ export function MonitorSchoolDrawer({
     closeSchoolDrawer,
     onReviewDataChanged,
   } = actions;
-  const { workflowLabel, formatDateTime } = formatting;
+  const { formatDateTime } = formatting;
 
   useEffect(() => {
     setLocalScopeReviewOverrides({});
@@ -598,33 +597,16 @@ export function MonitorSchoolDrawer({
               {activeSchoolDrawerTab === "submissions" && (
                 <div className="space-y-3">
                   <article className="rounded-sm border border-slate-200 bg-white">
-                    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">Submitted Packages</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">
-                          {schoolDrawerYearDetail?.selectedYearLabel
-                            ? `Viewing SY ${schoolDrawerYearDetail.selectedYearLabel}.`
-                            : "Select an academic year to review this school."}
-                        </p>
-                        <p className="mt-0.5 text-[11px] text-slate-500">
-                          Required files and form sections for the selected academic year.
-                        </p>
+                    {(isSchoolDrawerSubmissionsLoading || schoolDrawerSubmissionsError) && (
+                      <div className="border-b border-slate-200 bg-slate-50 px-3 py-3">
                         {isSchoolDrawerSubmissionsLoading && (
-                          <p className="mt-1 text-[11px] font-semibold text-primary-700">Syncing latest submissions...</p>
+                          <p className="text-[11px] font-semibold text-primary-700">Syncing latest submissions...</p>
                         )}
                         {!isSchoolDrawerSubmissionsLoading && schoolDrawerSubmissionsError && (
-                          <p className="mt-1 text-[11px] font-semibold text-rose-600">{schoolDrawerSubmissionsError}</p>
+                          <p className="text-[11px] font-semibold text-rose-600">{schoolDrawerSubmissionsError}</p>
                         )}
                       </div>
-                      <div className="rounded-sm border border-slate-200 bg-white px-3 py-2 text-right">
-                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Package status</p>
-                        <p className="mt-1 text-sm font-semibold text-slate-900">
-                          {schoolDrawerYearDetail?.selectedYearLatestStatus
-                            ? workflowLabel(schoolDrawerYearDetail.selectedYearLatestStatus)
-                            : "Not submitted"}
-                        </p>
-                      </div>
-                    </div>
+                    )}
                     {schoolDrawerYearDetail?.packageRows.length ? (
                       <div className="overflow-x-auto">
                         {scopeReviewError && (
@@ -766,34 +748,6 @@ export function MonitorSchoolDrawer({
                       </div>
                     )}
                   </article>
-
-                  {schoolDrawerCriticalAlerts.length > 0 && (
-                    <article className="rounded-sm border border-slate-200 bg-white p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-slate-700">Critical Alerts</p>
-                          <p className="mt-0.5 text-[11px] text-slate-500">
-                            Last activity: {schoolDetail.lastActivityAt ? formatDateTime(schoolDetail.lastActivityAt) : "N/A"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="mt-2 space-y-2">
-                        {schoolDrawerCriticalAlerts.map((alert) => (
-                          <div
-                            key={`school-critical-alert-${alert.id}`}
-                            className={`rounded-sm border px-2.5 py-2 ${
-                              alert.tone === "warning"
-                                ? "border-amber-300 bg-amber-50 text-amber-800"
-                                : "border-primary-200 bg-primary-50 text-primary-700"
-                            }`}
-                          >
-                            <p className="text-xs font-semibold">{alert.title}</p>
-                            <p className="mt-0.5 text-xs">{alert.detail}</p>
-                          </div>
-                        ))}
-                      </div>
-                    </article>
-                  )}
                 </div>
               )}
 

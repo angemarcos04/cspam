@@ -8,6 +8,8 @@ export interface MonitorSchoolRequirementSummary {
   schoolCode: string;
   schoolName: string;
   region: string;
+  schoolLevel?: string | null;
+  schoolType?: string | null;
   schoolStatus: SchoolStatus | null;
   packageSchoolType: "public" | "private";
   requirementModeLabel: string;

@@ -81,6 +81,8 @@ const defaultReviewInboxRow = {
   schoolCode: "900001",
   schoolName: "Santiago Elementary",
   region: "Region II",
+  schoolLevel: "Elementary",
+  schoolType: "public",
   schoolStatus: "active",
   packageSchoolType: "public",
   requirementModeLabel: "Active package requirements: BMEF and SMEA.",
@@ -765,8 +767,12 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "School Data" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Package" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Level" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Type" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
+    expect(screen.queryByRole("columnheader", { name: "School Data" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Package" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Missing" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Compliance" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Indicators" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "For Review" })).toBeNull();
@@ -782,6 +788,25 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const schoolDetail = screen.getByText("School Detail").closest("aside");
     expect(schoolDetail).toBeTruthy();
     expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
+  });
+
+  it("uses school metadata instead of internal package labels on mobile Review Inbox cards", async () => {
+    setViewportWidth(500);
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+    const mobileCard = document.querySelector("article#monitor-queue-row-code-900001") as HTMLElement | null;
+    expect(mobileCard).toBeTruthy();
+
+    const card = within(mobileCard as HTMLElement);
+    expect(card.getByText("Level: Elementary")).toBeTruthy();
+    expect(card.getByText("Type: Public")).toBeTruthy();
+    expect(card.getByText("Not Submitted")).toBeTruthy();
+    expect(card.queryByText(/Missing:/)).toBeNull();
+    expect(card.queryByText(/School Data:/)).toBeNull();
+    expect(card.queryByText(/Package:/)).toBeNull();
   });
 
   it("opens the monitor audit trail and renders safe workflow events", async () => {

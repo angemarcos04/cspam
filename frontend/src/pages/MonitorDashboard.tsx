@@ -30,8 +30,6 @@ import {
 import {
   downloadCsvFile,
   isUrgentRequirement,
-  queuePriorityLabel,
-  queuePriorityTone,
   requirementFilterLabel,
   sanitizeAnchorToken,
   statusTone,
@@ -1349,8 +1347,6 @@ export function MonitorDashboard() {
               handleSendReminder={handleSendReminder}
               workflowTone={workflowTone}
               workflowLabel={workflowLabel}
-              queuePriorityTone={queuePriorityTone}
-              queuePriorityLabel={queuePriorityLabel}
               urgencyRowTone={urgencyRowTone}
               isUrgentRequirement={isUrgentRequirement}
               sanitizeAnchorToken={sanitizeAnchorToken}

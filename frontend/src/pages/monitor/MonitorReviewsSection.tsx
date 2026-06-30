@@ -11,8 +11,11 @@ interface ReviewQueueRow {
   schoolCode: string;
   schoolName: string;
   region: string;
+  schoolLevel?: string | null;
+  schoolType?: string | null;
   schoolStatus: SchoolStatus | null;
   hasComplianceRecord: boolean;
+  packageSchoolType: "public" | "private";
   indicatorStatus: string | null;
   hasAnySubmitted: boolean;
   isComplete: boolean;
@@ -38,8 +41,6 @@ interface MonitorReviewsSectionProps {
   handleSendReminder: (row: ReviewQueueRow, notes?: string | null) => Promise<void> | void;
   workflowTone: (status: string | null) => string;
   workflowLabel: (status: string | null) => string;
-  queuePriorityTone: (row: ReviewQueueRow) => string;
-  queuePriorityLabel: (row: ReviewQueueRow) => string;
   urgencyRowTone: (row: ReviewQueueRow) => string;
   isUrgentRequirement: (row: ReviewQueueRow) => boolean;
   sanitizeAnchorToken: (value: string) => string;
@@ -75,6 +76,34 @@ function latestReminderText(row: ReviewQueueRow, formatDateTime: (value: string)
   return `Last reminded: ${formatDateTime(reminder.remindedAt)} - ${reminderStatusLabel(reminder)}`;
 }
 
+function titleCaseLabel(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function formatSchoolLevel(value: string | null | undefined): string {
+  const raw = String(value ?? "").trim();
+  if (!raw) return "N/A";
+
+  const normalized = raw.toLowerCase().replace(/[_-]+/g, " ");
+  if (normalized.includes("elementary")) return "Elementary";
+  if (normalized.includes("high school") || normalized.includes("secondary")) return "High School";
+  return titleCaseLabel(normalized);
+}
+
+function formatSchoolType(row: ReviewQueueRow): string {
+  const raw = String(row.schoolType ?? row.packageSchoolType ?? "").trim();
+  if (!raw) return "N/A";
+
+  const normalized = raw.toLowerCase();
+  if (normalized === "public") return "Public";
+  if (normalized === "private") return "Private";
+  return titleCaseLabel(normalized.replace(/[_-]+/g, " "));
+}
+
 export function MonitorReviewsSection({
   isMobileViewport,
   sectionFocusClass,
@@ -88,8 +117,6 @@ export function MonitorReviewsSection({
   handleSendReminder,
   workflowTone,
   workflowLabel,
-  queuePriorityTone,
-  queuePriorityLabel,
   urgencyRowTone,
   isUrgentRequirement,
   sanitizeAnchorToken,
@@ -183,21 +210,18 @@ export function MonitorReviewsSection({
                       <p className="text-sm font-semibold text-slate-900">{row.schoolName}</p>
                       <p className="text-xs text-slate-500">{row.schoolCode} - {row.region}</p>
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePriorityTone(row)}`}>
-                        {queuePriorityLabel(row)}
-                      </span>
-                      <span className="text-xs font-semibold text-slate-700">Missing: {row.missingCount}</span>
-                    </div>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${workflowTone(row.indicatorStatus)}`}>
+                      {workflowLabel(row.indicatorStatus)}
+                    </span>
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${row.hasComplianceRecord ? "bg-primary-100 text-primary-700" : "bg-slate-100 text-slate-700"}`}>
-                      School Data: {row.hasComplianceRecord ? "Submitted" : "Missing"}
+                    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                      Level: {formatSchoolLevel(row.schoolLevel)}
                     </span>
-                    <span className={`inline-flex rounded-full px-2 py-0.5 font-semibold ${workflowTone(row.indicatorStatus)}`}>
-                      Package: {workflowLabel(row.indicatorStatus)}
+                    <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
+                      Type: {formatSchoolType(row)}
                     </span>
-                    {row.awaitingReviewCount > 0 && <span className="text-slate-600">Ready: {row.awaitingReviewCount}</span>}
+                    <span className="text-slate-600">Last activity: {row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A"}</span>
                   </div>
                   {latestReminderText(row, formatDateTime) && (
                     <p className="mt-2 text-[11px] font-semibold text-amber-700">{latestReminderText(row, formatDateTime)}</p>
@@ -232,9 +256,9 @@ export function MonitorReviewsSection({
                   <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                     <th className="px-2 py-2 text-left">School</th>
                     <th className="px-2 py-2 text-left">Location</th>
-                    <th className="px-2 py-2 text-center">School Data</th>
-                    <th className="px-2 py-2 text-center">Package</th>
-                    <th className="px-2 py-2 text-center">Missing</th>
+                    <th className="px-2 py-2 text-left">Level</th>
+                    <th className="px-2 py-2 text-left">Type</th>
+                    <th className="px-2 py-2 text-center">Status</th>
                     <th className="px-2 py-2 text-left">Last Activity</th>
                     <th className="px-2 py-2 text-center">Actions</th>
                   </tr>
@@ -260,28 +284,15 @@ export function MonitorReviewsSection({
                         )}
                       </td>
                       <td className="px-2 py-2 text-sm text-slate-700">{row.region}</td>
-                      <td className="px-2 py-2 text-center">
-                        <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${
-                            row.hasComplianceRecord
-                              ? "bg-primary-100 text-primary-700 ring-1 ring-primary-300"
-                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-300"
-                          }`}
-                        >
-                          {row.hasComplianceRecord ? "Submitted" : "Missing"}
-                        </span>
-                      </td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{formatSchoolLevel(row.schoolLevel)}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{formatSchoolType(row)}</td>
                       <td className="px-2 py-2 text-center">
                         <div className="flex flex-col items-center gap-1">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${workflowTone(row.indicatorStatus)}`}>
                             {workflowLabel(row.indicatorStatus)}
                           </span>
-                          {row.awaitingReviewCount > 0 && (
-                            <span className="text-[11px] font-semibold text-slate-500">Ready: {row.awaitingReviewCount}</span>
-                          )}
                         </div>
                       </td>
-                      <td className="px-2 py-2 text-center text-sm font-semibold text-slate-900">{row.missingCount}</td>
                       <td className="px-2 py-2 text-sm text-slate-600">{row.lastActivityAt ? formatDateTime(row.lastActivityAt) : "N/A"}</td>
                       <td className="min-w-[11rem] px-2 py-2">
                         <div className="flex flex-nowrap items-center justify-center gap-1.5">
