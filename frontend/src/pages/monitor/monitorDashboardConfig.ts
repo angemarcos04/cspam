@@ -36,7 +36,7 @@ export interface QuickJumpItem {
 
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "schools", label: "Schools" },
-  { id: "reviews", label: "Inbox" },
+  { id: "reviews", label: "Reviews" },
   { id: "audit", label: "Audit Trail" },
 ];
 
@@ -63,7 +63,7 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
   },
   {
     id: "reviews",
-    title: "Inbox",
+    title: "Reviews",
     objective: "",
     actions: [
       "Review inbox items, validate submissions, or return with clear notes.",

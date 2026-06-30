@@ -244,14 +244,16 @@ export function MonitorSchoolsSection({
                 className="hidden"
                 onChange={(event) => void onBulkImportFileChange(event)}
               />
-              <button
-                type="button"
-                onClick={onOpenCreateRecordForm}
-                className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                Add School
-              </button>
+              {isMobileViewport && (
+                <button
+                  type="button"
+                  onClick={onOpenCreateRecordForm}
+                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add School
+                </button>
+              )}
               <button
                 type="button"
                 onClick={onToggleAccountsPanel}

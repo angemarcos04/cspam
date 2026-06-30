@@ -1209,6 +1209,34 @@ export function MonitorDashboard() {
     isUrgentRequirement,
     urgencyRowTone,
   });
+
+  const handleAddSchoolFromNavigator = useCallback(() => {
+    setShowNavigatorManual(false);
+    closeSchoolDrawer();
+    schoolsSectionApi.openCreateRecordForm();
+    focusAndScrollTo("monitor-school-records");
+
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => {
+        const schoolCodeInput = document.getElementById("monitor-school-id");
+        if (schoolCodeInput instanceof HTMLElement) {
+          schoolCodeInput.focus();
+        }
+      }, 0);
+    }
+
+    if (isMobileViewport) {
+      setIsNavigatorVisible(false);
+    }
+  }, [
+    closeSchoolDrawer,
+    focusAndScrollTo,
+    isMobileViewport,
+    schoolsSectionApi,
+    setIsNavigatorVisible,
+    setShowNavigatorManual,
+  ]);
+
   const handleToggleNavigatorChrome = useCallback(() => {
     if (isMobileViewport) {
       setIsNavigatorVisible((current) => !current);
@@ -1279,6 +1307,7 @@ export function MonitorDashboard() {
           showNavigatorHeaderText={showNavigatorHeaderText}
           onToggleNavigator={handleToggleNavigatorChrome}
           onNavigate={handleMonitorTopNavigate}
+          onAddSchool={handleAddSchoolFromNavigator}
           onToggleManual={handleToggleNavigatorManual}
         />
         <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0">

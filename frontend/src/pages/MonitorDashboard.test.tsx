@@ -144,10 +144,20 @@ function defaultReviewInboxResponse() {
   };
 }
 
+function setViewportWidth(width: number) {
+  Object.defineProperty(window, "innerWidth", {
+    configurable: true,
+    writable: true,
+    value: width,
+  });
+  window.dispatchEvent(new Event("resize"));
+}
+
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/monitor/dashboard");
     window.localStorage.clear();
+    setViewportWidth(1024);
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
     bulkImportRecordsMock.mockReset();
@@ -472,6 +482,68 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByRole("button", { name: /reveal link/i })).toBeNull();
   }, 15_000);
 
+  it("shows Add School as a sidebar action between Schools and Reviews", () => {
+    render(<MonitorDashboard />);
+
+    const schoolsButton = screen.getByRole("button", { name: "Open Schools" });
+    const addSchoolButton = screen.getByRole("button", { name: "Add School" });
+    const reviewsButton = screen.getByRole("button", { name: "Open Reviews" });
+    const auditButton = screen.getByRole("button", { name: "Open Audit Trail" });
+
+    expect(schoolsButton).toBeTruthy();
+    expect(addSchoolButton).toBeTruthy();
+    expect(reviewsButton).toBeTruthy();
+    expect(auditButton).toBeTruthy();
+    expect(addSchoolButton.getAttribute("aria-current")).toBeNull();
+  });
+
+  it("opens and focuses the existing School form from sidebar Add School without creating a new tab", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Add School" }));
+
+    expect(await screen.findByRole("heading", { name: "Add School Record" })).toBeTruthy();
+
+    await waitFor(() => {
+      expect(document.activeElement).toBe(document.getElementById("monitor-school-id"));
+    });
+
+    expect(scrollIntoViewMock).toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Open Schools" }).getAttribute("aria-current")).toBe("page");
+    expect(window.location.search).not.toContain("tab=add_school");
+  });
+
+  it("does not duplicate Add School in the desktop Schools section header", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Add School" })).toBeTruthy();
+  });
+
+  it("keeps Add School available in the mobile Schools section header", async () => {
+    setViewportWidth(500);
+
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    expect(within(schoolsSection).getByRole("button", { name: "Add School" })).toBeTruthy();
+  });
+
   it("uses the same focus-and-scroll behavior for keyboard top navigation", async () => {
     render(<MonitorDashboard />);
     scrollIntoViewMock.mockClear();
@@ -482,7 +554,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
     });
 
-    const openReviewsButtons = screen.getAllByRole("button", { name: "Open Inbox" });
+    const openReviewsButtons = screen.getAllByRole("button", { name: "Open Reviews" });
     expect(openReviewsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
   });
 
@@ -653,7 +725,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("opens School Detail for a queue row when no dashboard filters are active", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
@@ -674,7 +746,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(document.getElementById("monitor-action-queue")).toBeNull();
@@ -864,7 +936,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("sends queue reminders with an optional note", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
     fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
     fireEvent.change(screen.getByLabelText("Message"), {
@@ -880,7 +952,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("blocks queue reminder notes longer than 500 characters", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
 
     fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
     fireEvent.change(screen.getByLabelText("Message"), {
