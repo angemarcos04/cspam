@@ -1172,9 +1172,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'School was entered in error and must be removed completely.',
-            ],
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'School was entered in error and must be removed completely.',
+            ),
         );
 
         $remove->assertOk()
@@ -1200,7 +1202,41 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
     }
 
-    public function test_remove_account_and_school_does_not_require_verification(): void
+    public function test_remove_account_and_school_requires_reason_and_confirmation_code(): void
+    {
+        $this->seed();
+        Notification::fake();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+
+        $remove = $this->withToken($monitorToken)->deleteJson(
+            "/api/dashboard/records/{$school->id}/school-head-account",
+            [],
+        );
+
+        $remove->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors(['reason', 'verificationChallengeId', 'verificationCode']);
+
+        $this->assertDatabaseHas('users', [
+            'id' => $schoolHead->id,
+        ]);
+        $this->assertDatabaseHas('schools', [
+            'id' => $school->id,
+        ]);
+    }
+
+    public function test_remove_account_and_school_rejects_wrong_deleted_confirmation_code(): void
     {
         $this->seed();
         Notification::fake();
@@ -1219,20 +1255,25 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
+        $payload = $this->deletedAccountPayload(
+            $monitorToken,
+            $school,
+            'School was entered in error and must be removed completely.',
+        );
+        $payload['verificationCode'] = '654321';
+
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'School was entered in error and must be removed completely.',
-            ],
+            $payload,
         );
 
-        $remove->assertOk()
-            ->assertJsonPath('data.deletedCount', 1);
+        $remove->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Confirmation code is invalid or expired. Request a new code and try again.');
 
-        $this->assertDatabaseMissing('users', [
+        $this->assertDatabaseHas('users', [
             'id' => $schoolHead->id,
         ]);
-        $this->assertDatabaseMissing('schools', [
+        $this->assertDatabaseHas('schools', [
             'id' => $school->id,
         ]);
     }
@@ -1261,7 +1302,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [],
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'Remove pending setup account and school.',
+            ),
         );
 
         $remove->assertOk()
@@ -1314,7 +1359,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [],
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'Remove pending verification account and school.',
+            ),
         );
 
         $remove->assertOk()
@@ -1377,9 +1426,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [
-                'reason' => 'Remove school and every linked account row.',
-            ],
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'Remove school and every linked account row.',
+            ),
         );
 
         $remove->assertOk()
@@ -1440,7 +1491,11 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            [],
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'Attempt to remove a school with linked monitor access.',
+            ),
         );
 
         $remove->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -1783,5 +1838,26 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $this->expectException(\Illuminate\Database\QueryException::class);
         $schoolHead->forceFill(['account_type' => null])->save();
+    }
+
+    /**
+     * @return array{reason: string, verificationChallengeId: string, verificationCode: string}
+     */
+    private function deletedAccountPayload(string $monitorToken, School $school, string $reason): array
+    {
+        $codeIssue = $this->withToken($monitorToken)->postJson(
+            "/api/dashboard/records/{$school->id}/school-head-account/verification-code",
+            [
+                'targetStatus' => AccountStatus::DELETED->value,
+            ],
+        );
+
+        $codeIssue->assertOk()->assertJsonStructure(['data' => ['challengeId', 'expiresAt']]);
+
+        return [
+            'reason' => $reason,
+            'verificationChallengeId' => (string) $codeIssue->json('data.challengeId'),
+            'verificationCode' => '123456',
+        ];
     }
 }

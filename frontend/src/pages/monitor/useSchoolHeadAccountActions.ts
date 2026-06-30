@@ -5,6 +5,7 @@ import type {
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
+  SchoolHeadAccountRemovalPayload,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
@@ -87,7 +88,7 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason?: string | null },
+    payload: SchoolHeadAccountRemovalPayload,
   ) => Promise<SchoolHeadAccountRemovalResult>;
 }
 
@@ -160,6 +161,7 @@ function requiresReason(action: PendingAccountAction | null): boolean {
     || action.kind === "reset_password"
     || action.kind === "temporary_password"
     || action.kind === "email_change"
+    || action.kind === "remove"
   );
 }
 
@@ -172,6 +174,7 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
     action.kind === "reset_password"
     || action.kind === "temporary_password"
     || action.kind === "email_change"
+    || action.kind === "remove"
     || (action.kind === "status" && isDeactivationStatus(action.update.accountStatus))
   );
 }
@@ -212,7 +215,7 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return "";
+    return `Reason and confirmation code required to remove the School Head account and school record for ${action.schoolName}.`;
   }
 
   if (action.kind === "activate") {
@@ -543,8 +546,23 @@ export function useSchoolHeadAccountActions({
           return;
         }
 
+        const challengeId = pendingAccountVerificationChallenge?.challengeId ?? "";
+        const code = pendingAccountVerificationCode.trim();
+
+        if (!challengeId) {
+          setPendingAccountVerificationError("Send the 6-digit confirmation code first.");
+          return;
+        }
+
+        if (!/^\d{6}$/.test(code)) {
+          setPendingAccountVerificationError("Enter the 6-digit confirmation code.");
+          return;
+        }
+
         const result = await removeSchoolHeadAccount(pendingAccountAction.schoolId, {
-          reason: reason || undefined,
+          reason,
+          verificationChallengeId: challengeId,
+          verificationCode: code,
         });
         pushToast(result.message || `${pendingAccountAction.schoolName} permanently deleted.`, "success");
         closePendingAccountAction();

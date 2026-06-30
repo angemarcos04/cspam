@@ -153,6 +153,12 @@ export interface SchoolHeadAccountProfileUpsertResult {
   deliveryFailureCategory?: string | null;
 }
 
+export interface SchoolHeadAccountRemovalPayload {
+  reason: string;
+  verificationChallengeId: string;
+  verificationCode: string;
+}
+
 export interface SchoolHeadAccountRemovalResult {
   message: string;
   deletedCount: number;

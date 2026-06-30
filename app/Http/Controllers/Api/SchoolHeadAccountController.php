@@ -726,6 +726,24 @@ class SchoolHeadAccountController extends Controller
     ): JsonResponse {
         $monitor = $this->requireMonitor($request);
         $reason = trim($request->string('reason')->toString());
+        $challengeId = trim($request->string('verificationChallengeId')->toString());
+        $code = trim($request->string('verificationCode')->toString());
+
+        $verified = $this->monitorActionVerificationService->verify(
+            $monitor,
+            $school,
+            AccountStatus::DELETED->value,
+            $challengeId,
+            $code,
+        );
+
+        if (! $verified) {
+            return response()->json(
+                ['message' => 'Confirmation code is invalid or expired. Request a new code and try again.'],
+                Response::HTTP_UNPROCESSABLE_ENTITY,
+            );
+        }
+
         $result = $this->removeSchoolAndLinkedAccounts(
             $school,
             $monitor,

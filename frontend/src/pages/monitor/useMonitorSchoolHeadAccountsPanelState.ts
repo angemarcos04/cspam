@@ -13,6 +13,7 @@ import type {
   SchoolHeadAccountBatchRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
+  SchoolHeadAccountRemovalPayload,
   SchoolHeadAccountRemovalResult,
   SchoolRecordDeletePreview,
   SchoolHeadAccountStatusUpdatePayload,
@@ -59,7 +60,7 @@ interface UseMonitorSchoolHeadAccountsPanelStateOptions {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason?: string | null },
+    payload: SchoolHeadAccountRemovalPayload,
   ) => Promise<SchoolHeadAccountRemovalResult>;
   removeSchoolHeadAccountsBatch?: (
     schoolIds: string[],

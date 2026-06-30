@@ -609,11 +609,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(dialog).getByText("Account Profile")).toBeTruthy();
     expect(within(dialog).getByText("Account Access")).toBeTruthy();
     expect(within(dialog).getAllByText("Account Status").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Flags").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText("School Record").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText("Danger Zone").length).toBeGreaterThan(0);
     expect(within(dialog).getByRole("button", { name: "Send setup link" })).toBeTruthy();
     expect(within(dialog).getByRole("button", { name: "Open school record" })).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: "Lock account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Archive account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Flag account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Flag school record" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Archive school record" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Regenerate temporary password" })).toBeNull();
   });
 
   it("opens the existing confirmation flow for sensitive account status actions", async () => {

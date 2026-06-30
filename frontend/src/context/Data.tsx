@@ -17,6 +17,7 @@ import type {
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountBatchRemovalResult,
+  SchoolHeadAccountRemovalPayload,
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
@@ -211,7 +212,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountProfileUpsertResult>;
   removeSchoolHeadAccount: (
     schoolId: string,
-    payload: { reason?: string | null },
+    payload: SchoolHeadAccountRemovalPayload,
   ) => Promise<SchoolHeadAccountRemovalResult>;
   removeSchoolHeadAccountsBatch: (
     schoolIds: string[],
@@ -1346,13 +1347,15 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const removeSchoolHeadAccount = useCallback(
     async (
       schoolId: string,
-      payload: { reason?: string | null },
+      payload: SchoolHeadAccountRemovalPayload,
     ): Promise<SchoolHeadAccountRemovalResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
 
-      const reason = payload.reason?.trim() || undefined;
+      const reason = payload.reason.trim();
+      const verificationChallengeId = payload.verificationChallengeId.trim();
+      const verificationCode = payload.verificationCode.trim();
 
       setIsSaving(true);
       setError("");
@@ -1366,6 +1369,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
             timeoutMs: SCHOOL_HEAD_ACCOUNT_TIMEOUT_MS,
             body: {
               reason,
+              verificationChallengeId,
+              verificationCode,
             },
           },
         );

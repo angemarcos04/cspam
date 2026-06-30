@@ -1,12 +1,9 @@
 import {
   AlertCircle,
-  AlertTriangle,
   CheckCircle2,
-  Database,
   Edit2,
   ExternalLink,
   RefreshCw,
-  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
@@ -64,11 +61,6 @@ function shouldShowResetLinkAction(status: string | null | undefined): boolean {
   return normalized === "active" || normalized === "locked";
 }
 
-function shouldShowArchiveAction(status: string | null | undefined): boolean {
-  const normalized = String(status ?? "").toLowerCase();
-  return normalized === "active" || normalized === "suspended" || normalized === "locked";
-}
-
 function ManagementSection({ title, children }: { title: string; children: ReactNode }): ReactElement {
   return (
     <section className="rounded-sm border border-slate-200 bg-white p-3">
@@ -100,11 +92,9 @@ function actionButtonClass(tone: "default" | "warning" | "archive" | "danger" = 
 export function MonitorSchoolHeadAccountManagementDialog({
   record,
   isSaving,
-  isDeleteSchoolRecordLoading,
   isMobileViewport,
   onClose,
   onOpenSchoolRecord,
-  onPreviewDeleteSchoolRecord,
   formatDateTime,
   actions,
 }: MonitorSchoolHeadAccountManagementDialogProps): ReactElement | null {
@@ -139,7 +129,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
               Manage School Head Account
             </h3>
             <p className="mt-1 text-xs text-slate-600">
-              Use the existing guarded flows for account access, status, flags, and archive actions.
+              Use the existing guarded flows for account access, account status, and school removal.
             </p>
           </div>
           <button
@@ -237,24 +227,6 @@ export function MonitorSchoolHeadAccountManagementDialog({
                     Send password reset link
                   </button>
                 )}
-                {normalizedAccountStatus === "active" && (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      actions.openPendingAccountAction({
-                        kind: "temporary_password",
-                        schoolId: record.id,
-                        schoolName: record.schoolName,
-                        actionLabel: "Regenerate Temporary Password",
-                      })
-                    }
-                    disabled={isActionDisabled}
-                    className={actionButtonClass()}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
-                    Regenerate temporary password
-                  </button>
-                )}
                 {normalizedAccountStatus !== "pending_setup" &&
                   !shouldShowResetLinkAction(account.accountStatus) &&
                   normalizedAccountStatus !== "active" && (
@@ -303,42 +275,16 @@ export function MonitorSchoolHeadAccountManagementDialog({
                     </button>
                   )}
                 {normalizedAccountStatus === "active" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "suspended" }, "Suspend account")
-                      }
-                      disabled={isActionDisabled}
-                      className={actionButtonClass("warning")}
-                    >
-                      <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
-                      Suspend account
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "locked" }, "Lock account")
-                      }
-                      disabled={isActionDisabled}
-                      className={actionButtonClass("warning")}
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5 text-amber-600" />
-                      Lock account
-                    </button>
-                  </>
-                )}
-                {shouldShowArchiveAction(account.accountStatus) && (
                   <button
                     type="button"
                     onClick={() =>
-                      actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "archived" }, "Archive account")
+                      actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "suspended" }, "Suspend account")
                     }
-                    disabled={isActionDisabled || normalizedAccountStatus === "archived"}
-                    className={actionButtonClass("archive")}
+                    disabled={isActionDisabled}
+                    className={actionButtonClass("warning")}
                   >
-                    <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-                    Archive account
+                    <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
+                    Suspend account
                   </button>
                 )}
                 {normalizedAccountStatus === "pending_setup" && (
@@ -347,45 +293,6 @@ export function MonitorSchoolHeadAccountManagementDialog({
               </>
             ) : (
               <p className="text-xs text-slate-600">No account status exists yet.</p>
-            )}
-          </ManagementSection>
-
-          <ManagementSection title="Flags">
-            {account ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() =>
-                    actions.handleUpdateSchoolHeadAccount(
-                      record,
-                      { flagged: !account.flagged },
-                      account.flagged ? "Unflag account" : "Flag account",
-                    )
-                  }
-                  disabled={isActionDisabled}
-                  className={actionButtonClass("warning")}
-                >
-                  <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
-                  {account.flagged ? "Unflag account" : "Flag account"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() =>
-                    actions.handleUpdateSchoolHeadAccount(
-                      record,
-                      { deleteRecordFlagged: !account.deleteRecordFlagged },
-                      account.deleteRecordFlagged ? "Remove delete record flag" : "Flag school record",
-                    )
-                  }
-                  disabled={isActionDisabled}
-                  className={actionButtonClass("warning")}
-                >
-                  <Database className="h-3.5 w-3.5 text-amber-600" />
-                  {account.deleteRecordFlagged ? "Unflag school record" : "Flag school record"}
-                </button>
-              </>
-            ) : (
-              <p className="text-xs text-slate-600">Account flag actions become available after account creation.</p>
             )}
           </ManagementSection>
 
@@ -400,18 +307,6 @@ export function MonitorSchoolHeadAccountManagementDialog({
             >
               <ExternalLink className="h-3.5 w-3.5 text-slate-500" />
               Open school record
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                onClose();
-                void onPreviewDeleteSchoolRecord(record);
-              }}
-              disabled={isActionDisabled || isDeleteSchoolRecordLoading}
-              className={actionButtonClass("archive")}
-            >
-              <Trash2 className="h-3.5 w-3.5 text-rose-500" />
-              Archive school record
             </button>
           </ManagementSection>
 
@@ -434,7 +329,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
                 Remove account and school
               </button>
             ) : (
-              <p className="text-xs text-slate-600">No account is linked. Use Archive school record for school-only archive.</p>
+              <p className="text-xs text-slate-600">No account is linked. Create an account before using account removal.</p>
             )}
           </ManagementSection>
         </div>

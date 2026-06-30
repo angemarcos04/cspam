@@ -352,28 +352,32 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(within(dialog).getByText("Account Profile")).not.toBeNull();
     expect(within(dialog).getByText("Account Access")).not.toBeNull();
     expect(within(dialog).getAllByText("Account Status").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Flags").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText("School Record").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText("Danger Zone").length).toBeGreaterThan(0);
     expect(within(dialog).getByRole("button", { name: "Send setup link" })).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Archive account" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Send password reset link" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Remove account and school" })).not.toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 
     fireEvent.click(within(activeRow!).getByRole("button", { name: "Manage Account" }));
     dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
     expect(within(dialog).getByRole("button", { name: "Send password reset link" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Regenerate temporary password" })).not.toBeNull();
     expect(within(dialog).getByRole("button", { name: "Suspend account" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Lock account" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Archive account" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Flag school record" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Flag account" })).not.toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Open school record" })).not.toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Remove account and school" })).not.toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Regenerate temporary password" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Lock account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Archive account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Flag school record" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Flag account" })).toBeNull();
+    expect(within(dialog).queryByRole("button", { name: "Archive school record" })).toBeNull();
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
 
     fireEvent.click(within(lockedRow!).getByRole("button", { name: "Manage Account" }));
     dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
     expect(within(dialog).getByRole("button", { name: "Send password reset link" })).not.toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Reactivate account" })).not.toBeNull();
   });
 
   it("keeps remove-account-and-school reachable from the fixed management dialog", () => {
@@ -1220,7 +1224,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     ]);
   });
 
-  it("does not require verification for remove-account-and-school actions without reintroducing note input", () => {
+  it("requires reason and confirmation for remove-account-and-school actions", () => {
     const { result } = renderHook(() =>
       useSchoolHeadAccountActions({
         isPanelOpen: true,
@@ -1246,8 +1250,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       });
     });
 
-    expect(result.current.pendingActionDescription).toBe("");
-    expect(result.current.pendingActionRequiresVerification).toBe(false);
+    expect(result.current.pendingActionDescription).toContain("Reason and confirmation code required");
+    expect(result.current.pendingActionRequiresVerification).toBe(true);
+    expect(result.current.pendingReasonTooShort).toBe(true);
+    expect(result.current.isConfirmPendingAccountActionDisabled).toBe(true);
   });
 
   it("keeps email-change confirmation disabled while the reason is missing", () => {
@@ -1366,7 +1372,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     });
   });
 
-  it("does not render confirmation-code controls for remove-account-and-school while keeping note input hidden", () => {
+  it("renders reason and confirmation-code controls for remove-account-and-school", () => {
     const actions = buildActions();
     actions.pendingAccountAction = {
       kind: "remove",
@@ -1374,9 +1380,11 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       schoolName: "Batal Elementary School",
       actionLabel: "Remove account and school",
     };
-    actions.pendingActionRequiresVerification = false;
+    actions.pendingActionDescription =
+      "Reason and confirmation code required to remove the School Head account and school record for Batal Elementary School.";
+    actions.pendingActionRequiresVerification = true;
     actions.confirmPendingAccountActionLabel = "Confirm";
-    actions.isConfirmPendingAccountActionDisabled = false;
+    actions.isConfirmPendingAccountActionDisabled = true;
 
     render(
       <MonitorSchoolHeadAccountsPanel
@@ -1438,11 +1446,11 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     );
 
     expect(screen.queryByText(/This permanently deletes Batal Elementary School/i)).toBeNull();
-    expect(screen.queryByLabelText(/Optional Note/i)).toBeNull();
+    expect(screen.getByLabelText("Reason")).not.toBeNull();
     expect(screen.queryByPlaceholderText(/Optional note for permanent removal/i)).toBeNull();
     expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
-    expect(screen.queryByText(/Confirmation Code/i)).toBeNull();
-    expect(screen.queryByRole("button", { name: "Send code" })).toBeNull();
+    expect(screen.getByText(/Reason and confirmation code required/i)).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
   });
 
   it("does not surface the batch delete toolbar trigger even when flagged-school counts are present", () => {

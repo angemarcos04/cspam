@@ -63,4 +63,62 @@ describe("useSchoolHeadAccountActions", () => {
     );
     expect(pushToast).not.toHaveBeenCalledWith(SERVICE_UNAVAILABLE_MESSAGE, "warning");
   });
+
+  it("submits remove-account-and-school with reason, challenge, and code", async () => {
+    vi.useFakeTimers();
+    const issueVerification = vi.fn().mockResolvedValue({
+      challengeId: "2acb2c69-26f4-4590-9b68-177b0a3f72d6",
+      expiresAt: "2026-06-03T08:00:00.000Z",
+      delivery: "sent",
+      deliveryMessage: "Confirmation code sent.",
+    });
+    const removeSchoolHeadAccount = vi.fn().mockResolvedValue({
+      message: "School and linked account removed.",
+      deletedCount: 1,
+    });
+
+    try {
+      const { result } = renderHook(() => useSchoolHeadAccountActions(makeOptions({
+        issueSchoolHeadAccountActionVerificationCode: issueVerification,
+        removeSchoolHeadAccount,
+      })));
+
+      act(() => {
+        result.current.openPendingAccountAction({
+          kind: "remove",
+          schoolId: "school-12",
+          schoolName: "Batal Elementary School",
+          actionLabel: "Remove account and school",
+        });
+      });
+
+      expect(result.current.pendingActionRequiresVerification).toBe(true);
+      expect(result.current.pendingReasonTooShort).toBe(true);
+
+      await act(async () => {
+        await result.current.sendPendingAccountVerificationCode();
+      });
+
+      await act(async () => {
+        result.current.updatePendingAccountReason("Duplicate school record.");
+        result.current.updatePendingVerificationCode("123456");
+        vi.advanceTimersByTime(3100);
+        await Promise.resolve();
+      });
+
+      expect(result.current.isConfirmPendingAccountActionDisabled).toBe(false);
+
+      await act(async () => {
+        await result.current.confirmPendingAccountAction();
+      });
+
+      expect(removeSchoolHeadAccount).toHaveBeenCalledWith("school-12", {
+        reason: "Duplicate school record.",
+        verificationChallengeId: "2acb2c69-26f4-4590-9b68-177b0a3f72d6",
+        verificationCode: "123456",
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
