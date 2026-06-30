@@ -78,6 +78,7 @@ const scrollIntoViewMock = vi.fn();
 
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
+    window.history.replaceState(null, "", "/monitor/dashboard");
     window.localStorage.clear();
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
@@ -438,8 +439,37 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     await waitFor(() => {
-      expect(refreshRecordsMock).toHaveBeenCalledWith({ force: true });
+      expect(refreshRecordsMock).toHaveBeenCalledWith(expect.objectContaining({ force: true }));
       expect(refreshSubmissionsMock).toHaveBeenCalled();
+    });
+  });
+
+  it("hydrates URL-backed filters into the records API refresh bridge", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/monitor/dashboard?tab=reviews&q=Santiago&status=active&from=2026-01-01&to=2026-12-31&school=code%3A900001",
+    );
+
+    render(<MonitorDashboard />);
+
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+    expect(
+      (screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement).value,
+    ).toBe("Santiago");
+
+    await waitFor(() => {
+      expect(
+        refreshRecordsMock.mock.calls.some(([options]) => {
+          const filters = options?.filters;
+          return options?.force === true
+            && filters?.search === "Santiago"
+            && filters?.status === "active"
+            && filters?.dateFrom === "2026-01-01"
+            && filters?.dateTo === "2026-12-31"
+            && filters?.schoolId === "1";
+        }),
+      ).toBe(true);
     });
   });
 

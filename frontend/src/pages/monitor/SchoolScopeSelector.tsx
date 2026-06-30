@@ -2,6 +2,7 @@ import { ChevronDown, RefreshCw, Search, X } from "lucide-react";
 
 interface SchoolScopeOption {
   key: string;
+  id: string;
   code: string;
   name: string;
   headName: string;

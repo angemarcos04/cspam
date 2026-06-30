@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
 import { useAuth } from "@/context/Auth";
-import { useData } from "@/context/Data";
+import { useData, type SchoolRecordRefreshFilters } from "@/context/Data";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { useStudentData } from "@/context/StudentData";
 import { useTeacherData } from "@/context/TeacherData";
@@ -316,6 +316,7 @@ export function MonitorDashboard() {
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
   const initialLoadStartedRef = useRef(false);
+  const initialRecordFilterRefreshSkippedRef = useRef(false);
   const {
     schoolScopeQuery,
     setSchoolScopeQuery,
@@ -348,11 +349,26 @@ export function MonitorDashboard() {
     listTeachers,
   });
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const schoolRecordRefreshFilters = useMemo<SchoolRecordRefreshFilters>(() => ({
+    search: effectiveSearch,
+    status: statusFilter,
+    dateFrom: filterDateFrom,
+    dateTo: filterDateTo,
+    schoolId: selectedSchoolScope?.id ?? null,
+  }), [effectiveSearch, filterDateFrom, filterDateTo, selectedSchoolScope?.id, statusFilter]);
+  const refreshRecordsForCurrentFilters = useCallback(
+    (options?: Parameters<typeof refreshRecords>[0]) =>
+      refreshRecords({
+        ...options,
+        filters: schoolRecordRefreshFilters,
+      }),
+    [refreshRecords, schoolRecordRefreshFilters],
+  );
   const {
     handleRefreshDashboard,
     handleMonitorTopNavigate,
   } = useMonitorDashboardGlobalCommands({
-    refreshRecords,
+    refreshRecords: refreshRecordsForCurrentFilters,
     refreshSubmissions,
     refreshStudents,
     refreshTeachers,
@@ -365,17 +381,34 @@ export function MonitorDashboard() {
   });
 
   useEffect(() => {
+    if (!filtersHydrated) {
+      return;
+    }
+
     if (initialLoadStartedRef.current) {
       return;
     }
 
     initialLoadStartedRef.current = true;
     void runRefreshBatches([
-      [refreshRecords],
+      [refreshRecordsForCurrentFilters],
       [refreshSubmissions],
       [refreshStudents, refreshTeachers],
     ]);
-  }, [refreshRecords, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [filtersHydrated, refreshRecordsForCurrentFilters, refreshSubmissions, refreshStudents, refreshTeachers]);
+
+  useEffect(() => {
+    if (!filtersHydrated) {
+      return;
+    }
+
+    if (!initialRecordFilterRefreshSkippedRef.current) {
+      initialRecordFilterRefreshSkippedRef.current = true;
+      return;
+    }
+
+    void refreshRecordsForCurrentFilters({ force: true });
+  }, [filtersHydrated, refreshRecordsForCurrentFilters]);
 
   useEffect(() => {
     setReviewStatusOverrides({});
@@ -763,9 +796,9 @@ export function MonitorDashboard() {
     void refreshMonitorReviewData({
       refreshSchoolDrawer,
       refreshSubmissions,
-      refreshRecords,
+      refreshRecords: refreshRecordsForCurrentFilters,
     });
-  }, [latestRealtimeBatch, refreshRecords, refreshSchoolDrawer, refreshSubmissions]);
+  }, [latestRealtimeBatch, refreshRecordsForCurrentFilters, refreshSchoolDrawer, refreshSubmissions]);
   const quickJump = useMonitorQuickJump({
     quickJumpItems,
     focusedSectionId,

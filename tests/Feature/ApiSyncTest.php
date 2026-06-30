@@ -8,6 +8,7 @@ use App\Models\StudentStatusLog;
 use App\Models\Teacher;
 use App\Models\User;
 use App\Models\AcademicYear;
+use App\Notifications\SchoolSubmissionReminderMailNotification;
 use App\Notifications\SchoolSubmissionReminderNotification;
 use App\Support\Domain\StudentStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -415,7 +416,15 @@ class ApiSyncTest extends TestCase
             [$schoolHead],
             SchoolSubmissionReminderNotification::class,
             static function (SchoolSubmissionReminderNotification $notification, array $channels): bool {
-                return in_array('mail', $channels, true) && in_array('database', $channels, true);
+                return in_array('database', $channels, true) && ! in_array('mail', $channels, true);
+            },
+        );
+
+        Notification::assertSentTo(
+            [$schoolHead],
+            SchoolSubmissionReminderMailNotification::class,
+            static function (SchoolSubmissionReminderMailNotification $notification, array $channels): bool {
+                return in_array('mail', $channels, true) && ! in_array('database', $channels, true);
             },
         );
 

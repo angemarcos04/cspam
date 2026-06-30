@@ -435,6 +435,139 @@ describe("DataProvider school record sync recovery", () => {
       extraHeaders: undefined,
     });
   });
+
+  it("maps monitor record filters to the dashboard records endpoint", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:36:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-1\"" }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:37:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:search",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-filtered\"" }),
+      });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.refreshRecords({
+        force: true,
+        filters: {
+          search: "Santiago",
+          status: "active",
+          dateFrom: "2026-01-01",
+          dateTo: "2026-12-31",
+          schoolId: "12",
+        },
+      });
+    });
+
+    expect(apiRequestRawMock.mock.calls[1]?.[0]).toBe(
+      "/api/dashboard/records?search=Santiago&status=active&date_from=2026-01-01&date_to=2026-12-31&school_id=12",
+    );
+    expect(apiRequestRawMock.mock.calls[1]?.[1]).toMatchObject({
+      extraHeaders: undefined,
+    });
+  });
+
+  it("reuses the active monitor record filters for later background refreshes", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    apiRequestRawMock
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:36:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:none",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-1\"" }),
+      })
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: [],
+          meta: {
+            syncedAt: "2026-05-07T06:37:01.000Z",
+            scope: "division",
+            scopeKey: "division:all|filters:active",
+            recordCount: 0,
+            targetsMet: null,
+            alerts: [],
+          },
+        },
+        headers: new Headers({ "X-Sync-Etag": "\"etag-filtered\"" }),
+      })
+      .mockResolvedValueOnce({
+        status: 304,
+        data: null,
+        headers: new Headers({
+          "X-Sync-Record-Count": "0",
+          "X-Sync-Etag": "\"etag-filtered\"",
+        }),
+      });
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+    });
+
+    await act(async () => {
+      await result.current.refreshRecords({
+        force: true,
+        filters: {
+          status: "active",
+          schoolId: "12",
+        },
+      });
+    });
+
+    await act(async () => {
+      await result.current.refreshRecords();
+    });
+
+    expect(apiRequestRawMock.mock.calls[2]?.[0]).toBe(
+      "/api/dashboard/records?status=active&school_id=12",
+    );
+    expect(apiRequestRawMock.mock.calls[2]?.[1]).toMatchObject({
+      extraHeaders: { "If-None-Match": "etag-filtered" },
+    });
+  });
 });
 
 describe("buildDataProviderSessionKey", () => {

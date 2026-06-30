@@ -34,10 +34,31 @@ import type {
   SchoolRecordPayload,
   SyncAlert,
   TargetsMetSnapshot,
+  SchoolStatus,
 } from "@/types";
 
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
+
+export interface SchoolRecordRefreshFilters {
+  search?: string | null;
+  status?: SchoolStatus | "all" | null;
+  dateFrom?: string | null;
+  dateTo?: string | null;
+  schoolId?: string | number | null;
+}
+
+export type SchoolRecordRefreshOptions = RefreshOptions & {
+  filters?: SchoolRecordRefreshFilters | null;
+};
+
+interface NormalizedSchoolRecordRefreshFilters {
+  search: string;
+  status: SchoolStatus | "";
+  dateFrom: string;
+  dateTo: string;
+  schoolId: string;
+}
 
 interface SyncMeta {
   syncedAt?: string;
@@ -151,7 +172,7 @@ interface DataContextType {
   lastSyncedAt: string | null;
   syncScope: SyncScope;
   syncStatus: SyncStatus;
-  refreshRecords: (options?: RefreshOptions) => Promise<void>;
+  refreshRecords: (options?: SchoolRecordRefreshOptions) => Promise<void>;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   deleteRecord: (id: string) => Promise<void>;
@@ -251,6 +272,40 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
   return Math.trunc(parsed);
 }
 
+function normalizeSchoolRecordRefreshFilters(
+  filters?: SchoolRecordRefreshFilters | null,
+): NormalizedSchoolRecordRefreshFilters {
+  const normalizedStatus = String(filters?.status ?? "").trim().toLowerCase();
+  const normalizedSchoolId = String(filters?.schoolId ?? "").trim();
+
+  return {
+    search: String(filters?.search ?? "").trim(),
+    status: normalizedStatus === "active" || normalizedStatus === "inactive" || normalizedStatus === "pending"
+      ? normalizedStatus
+      : "",
+    dateFrom: /^\d{4}-\d{2}-\d{2}$/.test(String(filters?.dateFrom ?? "").trim())
+      ? String(filters?.dateFrom ?? "").trim()
+      : "",
+    dateTo: /^\d{4}-\d{2}-\d{2}$/.test(String(filters?.dateTo ?? "").trim())
+      ? String(filters?.dateTo ?? "").trim()
+      : "",
+    schoolId: /^\d+$/.test(normalizedSchoolId) && Number(normalizedSchoolId) > 0 ? normalizedSchoolId : "",
+  };
+}
+
+function buildSchoolRecordRefreshUrl(filters: NormalizedSchoolRecordRefreshFilters): string {
+  const params = new URLSearchParams();
+
+  if (filters.search) params.set("search", filters.search);
+  if (filters.status) params.set("status", filters.status);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.schoolId) params.set("school_id", filters.schoolId);
+
+  const query = params.toString();
+  return `/api/dashboard/records${query ? `?${query}` : ""}`;
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, role, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
@@ -276,6 +331,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const realtimeSyncTimerRef = useRef<number | null>(null);
   const recordsRef = useRef<SchoolRecord[]>([]);
   const emptyRecordsRecoveryRef = useRef(false);
+  const activeRecordFiltersRef = useRef<NormalizedSchoolRecordRefreshFilters>(
+    normalizeSchoolRecordRefreshFilters(),
+  );
+  const recordsEndpointRef = useRef("/api/dashboard/records");
 
   const clearRealtimeSyncTimer = () => {
     if (typeof window === "undefined") {
@@ -305,6 +364,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncQueuedForceRef.current = false;
     etagRef.current = "";
     syncScopeKeyRef.current = "";
+    activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters();
+    recordsEndpointRef.current = "/api/dashboard/records";
     clearRealtimeSyncTimer();
     setRecords([]);
     setRecordCount(0);
@@ -342,7 +403,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
   );
 
   const syncRecords = useCallback(
-    async (silent = false, force = false, throwOnError = false) => {
+    async (
+      silent = false,
+      force = false,
+      throwOnError = false,
+      filters?: SchoolRecordRefreshFilters | null,
+    ) => {
+      if (filters !== undefined) {
+        activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters(filters);
+      }
+
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
         syncQueuedForceRef.current = syncQueuedForceRef.current || force;
@@ -362,8 +432,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncStatus("idle");
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters();
+        recordsEndpointRef.current = "/api/dashboard/records";
         syncQueuedForceRef.current = false;
         return;
+      }
+
+      const recordsEndpoint = buildSchoolRecordRefreshUrl(activeRecordFiltersRef.current);
+      if (recordsEndpointRef.current !== recordsEndpoint) {
+        recordsEndpointRef.current = recordsEndpoint;
+        etagRef.current = "";
+        syncScopeKeyRef.current = "";
       }
 
       syncInFlightRef.current = true;
@@ -377,7 +456,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       setError("");
 
       try {
-        const response = await apiRequestRaw<SchoolRecordsResponse>("/api/dashboard/records", {
+        const response = await apiRequestRaw<SchoolRecordsResponse>(recordsEndpoint, {
           token,
           timeoutMs: SCHOOL_RECORDS_SYNC_TIMEOUT_MS,
           extraHeaders: !force && etagRef.current ? { "If-None-Match": etagRef.current } : undefined,
@@ -488,8 +567,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
     [token, handleApiError],
   );
 
-  const refreshRecords = useCallback(async (options?: RefreshOptions) => {
-    await syncRecords(false, Boolean(options?.force), Boolean(options?.throwOnError));
+  const refreshRecords = useCallback(async (options?: SchoolRecordRefreshOptions) => {
+    await syncRecords(false, Boolean(options?.force), Boolean(options?.throwOnError), options?.filters);
   }, [syncRecords]);
 
   useEffect(() => {

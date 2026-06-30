@@ -37,6 +37,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
@@ -65,6 +66,12 @@ class SchoolRecordController extends Controller
 
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
+
+        if (! $isMonitor && ! $isSchoolHead) {
+            return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
+        }
+
+        $this->validateIndexFilters($request);
         $filters = $this->filterService->extract($request);
         // FIX: schools are not year-bound, so selected-year dashboard data must scope related records explicitly.
         $academicYearId = $this->resolveAcademicYearFilterId($filters);
@@ -80,8 +87,6 @@ class SchoolRecordController extends Controller
             } else {
                 $baseQuery->whereRaw('1 = 0');
             }
-        } elseif (! $isMonitor) {
-            return response()->json(['message' => 'Forbidden.'], Response::HTTP_FORBIDDEN);
         }
 
         $this->filterService->apply($baseQuery, $filters, [
@@ -186,6 +191,18 @@ class SchoolRecordController extends Controller
             $latestAt,
             $syncedAt,
         );
+    }
+
+    private function validateIndexFilters(Request $request): void
+    {
+        $request->validate([
+            'search' => ['sometimes', 'nullable', 'string', 'max:120'],
+            'status' => ['sometimes', 'nullable', 'string', Rule::in(array_column(SchoolStatus::cases(), 'value'))],
+            'date_from' => ['sometimes', 'nullable', 'date'],
+            'date_to' => ['sometimes', 'nullable', 'date'],
+            'school_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+            'academic_year_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
     }
 
     public function store(UpsertSchoolRecordRequest $request): JsonResponse

@@ -13,6 +13,7 @@ export type ScopeDropdownId = "schools_filters";
 
 export interface SchoolScopeOption {
   key: string;
+  id: string;
   code: string;
   name: string;
   headName: string;
@@ -149,6 +150,7 @@ export function useMonitorLookups({
       const searchText = `${schoolCode} ${schoolName} ${headName} ${headEmail}`.trim().toLowerCase();
       optionsByKey.set(key, {
         key,
+        id: String(record.id ?? "").trim(),
         code: schoolCode || "N/A",
         name: schoolName,
         headName,
