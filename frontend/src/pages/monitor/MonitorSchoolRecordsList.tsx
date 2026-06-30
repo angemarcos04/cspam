@@ -242,7 +242,7 @@ export function MonitorSchoolRecordsList({
                       (queuePill.onClick ? (
                         <button
                           type="button"
-                          title={`${queuePill.title} (Shift+click to open in Reviews)`}
+                          title={`${queuePill.title} (Shift+click to open in Inbox)`}
                           aria-pressed={queuePill.pressed}
                           onClick={(event) => {
                             if (event.shiftKey) {

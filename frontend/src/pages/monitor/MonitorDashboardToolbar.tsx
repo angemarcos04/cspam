@@ -43,7 +43,11 @@ export function MonitorDashboardToolbar({
       <section className="dashboard-shell mb-5 rounded-sm border border-slate-200 bg-white p-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</h2>
+            {isReviewsScreen ? (
+              <p className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</p>
+            ) : (
+              <h2 className="text-sm font-bold uppercase tracking-wide text-slate-800">{activeScreenMeta.title}</h2>
+            )}
             {!isSchoolsScreen ? (
               <p className="mt-1 text-xs text-slate-600">{activeScreenMeta.description}</p>
             ) : null}

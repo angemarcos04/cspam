@@ -39,7 +39,7 @@ async function signInAsMonitor(page: Page) {
   const loginResponse = await loginResponsePromise;
   expect(loginResponse.status()).not.toBe(419);
   await Promise.all([recordsResponsePromise, submissionsResponsePromise]);
-  await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Review Inbox" })).toBeVisible({ timeout: 30_000 });
   await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 }
 

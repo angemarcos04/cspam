@@ -410,7 +410,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
     });
 
-    const openReviewsButtons = screen.getAllByRole("button", { name: "Open Reviews" });
+    const openReviewsButtons = screen.getAllByRole("button", { name: "Open Inbox" });
     expect(openReviewsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
   });
 
@@ -566,7 +566,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("opens School Detail for a queue row when no dashboard filters are active", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.queryByText("Select a school from the queue to start reviewing submissions.")).toBeNull();
@@ -587,7 +587,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(document.getElementById("monitor-action-queue")).toBeNull();
@@ -777,7 +777,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("sends queue reminders with an optional note", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
 
     fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
     fireEvent.change(screen.getByLabelText("Message"), {
@@ -793,7 +793,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
   it("blocks queue reminder notes longer than 500 characters", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Inbox" })[0]!);
 
     fireEvent.click((await screen.findAllByRole("button", { name: "Reminder" }))[0]!);
     fireEvent.change(screen.getByLabelText("Message"), {

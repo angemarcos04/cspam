@@ -35,7 +35,7 @@ async function signInAsMonitor(page: Page) {
   if (!response.ok()) {
     throw new Error(`Monitor E2E login returned HTTP ${response.status()}.`);
   }
-  await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole("heading", { name: "Review Inbox" })).toBeVisible({ timeout: 30_000 });
 }
 
 async function signInAsSchoolHead(page: Page) {

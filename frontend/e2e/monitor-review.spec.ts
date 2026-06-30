@@ -421,7 +421,7 @@ async function signInAsMonitor(page: Page) {
   ));
   await page.getByRole("button", { name: "Sign In" }).click();
   await Promise.all([recordsResponse, submissionsResponse]);
-  await expect(page.getByRole("heading", { name: "Queue List" })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole("heading", { name: "Review Inbox" })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole("button", { name: "Review Workspace" })).toHaveCount(0);
   await expect(page.locator("#monitor-queue-workspace")).toHaveCount(0);
 }

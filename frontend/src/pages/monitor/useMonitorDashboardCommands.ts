@@ -129,8 +129,8 @@ export function useMonitorDashboardCommands({
         };
       case "reviews":
         return {
-          title: "Reviews",
-          description: "",
+          title: "Review Inbox",
+          description: "Review submitted and returned school packages from one inbox.",
           primaryLabel: "Review",
         };
       case "audit":
