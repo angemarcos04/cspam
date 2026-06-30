@@ -464,8 +464,7 @@ export function MonitorSchoolManagementPanel({
           <p className="mt-2 text-sm text-slate-600">No School Head account is linked to this school.</p>
         )}
         <p className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Full School Head account actions remain in the existing account management workflow so confirmation-code
-          protections stay intact.
+          Manage School Head account actions from Schools -&gt; Accounts so confirmation-code protections stay intact.
         </p>
       </section>
 

@@ -46,7 +46,8 @@ vi.mock("@/components/DashboardHelpDialog", () => ({
 }));
 
 vi.mock("@/components/MonitorMfaResetApprovalsDialog", () => ({
-  MonitorMfaResetApprovalsDialog: () => null,
+  MonitorMfaResetApprovalsDialog: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="MFA Recovery Requests">MFA Recovery Requests</div> : null,
 }));
 
 vi.mock("@/components/StatCard", () => ({
@@ -76,6 +77,8 @@ const addRecordMock = vi.fn();
 const updateRecordMock = vi.fn();
 const deleteRecordMock = vi.fn();
 const previewDeleteRecordMock = vi.fn();
+const listArchivedRecordsMock = vi.fn();
+const restoreRecordMock = vi.fn();
 const permanentlyDeleteArchivedRecordMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
@@ -172,6 +175,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     updateRecordMock.mockReset();
     deleteRecordMock.mockReset();
     previewDeleteRecordMock.mockReset();
+    listArchivedRecordsMock.mockReset();
+    restoreRecordMock.mockReset();
     permanentlyDeleteArchivedRecordMock.mockReset();
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
@@ -250,6 +255,29 @@ describe("MonitorDashboard School Head delivery flows", () => {
         linkedUsers: 1,
       },
     });
+    listArchivedRecordsMock.mockResolvedValue([
+      {
+        id: "archived-1",
+        schoolId: "900002",
+        schoolCode: "900002",
+        schoolName: "Archived Elementary",
+        level: "Elementary",
+        district: "District 2",
+        address: "Old Road, Santiago City",
+        type: "public",
+        studentCount: 0,
+        teacherCount: 0,
+        region: "Region II",
+        status: "inactive",
+        submittedBy: "Monitor User",
+        lastUpdated: "2026-03-20T09:00:00.000Z",
+        deletedAt: "2026-03-21T09:00:00.000Z",
+        schoolHeadAccount: null,
+        indicatorLatest: null,
+      },
+    ]);
+    restoreRecordMock.mockResolvedValue(undefined);
+    permanentlyDeleteArchivedRecordMock.mockResolvedValue(undefined);
 
     vi.mocked(useAuth).mockReturnValue({
       role: "monitor",
@@ -359,8 +387,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
       updateRecord: updateRecordMock,
       deleteRecord: deleteRecordMock,
       previewDeleteRecord: previewDeleteRecordMock,
-      listArchivedRecords: vi.fn(),
-      restoreRecord: vi.fn(),
+      listArchivedRecords: listArchivedRecordsMock,
+      restoreRecord: restoreRecordMock,
       permanentlyDeleteArchivedRecord: permanentlyDeleteArchivedRecordMock,
       sendReminder: sendReminderMock,
       updateSchoolHeadAccountStatus: vi.fn(),
@@ -492,7 +520,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
   });
 
-  it("keeps school account management controls out of the Schools section", async () => {
+  it("restores Schools management tools while keeping active rows open-only", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
@@ -503,11 +531,116 @@ describe("MonitorDashboard School Head delivery flows", () => {
       return section as HTMLElement;
     });
 
-    expect(within(schoolsSection).queryByRole("button", { name: "Accounts" })).toBeNull();
-    expect(within(schoolsSection).queryByRole("button", { name: "More" })).toBeNull();
-    expect(within(schoolsSection).queryByText("Download CSV Format")).toBeNull();
-    expect(within(schoolsSection).queryByText("Import CSV")).toBeNull();
-    expect(within(schoolsSection).queryByText("MFA Recovery Requests")).toBeNull();
+    expect(within(schoolsSection).getByRole("button", { name: "Accounts" })).toBeTruthy();
+    expect(within(schoolsSection).getByRole("button", { name: "More" })).toBeTruthy();
+    expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
+
+    const activeSchoolRow = within(schoolsSection).getByText("Santiago Elementary").closest("article");
+    expect(activeSchoolRow).toBeTruthy();
+    expect(within(activeSchoolRow as HTMLElement).getByRole("button", { name: "Open" })).toBeTruthy();
+    expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: "Edit School Details" })).toBeNull();
+    expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: "Archive School Record" })).toBeNull();
+    expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /delete/i })).toBeNull();
+    expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /suspend/i })).toBeNull();
+  });
+
+  it("opens Schools Accounts and More menu actions from the management hub", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
+    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Accounts" })).toBeTruthy();
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
+    const menu = within(schoolsSection).getByRole("menu", { name: "Schools management menu" });
+    expect(within(menu).getByRole("menuitem", { name: "Download CSV Format" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Import CSV" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "Show Archived Schools" })).toBeTruthy();
+    expect(within(menu).getByRole("menuitem", { name: "MFA Recovery Requests" })).toBeTruthy();
+    expect(within(menu).queryByText("Add School")).toBeNull();
+    expect(within(menu).queryByText("Reviews")).toBeNull();
+    expect(within(menu).queryByText("Audit Trail")).toBeNull();
+    expect(within(menu).queryByText("User Manual")).toBeNull();
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "MFA Recovery Requests" }));
+    expect(await screen.findByRole("dialog", { name: "MFA Recovery Requests" })).toBeTruthy();
+  });
+
+  it("uses existing import and archived-school flows from the Schools More menu", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
+    fireEvent.click(within(schoolsSection).getByRole("menuitem", { name: "Show Archived Schools" }));
+
+    expect(await within(schoolsSection).findByRole("heading", { name: "Archived Schools" })).toBeTruthy();
+    await waitFor(() => {
+      expect(listArchivedRecordsMock).toHaveBeenCalled();
+    });
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Restore" }));
+    await waitFor(() => {
+      expect(restoreRecordMock).toHaveBeenCalledWith("archived-1");
+    });
+    expect(within(schoolsSection).getByRole("button", { name: "Delete permanently" })).toBeTruthy();
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
+    fireEvent.click(within(schoolsSection).getByRole("menuitem", { name: "Import CSV" }));
+    const input = within(schoolsSection).getByLabelText("Import schools CSV");
+    const csv = [
+      "school_id,school_name,level,type,address,district,region,status,school_head_name,school_head_email",
+      "955570,Imported No Account School,Elementary,public,Main Road,District 3,Region II,active,,",
+    ].join("\n");
+    const file = new File([csv], "schools.csv", { type: "text/csv" });
+    Object.defineProperty(file, "text", {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(csv),
+    });
+    fireEvent.change(input, {
+      target: {
+        files: [file],
+      },
+    });
+
+    await waitFor(() => {
+      expect(bulkImportRecordsMock).toHaveBeenCalledWith([
+        expect.objectContaining({
+          schoolId: "955570",
+          schoolName: "Imported No Account School",
+          type: "public",
+          status: "active",
+        }),
+      ], {
+        updateExisting: true,
+        restoreArchived: true,
+      });
+    });
+  });
+
+  it("does not expose destructive school actions in the active Schools list", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
     expect(within(schoolsSection).queryByRole("button", { name: "Edit School Details" })).toBeNull();
     expect(within(schoolsSection).queryByRole("button", { name: "Archive School Record" })).toBeNull();
     expect(within(schoolsSection).queryByRole("button", { name: /delete/i })).toBeNull();
@@ -756,8 +889,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     expect(screen.getByText(/The Review Inbox shows School, Location, Level, Type, Status, Last Activity, and Actions/i)).toBeTruthy();
     expect(screen.getByText(/Use Unverify when a verified requirement must be reopened for review/i)).toBeTruthy();
-    expect(screen.queryByText("Schools -> Accounts")).toBeNull();
-    expect(screen.queryByText("Schools -> More -> MFA Recovery Requests")).toBeNull();
+    expect(screen.getAllByText(/Schools -> Accounts/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Schools -> More -> MFA Recovery Requests/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Return to Dashboard Data" }));
     expect(screen.queryByRole("heading", { name: "User Manual" })).toBeNull();
@@ -805,6 +938,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(await within(schoolDetail).findByRole("heading", { name: "School Information" })).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "School Status" })).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "School Head Account Access" })).toBeTruthy();
+    expect(within(schoolDetail).getByText(/Manage School Head account actions from Schools -> Accounts/)).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "Archive School Record" })).toBeTruthy();
     expect(within(schoolDetail).queryByRole("button", { name: /permanent/i })).toBeNull();
     expect(within(schoolDetail).queryByText(/suspended/i)).toBeNull();

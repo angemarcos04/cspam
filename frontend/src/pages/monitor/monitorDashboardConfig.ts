@@ -60,9 +60,11 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     objective: "",
     actions: [
       "Use search and school filters to find the school you need quickly.",
-      "Inspect school details without leaving the dashboard.",
+      "Use Accounts for School Head account management.",
+      "Use More for CSV import/export, archived schools, and MFA recovery requests.",
+      "Open school details without leaving the dashboard.",
     ],
-    doneWhen: "The selected school context is verified and ready for review.",
+    doneWhen: "The selected school or management task is open in the Schools section.",
   },
   {
     id: "add_school",
@@ -70,7 +72,7 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
     objective: "",
     actions: [
       "Create a school record and optional School Head account from the dedicated Add School section.",
-      "Use Schools after creation when you need to browse or open the new school record.",
+      "Stay in Add School after create, or use View Schools when you need to browse existing records.",
     ],
     doneWhen: "The school record form is submitted or reset without leaving the section.",
   },

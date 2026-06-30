@@ -1257,6 +1257,9 @@ export function MonitorDashboard() {
     setFocusedSectionId(null);
     closeSchoolDrawer();
   }, [closeSchoolDrawer, setFocusedSectionId, setShowNavigatorManual]);
+  const handleOpenMfaRecoveryRequestsFromSchools = useCallback(() => {
+    setShowMfaResetApprovalsDialog(true);
+  }, [setShowMfaResetApprovalsDialog]);
 
   return (
     <Shell
@@ -1395,6 +1398,22 @@ export function MonitorDashboard() {
               activeSchoolPresetLabel={schoolsSectionApi.activeSchoolPresetLabel}
               messages={schoolsSectionApi.schoolMessagesProps}
               schoolRecordsListProps={schoolsSectionApi.schoolRecordsListProps}
+              bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
+              schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
+              showSchoolHeadAccountsPanel={schoolsSectionApi.showSchoolHeadAccountsPanel}
+              isSchoolActionsMenuOpen={schoolsSectionApi.isSchoolActionsMenuOpen}
+              isBulkImporting={schoolsSectionApi.isBulkImporting}
+              showArchivedRecords={schoolsSectionApi.showArchivedRecords}
+              schoolHeadAccountsPanelProps={schoolsSectionApi.schoolHeadAccountsPanelProps}
+              archivedSchoolsProps={schoolsSectionApi.archivedSchoolsProps}
+              handleBulkImportFileChange={schoolsSectionApi.handleBulkImportFileChange}
+              toggleSchoolHeadAccountsPanel={schoolsSectionApi.toggleSchoolHeadAccountsPanel}
+              toggleActionsMenu={schoolsSectionApi.toggleActionsMenu}
+              closeActionsMenu={schoolsSectionApi.closeActionsMenu}
+              downloadCsvFormat={schoolsSectionApi.downloadCsvFormat}
+              openBulkImportPicker={schoolsSectionApi.openBulkImportPicker}
+              toggleArchivedRecords={schoolsSectionApi.toggleArchivedRecords}
+              onOpenMfaRecoveryRequests={handleOpenMfaRecoveryRequestsFromSchools}
             />
           )}
 

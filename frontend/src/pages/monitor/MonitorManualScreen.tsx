@@ -23,9 +23,9 @@ const MONITOR_MANUAL_SECTIONS: ManualSection[] = [
     title: "Dashboard Overview",
     purpose: "Use the left navigation to move between monitor sections. Each section has one main purpose.",
     actions: [
-      "Schools is for viewing the school list.",
-      "Add School is for creating a new school record.",
-      "Reviews is for checking schools that need monitoring action.",
+      "Schools is for managing existing schools, School Head accounts, imports, archived records, and recovery requests.",
+      "Add School is for creating a new school record only.",
+      "Reviews is the Review Inbox for schools that need monitoring action.",
       "Audit Trail is for reviewing system activity.",
       "User Manual explains how to use the monitor workspace.",
       "Use Refresh to load the latest dashboard data before reviewing schools.",
@@ -35,20 +35,21 @@ const MONITOR_MANUAL_SECTIONS: ManualSection[] = [
   {
     id: "schools",
     title: "Schools",
-    purpose: "Use Schools to view all schools in your assigned monitoring scope.",
+    purpose: "Use Schools to manage existing schools in your assigned monitoring scope.",
     actions: [
       "Check the school name, school code, location, and visible status.",
       "Use filters to narrow the list when needed.",
       "Click Open to view a school's details.",
-      "This page is only for browsing and opening school records.",
-      "Adding schools is handled in the Add School section.",
+      "Use Accounts for School Head setup, password reset, temporary password, account status, and guarded account actions.",
+      "Use More for CSV format download, CSV import, archived schools, and MFA recovery requests.",
+      "Adding new school records is handled only in the Add School section.",
     ],
-    doneWhen: "You found the school you need or opened its details for checking.",
+    doneWhen: "You found the school you need, opened its details, or used the existing management tools safely.",
   },
   {
     id: "add-school",
     title: "Add School",
-    purpose: "Use Add School to create a new school record.",
+    purpose: "Use Add School to create a new school record only.",
     actions: [
       "Enter the required school information: School Code, School Name, Level, Type, and Address.",
       "Choose the correct Level: Elementary or High School.",
@@ -103,17 +104,17 @@ const ACCOUNT_RECOVERY_SECTIONS: AccountManualSection[] = [
   {
     title: "School Head Account Setup",
     actions: [
-      "Use account setup when a School Head needs access to CSPAMS.",
+      "Open Schools -> Accounts when a School Head needs access to CSPAMS.",
       "When a School Head account is created, CSPAMS can send a one-time setup link to the School Head email address.",
       "The setup link allows the School Head to set a password and activate the account.",
       "CSPAMS should not send plain-text passwords.",
-      "If the setup email is not received, confirm that the email address is correct, then issue a new setup link if account tools are available.",
+      "If the setup email is not received, confirm that the email address is correct, then issue a new setup link from Schools -> Accounts.",
     ],
   },
   {
     title: "School Head Password Reset",
     actions: [
-      "Use a reset link when a School Head cannot sign in or needs a new setup link.",
+      "Use Schools -> Accounts to send a reset link when a School Head cannot sign in or needs a new setup link.",
       "A reset or setup link should be sent to the registered School Head email address.",
       "The link is one-time use and may expire.",
       "If the link expires, issue a new one.",
@@ -124,6 +125,7 @@ const ACCOUNT_RECOVERY_SECTIONS: AccountManualSection[] = [
     actions: [
       "Some account actions require a confirmation code before they can be completed.",
       "Examples may include locking, suspending, archiving, removing, or resetting account access.",
+      "Run these guarded account actions from Schools -> Accounts.",
       "When prompted, send the confirmation code, check the monitor email inbox, enter the code, then confirm the action.",
     ],
   },
@@ -154,6 +156,7 @@ const ACCOUNT_RECOVERY_SECTIONS: AccountManualSection[] = [
       "Try the 6-digit email code first.",
       "Use a stored backup code if available.",
       "If neither option works, request MFA recovery from the sign-in MFA screen.",
+      "Review MFA recovery requests from Schools -> More -> MFA Recovery Requests.",
       "After recovery, store the new backup codes securely.",
       "Production recovery should require another active Division Monitor to approve the request.",
     ],
