@@ -72,6 +72,7 @@ vi.mock("@/components/students/StudentRecordsPanel", () => ({
 const issueSchoolHeadSetupLinkMock = vi.fn();
 const sendReminderMock = vi.fn();
 const bulkImportRecordsMock = vi.fn();
+const addRecordMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
@@ -163,6 +164,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     issueSchoolHeadSetupLinkMock.mockReset();
     sendReminderMock.mockReset();
     bulkImportRecordsMock.mockReset();
+    addRecordMock.mockReset();
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
     scrollIntoViewMock.mockReset();
@@ -225,6 +227,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
         },
       ],
     });
+    addRecordMock.mockResolvedValue(null);
 
     vi.mocked(useAuth).mockReturnValue({
       role: "monitor",
@@ -330,7 +333,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       syncScope: "division",
       syncStatus: "updated",
       refreshRecords: refreshRecordsMock,
-      addRecord: vi.fn(),
+      addRecord: addRecordMock,
       updateRecord: vi.fn(),
       deleteRecord: vi.fn(),
       previewDeleteRecord: vi.fn(),
@@ -467,28 +470,29 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
   });
 
-  it("uses delivery metadata only when sending a School Head setup link", async () => {
+  it("keeps school account management controls out of the Schools section", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
-    fireEvent.click(screen.getByRole("button", { name: "Accounts" }));
-    fireEvent.click(screen.getByRole("button", { name: "Send Setup Link" }));
 
-    await waitFor(() => {
-      expect(issueSchoolHeadSetupLinkMock).toHaveBeenCalledWith("1", null);
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
     });
 
-    expect(screen.getByText("Setup link email sent for Santiago Elementary.")).toBeTruthy();
-    expect(screen.getByText("Message queued.")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: /copy link/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /reveal link/i })).toBeNull();
-  }, 15_000);
+    expect(within(schoolsSection).queryByRole("button", { name: "Accounts" })).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: "More" })).toBeNull();
+    expect(within(schoolsSection).queryByText("Download CSV Format")).toBeNull();
+    expect(within(schoolsSection).queryByText("Import CSV")).toBeNull();
+    expect(within(schoolsSection).queryByText("MFA Recovery Requests")).toBeNull();
+  });
 
-  it("shows Add School as a sidebar action between Schools and Reviews", () => {
+  it("shows Add School as a locked sidebar section between Schools and Reviews", () => {
     render(<MonitorDashboard />);
 
     const schoolsButton = screen.getByRole("button", { name: "Open Schools" });
-    const addSchoolButton = screen.getByRole("button", { name: "Add School" });
+    const addSchoolButton = screen.getByRole("button", { name: "Open Add School" });
     const reviewsButton = screen.getByRole("button", { name: "Open Reviews" });
     const auditButton = screen.getByRole("button", { name: "Open Audit Trail" });
 
@@ -499,10 +503,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(addSchoolButton.getAttribute("aria-current")).toBeNull();
   });
 
-  it("opens and focuses the existing School form from sidebar Add School without creating a new tab", async () => {
+  it("opens Add School as its own section without redirecting to Schools", async () => {
     render(<MonitorDashboard />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Add School" }));
+    fireEvent.click(screen.getByRole("button", { name: "Open Add School" }));
 
     expect(await screen.findByRole("heading", { name: "Add School Record" })).toBeTruthy();
 
@@ -510,12 +514,13 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(document.activeElement).toBe(document.getElementById("monitor-school-id"));
     });
 
-    expect(scrollIntoViewMock).toHaveBeenCalled();
-    expect(screen.getByRole("button", { name: "Open Schools" }).getAttribute("aria-current")).toBe("page");
-    expect(window.location.search).not.toContain("tab=add_school");
+    expect(screen.getByRole("button", { name: "Open Add School" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "Open Schools" }).getAttribute("aria-current")).toBeNull();
+    expect(document.getElementById("monitor-school-records")).toBeNull();
+    expect(window.location.search).toContain("tab=add_school");
   });
 
-  it("does not duplicate Add School in the desktop Schools section header", async () => {
+  it("does not show Add School inside the desktop Schools section", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
@@ -527,10 +532,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
-    expect(screen.getByRole("button", { name: "Add School" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Add School" })).toBeTruthy();
   });
 
-  it("keeps Add School available in the mobile Schools section header", async () => {
+  it("keeps mobile Add School as its own section instead of a Schools header action", async () => {
     setViewportWidth(500);
 
     render(<MonitorDashboard />);
@@ -543,14 +548,19 @@ describe("MonitorDashboard School Head delivery flows", () => {
       return section as HTMLElement;
     });
 
-    expect(within(schoolsSection).getByRole("button", { name: "Add School" })).toBeTruthy();
+    expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Add School" })[0]!);
+
+    expect(await screen.findByRole("heading", { name: "Add School Record" })).toBeTruthy();
+    expect(document.getElementById("monitor-school-records")).toBeNull();
   });
 
   it("uses the same focus-and-scroll behavior for keyboard top navigation", async () => {
     render(<MonitorDashboard />);
     scrollIntoViewMock.mockClear();
 
-    fireEvent.keyDown(window, { key: "2", altKey: true });
+    fireEvent.keyDown(window, { key: "3", altKey: true });
 
     await waitFor(() => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
@@ -643,85 +653,33 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(schoolStatusPills.length).toBeGreaterThan(0);
   });
 
-  it("downloads the editable school CSV format from the Schools menu", async () => {
-    const originalCreateObjectUrl = window.URL.createObjectURL;
-    const originalRevokeObjectUrl = window.URL.revokeObjectURL;
-    const createObjectUrlMock = vi.fn((_blob: Blob | MediaSource) => "blob:cspams-school-csv");
-    const revokeObjectUrlMock = vi.fn();
-    const clickMock = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+  it("creates a school from Add School without automatically returning to Schools", async () => {
+    render(<MonitorDashboard />);
 
-    Object.defineProperty(window.URL, "createObjectURL", { configurable: true, value: createObjectUrlMock });
-    Object.defineProperty(window.URL, "revokeObjectURL", { configurable: true, value: revokeObjectUrlMock });
+    fireEvent.click(screen.getByRole("button", { name: "Open Add School" }));
 
-    try {
-      render(<MonitorDashboard />);
-
-      fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
-
-      const downloadButton = screen.getByRole("button", { name: "Download CSV Format" });
-      expect(downloadButton).toBeTruthy();
-      expect(screen.getByRole("button", { name: "Import CSV" })).toBeTruthy();
-
-      fireEvent.click(downloadButton);
-
-      expect(createObjectUrlMock).toHaveBeenCalledTimes(1);
-      const csvBlob = createObjectUrlMock.mock.calls[0]?.[0] as Blob;
-      const csvText = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result ?? ""));
-        reader.onerror = () => reject(reader.error);
-        reader.readAsText(csvBlob);
-      });
-
-      expect(csvText).toContain(
-        "school_id,school_name,level,type,address,district,region,status,school_head_name,school_head_email",
-      );
-      expect(csvText).toContain("900001,Santiago Elementary,Elementary,public,\"District 1, Santiago City\"");
-      expect(csvText).toContain("Maria Santos,maria@example.com");
-      expect(csvText).not.toContain("temporary_password");
-      expect(clickMock).toHaveBeenCalled();
-    } finally {
-      Object.defineProperty(window.URL, "createObjectURL", {
-        configurable: true,
-        value: originalCreateObjectUrl,
-      });
-      Object.defineProperty(window.URL, "revokeObjectURL", {
-        configurable: true,
-        value: originalRevokeObjectUrl,
-      });
-      clickMock.mockRestore();
-    }
-  });
-
-  it("explains CSV imports that did not create School Head accounts", async () => {
-    const { container } = render(<MonitorDashboard />);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
-
-    const csv = "school_id,school_name,level,type,address\n955570,Imported No Account School,Elementary,public,Main";
-    const file = new File([csv], "schools.csv", { type: "text/csv" });
-    Object.defineProperty(file, "text", {
-      configurable: true,
-      value: vi.fn().mockResolvedValue(csv),
-    });
-
-    const input = container.querySelector('input[type="file"]') as HTMLInputElement | null;
-    expect(input).not.toBeNull();
-
-    fireEvent.change(input!, { target: { files: [file] } });
+    fireEvent.change(await screen.findByLabelText("School Code"), { target: { value: "955570" } });
+    fireEvent.change(screen.getByLabelText("School Name"), { target: { value: "Imported No Account School" } });
+    fireEvent.change(screen.getByLabelText("Address"), { target: { value: "Main Road, Santiago City" } });
+    fireEvent.change(screen.getByLabelText("Account Name"), { target: { value: "New School Head" } });
+    fireEvent.change(screen.getByLabelText("Account Email"), { target: { value: "head@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create Record" }));
 
     await waitFor(() => {
-      expect(bulkImportRecordsMock).toHaveBeenCalledTimes(1);
+      expect(addRecordMock).toHaveBeenCalledWith(expect.objectContaining({
+        schoolId: "955570",
+        schoolName: "Imported No Account School",
+        address: "Main Road, Santiago City",
+        schoolHeadAccount: {
+          name: "New School Head",
+          email: "head@example.com",
+        },
+      }));
     });
 
-    expect(screen.getByText(/No School Head accounts were created/i)).not.toBeNull();
-    expect(screen.getByText(/school_head_name and school_head_email/i)).not.toBeNull();
-
-    fireEvent.click(screen.getByRole("button", { name: "Review schools needing accounts" }));
-
-    expect(screen.getByText("School Head Accounts")).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Needs account/i }).getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByText("School record created.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open Add School" }).getAttribute("aria-current")).toBe("page");
+    expect(document.getElementById("monitor-school-records")).toBeNull();
   });
 
   it("opens School Detail for a queue row when no dashboard filters are active", async () => {

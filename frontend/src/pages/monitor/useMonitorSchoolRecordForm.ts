@@ -1,11 +1,10 @@
-import { useCallback, useState, type Dispatch, type FormEvent, type SetStateAction } from "react";
+import { useCallback, useState, type FormEvent } from "react";
 import { isApiError, messageForApiError } from "@/lib/api";
 import type {
   MonitorSchoolRecordFormField,
   MonitorSchoolRecordFormProps,
   MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
-import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
 
 const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
@@ -64,7 +63,7 @@ function normalizeSchoolLevel(value: string): string {
 
 interface UseMonitorSchoolRecordFormOptions {
   isSaving: boolean;
-  setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
+  keepCreateFormOpen?: boolean;
   addRecord: (record: SchoolRecordPayload) => Promise<SchoolHeadAccountProvisioningReceipt | null>;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
   clearDeleteError: () => void;
@@ -82,7 +81,7 @@ export interface UseMonitorSchoolRecordFormResult {
 
 export function useMonitorSchoolRecordForm({
   isSaving,
-  setActiveTopNavigator,
+  keepCreateFormOpen = false,
   addRecord,
   updateRecord,
   clearDeleteError,
@@ -110,9 +109,8 @@ export function useMonitorSchoolRecordForm({
     resetRecordForm();
     clearDeleteError();
     clearBulkImportFeedback();
-    setActiveTopNavigator("schools");
     setShowRecordForm(true);
-  }, [clearBulkImportFeedback, clearDeleteError, resetRecordForm, setActiveTopNavigator]);
+  }, [clearBulkImportFeedback, clearDeleteError, resetRecordForm]);
 
   const closeRecordForm = useCallback(() => {
     setShowRecordForm(false);
@@ -215,6 +213,10 @@ export function useMonitorSchoolRecordForm({
                   : "School record created. A setup email was sent to the School Head account."
                 : "School record created.",
             );
+            if (keepCreateFormOpen) {
+              setRecordForm(EMPTY_MONITOR_RECORD_FORM);
+              shouldAutoClose = false;
+            }
           }
         }
 
@@ -255,7 +257,7 @@ export function useMonitorSchoolRecordForm({
         setRecordFormError(messageForApiError(err, "Unable to save school record."));
       }
     },
-    [addRecord, clearBulkImportError, clearDeleteError, closeRecordForm, editingRecordId, recordForm, updateRecord, validateRecordForm],
+    [addRecord, clearBulkImportError, clearDeleteError, closeRecordForm, editingRecordId, keepCreateFormOpen, recordForm, updateRecord, validateRecordForm],
   );
 
   const handleRecordFormFieldChange = useCallback((field: MonitorSchoolRecordFormField, value: string) => {

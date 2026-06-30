@@ -5,7 +5,7 @@ export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_
 export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission";
 export type SchoolSectorFilter = "all" | "public" | "private";
 export type SchoolLevelFilter = "all" | "elementary" | "high_school";
-export type MonitorTopNavigatorId = "schools" | "reviews" | "audit";
+export type MonitorTopNavigatorId = "schools" | "add_school" | "reviews" | "audit";
 
 export interface PersistedMonitorFilters {
   search?: string;
@@ -78,7 +78,7 @@ export function isValidSchoolStatusFilter(value: string | null | undefined): val
 }
 
 export function resolveMonitorTopNavigator(value: string | null | undefined): MonitorTopNavigatorId | null {
-  if (value === "schools" || value === "reviews" || value === "audit") {
+  if (value === "schools" || value === "add_school" || value === "reviews" || value === "audit") {
     return value;
   }
 

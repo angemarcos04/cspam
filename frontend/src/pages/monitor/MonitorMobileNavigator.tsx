@@ -23,7 +23,7 @@ export function MonitorMobileNavigator({
 }: MonitorMobileNavigatorProps) {
   return (
     <section className="dashboard-shell mb-4 rounded-sm border border-slate-200 bg-white p-2 lg:hidden">
-      <div className="grid grid-cols-3 gap-2">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {MONITOR_TOP_NAVIGATOR_ITEMS.map((item) => {
           const Icon = MONITOR_NAVIGATOR_ICONS[item.id];
           const isActive = activeTopNavigator === item.id;

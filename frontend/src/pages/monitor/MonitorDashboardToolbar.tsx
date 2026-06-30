@@ -34,9 +34,11 @@ export function MonitorDashboardToolbar({
   globalSearchInputRef,
 }: MonitorDashboardToolbarProps) {
   const isSchoolsScreen = activeTopNavigator === "schools";
+  const isAddSchoolScreen = activeTopNavigator === "add_school";
   const isReviewsScreen = activeTopNavigator === "reviews";
-  const showPrimaryAction = !isSchoolsScreen && !isReviewsScreen;
-  const showToolbarMetaPanel = activeTopNavigator !== "schools";
+  const showPrimaryAction = !isSchoolsScreen && !isAddSchoolScreen && !isReviewsScreen;
+  const showFilterToggle = !isAddSchoolScreen;
+  const showToolbarMetaPanel = activeTopNavigator !== "schools" && !isAddSchoolScreen;
 
   return (
     <>
@@ -64,25 +66,27 @@ export function MonitorDashboardToolbar({
                 {activeScreenMeta.primaryLabel}
               </button>
             ) : null}
-            <button
-              id="monitor-submission-filters-toggle"
-              type="button"
-              onClick={onToggleFilters}
-              aria-expanded={showAdvancedFilters}
-              className={`inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold transition ${
-                activeFilterCount > 0
-                  ? "border-primary-200 bg-primary-50 text-primary-800 hover:bg-primary-100"
-                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-              }`}
-            >
-              <Filter className="h-3.5 w-3.5" />
-              {showAdvancedFilters ? "Close Filters" : "Filters"}
-              {activeFilterCount > 0 && (
-                <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-white px-1 text-[10px] font-bold text-primary-700">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+            {showFilterToggle ? (
+              <button
+                id="monitor-submission-filters-toggle"
+                type="button"
+                onClick={onToggleFilters}
+                aria-expanded={showAdvancedFilters}
+                className={`inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold transition ${
+                  activeFilterCount > 0
+                    ? "border-primary-200 bg-primary-50 text-primary-800 hover:bg-primary-100"
+                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
+                }`}
+              >
+                <Filter className="h-3.5 w-3.5" />
+                {showAdvancedFilters ? "Close Filters" : "Filters"}
+                {activeFilterCount > 0 && (
+                  <span className="ml-1 inline-flex h-4 min-w-4 items-center justify-center rounded-sm bg-white px-1 text-[10px] font-bold text-primary-700">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
+            ) : null}
           </div>
         </div>
       </section>

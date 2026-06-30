@@ -1,21 +1,8 @@
-import type { ChangeEvent, RefObject } from "react";
 import {
   Building2,
-  ChevronDown,
-  Database,
-  Download,
-  Plus,
-  ShieldCheck,
-  Trash2,
   Users,
 } from "lucide-react";
-import { MonitorArchivedSchools, type MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
-import {
-  MonitorSchoolHeadAccountsPanel,
-  type MonitorSchoolHeadAccountsPanelProps,
-} from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
-import { MonitorSchoolRecordForm, type MonitorSchoolRecordFormProps } from "@/pages/monitor/MonitorSchoolRecordForm";
 import { MonitorSchoolRecordsList, type MonitorSchoolRecordsListProps } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/monitor/MonitorQuickJumpChips";
 import type { SchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirementData";
@@ -36,25 +23,8 @@ interface MonitorSchoolsSectionProps {
   paginatedCompactSchoolRowsCount: number;
   compactSchoolRowsCount: number;
   activeSchoolPresetLabel: string | null;
-  schoolActionsMenuRef: RefObject<HTMLDivElement>;
-  bulkImportInputRef: RefObject<HTMLInputElement>;
-  onBulkImportFileChange: (event: ChangeEvent<HTMLInputElement>) => void | Promise<void>;
-  onOpenCreateRecordForm: () => void;
-  onToggleAccountsPanel: () => void;
-  showSchoolHeadAccountsPanel: boolean;
-  onToggleActionsMenu: () => void;
-  isSchoolActionsMenuOpen: boolean;
-  onDownloadCsvFormat: () => void;
-  onOpenBulkImportPicker: () => void;
-  isBulkImporting: boolean;
-  onToggleArchivedRecords: () => void;
-  showArchivedRecords: boolean;
-  onShowMfaResetApprovals: () => void;
-  schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
   messages: MonitorSchoolMessagesProps;
-  schoolRecordFormProps: MonitorSchoolRecordFormProps;
   schoolRecordsListProps: MonitorSchoolRecordsListProps;
-  archivedSchoolsProps: MonitorArchivedSchoolsProps;
 }
 
 export function MonitorSchoolsSection({
@@ -71,25 +41,8 @@ export function MonitorSchoolsSection({
   paginatedCompactSchoolRowsCount,
   compactSchoolRowsCount,
   activeSchoolPresetLabel,
-  schoolActionsMenuRef,
-  bulkImportInputRef,
-  onBulkImportFileChange,
-  onOpenCreateRecordForm,
-  onToggleAccountsPanel,
-  showSchoolHeadAccountsPanel,
-  onToggleActionsMenu,
-  isSchoolActionsMenuOpen,
-  onDownloadCsvFormat,
-  onOpenBulkImportPicker,
-  isBulkImporting,
-  onToggleArchivedRecords,
-  showArchivedRecords,
-  onShowMfaResetApprovals,
-  schoolHeadAccountsPanelProps,
   messages,
-  schoolRecordFormProps,
   schoolRecordsListProps,
-  archivedSchoolsProps,
 }: MonitorSchoolsSectionProps) {
   const currentPublicLevel = schoolSectorFilter === "public" ? schoolLevelFilter : "all";
   const currentPrivateLevel = schoolSectorFilter === "private" ? schoolLevelFilter : "all";
@@ -236,90 +189,11 @@ export function MonitorSchoolsSection({
                 </p>
               ) : null}
             </div>
-            <div ref={schoolActionsMenuRef} className="relative flex flex-wrap items-center gap-2">
-              <input
-                ref={bulkImportInputRef}
-                type="file"
-                accept=".csv,text/csv"
-                className="hidden"
-                onChange={(event) => void onBulkImportFileChange(event)}
-              />
-              {isMobileViewport && (
-                <button
-                  type="button"
-                  onClick={onOpenCreateRecordForm}
-                  className="inline-flex items-center gap-1 rounded-sm border border-primary-300/70 bg-primary px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-primary-600"
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add School
-                </button>
-              )}
-              <button
-                type="button"
-                onClick={onToggleAccountsPanel}
-                className={`inline-flex items-center gap-1 rounded-sm border px-2.5 py-1.5 text-xs font-semibold transition ${
-                  showSchoolHeadAccountsPanel
-                    ? "border-primary-200 bg-primary-50 text-primary-800 hover:bg-primary-100"
-                    : "border-slate-300 bg-white text-slate-700 hover:bg-slate-100"
-                }`}
-              >
-                <Users className="h-3.5 w-3.5" />
-                Accounts
-              </button>
-              <button
-                type="button"
-                onClick={onToggleActionsMenu}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                More
-                <ChevronDown className={`h-3.5 w-3.5 transition ${isSchoolActionsMenuOpen ? "rotate-180" : ""}`} />
-              </button>
-              {isSchoolActionsMenuOpen && (
-                <div className="absolute right-0 top-full z-30 mt-1 w-52 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-xl">
-                  <button
-                    type="button"
-                    onClick={onDownloadCsvFormat}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Download className="h-3.5 w-3.5 text-primary-600" />
-                    Download CSV Format
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onOpenBulkImportPicker}
-                    disabled={isBulkImporting}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    <Database className="h-3.5 w-3.5 text-primary-600" />
-                    {isBulkImporting ? "Importing..." : "Import CSV"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onToggleArchivedRecords}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <Trash2 className="h-3.5 w-3.5 text-primary-600" />
-                    {showArchivedRecords ? "Hide Archived" : "Show Archived"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onShowMfaResetApprovals}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                  >
-                    <ShieldCheck className="h-3.5 w-3.5 text-primary-600" />
-                    MFA Recovery Requests
-                  </button>
-                </div>
-              )}
-            </div>
           </div>
         </div>
 
-        {schoolHeadAccountsPanelProps && <MonitorSchoolHeadAccountsPanel {...schoolHeadAccountsPanelProps} />}
         <MonitorSchoolMessages {...messages} />
-        <MonitorSchoolRecordForm {...schoolRecordFormProps} />
         <MonitorSchoolRecordsList {...schoolRecordsListProps} />
-        <MonitorArchivedSchools {...archivedSchoolsProps} />
       </section>
     </>
   );

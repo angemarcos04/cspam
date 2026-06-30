@@ -16,6 +16,7 @@ import { MonitorFiltersPanel } from "@/pages/monitor/MonitorFiltersPanel";
 import { MonitorManualScreen } from "@/pages/monitor/MonitorManualScreen";
 import { MonitorMobileNavigator } from "@/pages/monitor/MonitorMobileNavigator";
 import { MonitorDashboardShellActions } from "@/pages/monitor/MonitorDashboardShellActions";
+import { MonitorAddSchoolSection } from "@/pages/monitor/MonitorAddSchoolSection";
 import { MonitorReviewsSection } from "@/pages/monitor/MonitorReviewsSection";
 import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
@@ -618,7 +619,7 @@ export function MonitorDashboard() {
   ]);
   const isDashboardSyncing =
     isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading || isReviewInboxLoading;
-  const showSubmissionFilters = showAdvancedFilters;
+  const showSubmissionFilters = showAdvancedFilters && activeTopNavigator !== "add_school";
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;
   const navigatorBadges = useMemo<
@@ -630,6 +631,7 @@ export function MonitorDashboard() {
         urgency: effectiveMissingCount > 0 ? "high" : effectiveNeedsActionCount > 0 ? "medium" : "none",
       },
       schools: { urgency: "none" },
+      add_school: { urgency: "none" },
       audit: { urgency: "none" },
     }),
     [effectiveMissingCount, effectiveNeedsActionCount],
@@ -1160,6 +1162,7 @@ export function MonitorDashboard() {
     isMobileViewport,
     isLoading,
     isSaving,
+    keepCreateFormOpen: activeTopNavigator === "add_school",
     records,
     recordsLength: records.length,
     totalSchoolsInScope,
@@ -1176,7 +1179,6 @@ export function MonitorDashboard() {
     setRequirementFilter,
     setSchoolQuickPreset,
     setRecordsPage,
-    setActiveTopNavigator,
     addRecord,
     updateRecord,
     deleteRecord,
@@ -1208,11 +1210,12 @@ export function MonitorDashboard() {
     urgencyRowTone,
   });
 
-  const handleAddSchoolFromNavigator = useCallback(() => {
-    setShowNavigatorManual(false);
+  useEffect(() => {
+    if (activeTopNavigator !== "add_school" || showNavigatorManual) {
+      return;
+    }
+
     closeSchoolDrawer();
-    schoolsSectionApi.openCreateRecordForm();
-    focusAndScrollTo("monitor-school-records");
 
     if (typeof window !== "undefined") {
       window.setTimeout(() => {
@@ -1220,20 +1223,16 @@ export function MonitorDashboard() {
         if (schoolCodeInput instanceof HTMLElement) {
           schoolCodeInput.focus();
         }
-      }, 0);
+      }, 80);
     }
+  }, [activeTopNavigator, closeSchoolDrawer, showNavigatorManual]);
 
-    if (isMobileViewport) {
-      setIsNavigatorVisible(false);
-    }
-  }, [
-    closeSchoolDrawer,
-    focusAndScrollTo,
-    isMobileViewport,
-    schoolsSectionApi,
-    setIsNavigatorVisible,
-    setShowNavigatorManual,
-  ]);
+  const handleViewSchoolsFromAddSchool = useCallback(() => {
+    setActiveTopNavigator("schools");
+    window.setTimeout(() => {
+      focusAndScrollTo("monitor-school-records");
+    }, 70);
+  }, [focusAndScrollTo, setActiveTopNavigator]);
 
   const handleToggleNavigatorChrome = useCallback(() => {
     if (isMobileViewport) {
@@ -1305,7 +1304,6 @@ export function MonitorDashboard() {
           showNavigatorHeaderText={showNavigatorHeaderText}
           onToggleNavigator={handleToggleNavigatorChrome}
           onNavigate={handleMonitorTopNavigate}
-          onAddSchool={handleAddSchoolFromNavigator}
           onToggleManual={handleToggleNavigatorManual}
         />
         <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0">
@@ -1362,6 +1360,14 @@ export function MonitorDashboard() {
             <MonitorAuditTrail />
           )}
 
+          {!showNavigatorManual && activeTopNavigator === "add_school" && (
+            <MonitorAddSchoolSection
+              sectionFocusClass={sectionFocusClass}
+              schoolRecordFormProps={schoolsSectionApi.schoolRecordFormProps}
+              onViewSchools={handleViewSchoolsFromAddSchool}
+            />
+          )}
+
           {!showNavigatorManual && activeTopNavigator === "schools" && (
             <MonitorSchoolsSection
               sectionFocusClass={sectionFocusClass}
@@ -1377,30 +1383,8 @@ export function MonitorDashboard() {
               paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
               compactSchoolRowsCount={compactSchoolRows.length}
               activeSchoolPresetLabel={schoolsSectionApi.activeSchoolPresetLabel}
-              schoolActionsMenuRef={schoolsSectionApi.schoolActionsMenuRef}
-              bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
-              onBulkImportFileChange={schoolsSectionApi.handleBulkImportFileChange}
-              onOpenCreateRecordForm={schoolsSectionApi.openCreateRecordForm}
-              onToggleAccountsPanel={schoolsSectionApi.toggleSchoolHeadAccountsPanel}
-              showSchoolHeadAccountsPanel={schoolsSectionApi.showSchoolHeadAccountsPanel}
-              onToggleActionsMenu={schoolsSectionApi.toggleActionsMenu}
-              isSchoolActionsMenuOpen={schoolsSectionApi.isSchoolActionsMenuOpen}
-              onDownloadCsvFormat={schoolsSectionApi.downloadCsvFormat}
-              onOpenBulkImportPicker={schoolsSectionApi.openBulkImportPicker}
-              isBulkImporting={schoolsSectionApi.isBulkImporting}
-              onToggleArchivedRecords={() => {
-                void schoolsSectionApi.toggleArchivedRecords();
-              }}
-              showArchivedRecords={schoolsSectionApi.showArchivedRecords}
-              onShowMfaResetApprovals={() => {
-                schoolsSectionApi.closeActionsMenu();
-                setShowMfaResetApprovalsDialog(true);
-              }}
-              schoolHeadAccountsPanelProps={schoolsSectionApi.schoolHeadAccountsPanelProps}
               messages={schoolsSectionApi.schoolMessagesProps}
-              schoolRecordFormProps={schoolsSectionApi.schoolRecordFormProps}
               schoolRecordsListProps={schoolsSectionApi.schoolRecordsListProps}
-              archivedSchoolsProps={schoolsSectionApi.archivedSchoolsProps}
             />
           )}
 

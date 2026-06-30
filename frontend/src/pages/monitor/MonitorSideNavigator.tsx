@@ -4,7 +4,6 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronUp,
-  Plus,
 } from "lucide-react";
 import {
   MONITOR_NAVIGATOR_ICONS,
@@ -30,7 +29,6 @@ interface MonitorSideNavigatorProps {
   showNavigatorHeaderText: boolean;
   onToggleNavigator: () => void;
   onNavigate: (id: MonitorTopNavigatorId) => void;
-  onAddSchool: () => void;
   onToggleManual: () => void;
 }
 
@@ -45,7 +43,6 @@ export function MonitorSideNavigator({
   showNavigatorHeaderText,
   onToggleNavigator,
   onNavigate,
-  onAddSchool,
   onToggleManual,
 }: MonitorSideNavigatorProps) {
   return (
@@ -127,58 +124,42 @@ export function MonitorSideNavigator({
                 meta.urgency === "high" ? "bg-rose-500" : meta.urgency === "medium" ? "bg-amber-400" : "bg-transparent";
 
               return (
-                <div key={item.id} className="contents">
-                  <button
-                    type="button"
-                    onClick={() => onNavigate(item.id)}
-                    className={navigatorButtonClass(isActive, isNavigatorCompact)}
-                    title={`${item.label} (Alt+${index + 1})`}
-                    aria-current={isActive ? "page" : undefined}
-                    aria-label={`Open ${item.label}`}
-                  >
-                    <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
-                      <Icon className="h-4 w-4" />
-                      {meta.urgency !== "none" && (
-                        <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onNavigate(item.id)}
+                  className={navigatorButtonClass(isActive, isNavigatorCompact)}
+                  title={`${item.label} (Alt+${index + 1})`}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={`Open ${item.label}`}
+                >
+                  <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
+                    <Icon className="h-4 w-4" />
+                    {meta.urgency !== "none" && (
+                      <span className={`absolute -right-1 -top-1 h-2 w-2 rounded-full ${urgencyTone}`} />
+                    )}
+                  </span>
+                  {!isNavigatorCompact && <span className="flex-1 truncate text-left">{item.label}</span>}
+
+                  {!isNavigatorCompact && hasPrimaryBadge && (
+                    <span className="ml-auto inline-flex items-center gap-1">
+                      <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
+                        {meta.primary}
+                      </span>
+                      {item.id === "reviews" && hasSecondaryBadge && (
+                        <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                          R{meta.secondary}
+                        </span>
                       )}
                     </span>
-                    {!isNavigatorCompact && <span className="flex-1 truncate text-left">{item.label}</span>}
-
-                    {!isNavigatorCompact && hasPrimaryBadge && (
-                      <span className="ml-auto inline-flex items-center gap-1">
-                        <span className="inline-flex min-w-[1.5rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1.5 py-0.5 text-[10px] font-bold text-primary-700">
-                          {meta.primary}
-                        </span>
-                        {item.id === "reviews" && hasSecondaryBadge && (
-                          <span className="inline-flex items-center justify-center rounded-sm border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                            R{meta.secondary}
-                          </span>
-                        )}
-                      </span>
-                    )}
-
-                    {isNavigatorCompact && hasPrimaryBadge && (
-                      <span className="absolute right-1 top-1 inline-flex min-w-[1rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1 text-[9px] font-bold text-primary-700">
-                        {meta.primary && meta.primary > 99 ? "99+" : meta.primary}
-                      </span>
-                    )}
-                  </button>
-
-                  {item.id === "schools" && (
-                    <button
-                      type="button"
-                      onClick={onAddSchool}
-                      className={navigatorButtonClass(false, isNavigatorCompact)}
-                      title="Add School"
-                      aria-label="Add School"
-                    >
-                      <span className="relative inline-flex h-4 w-4 shrink-0 items-center justify-center">
-                        <Plus className="h-4 w-4" />
-                      </span>
-                      {!isNavigatorCompact && <span className="flex-1 truncate text-left">Add School</span>}
-                    </button>
                   )}
-                </div>
+
+                  {isNavigatorCompact && hasPrimaryBadge && (
+                    <span className="absolute right-1 top-1 inline-flex min-w-[1rem] items-center justify-center rounded-sm border border-primary-200 bg-primary-50 px-1 text-[9px] font-bold text-primary-700">
+                      {meta.primary && meta.primary > 99 ? "99+" : meta.primary}
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>

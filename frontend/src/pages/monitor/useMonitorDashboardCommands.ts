@@ -127,6 +127,12 @@ export function useMonitorDashboardCommands({
           description: "",
           primaryLabel: "Open Selected School",
         };
+      case "add_school":
+        return {
+          title: "Add School",
+          description: "",
+          primaryLabel: "Create School",
+        };
       case "reviews":
         return {
           title: "Review Inbox",
@@ -146,7 +152,7 @@ export function useMonitorDashboardCommands({
   const isPrimaryActionDisabled =
     activeTopNavigator === "schools"
       ? compactSchoolRows.length === 0
-      : activeTopNavigator === "audit"
+      : activeTopNavigator === "audit" || activeTopNavigator === "add_school"
         ? true
       : laneFilteredQueueRows.length === 0 && actionQueueRows.length === 0;
 
@@ -175,6 +181,11 @@ export function useMonitorDashboardCommands({
 
     if (activeTopNavigator === "audit") {
       onToast("Use the Audit Trail refresh button to reload audit events.", "info");
+      return;
+    }
+
+    if (activeTopNavigator === "add_school") {
+      onToast("Use the Add School form to create a school record.", "info");
       return;
     }
 

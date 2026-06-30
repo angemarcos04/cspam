@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Filter,
   ListChecks,
+  Plus,
   ScrollText,
 } from "lucide-react";
 import type {
@@ -36,6 +37,7 @@ export interface QuickJumpItem {
 
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "schools", label: "Schools" },
+  { id: "add_school", label: "Add School" },
   { id: "reviews", label: "Reviews" },
   { id: "audit", label: "Audit Trail" },
 ];
@@ -46,6 +48,7 @@ export const MONITOR_TOP_NAVIGATOR_IDS: MonitorTopNavigatorId[] = MONITOR_TOP_NA
 
 export const MONITOR_NAVIGATOR_ICONS: Record<MonitorTopNavigatorId, NavigatorIcon> = {
   schools: Building2,
+  add_school: Plus,
   reviews: ClipboardList,
   audit: ScrollText,
 };
@@ -60,6 +63,16 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
       "Inspect school details without leaving the dashboard.",
     ],
     doneWhen: "The selected school context is verified and ready for review.",
+  },
+  {
+    id: "add_school",
+    title: "Add School",
+    objective: "",
+    actions: [
+      "Create a school record and optional School Head account from the dedicated Add School section.",
+      "Use Schools after creation when you need to browse or open the new school record.",
+    ],
+    doneWhen: "The school record form is submitted or reset without leaving the section.",
   },
   {
     id: "reviews",
@@ -110,6 +123,7 @@ export const MONITOR_QUICK_JUMPS: Record<MonitorTopNavigatorId, QuickJumpItem[]>
     { id: "queue_list", label: "Review Inbox", targetId: "monitor-requirements-table", icon: ListChecks },
   ],
   schools: [],
+  add_school: [],
   audit: [],
 };
 
