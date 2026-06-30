@@ -75,7 +75,8 @@ describe("MonitorMfaResetApprovalsDialog", () => {
       />,
     );
 
-    expect(await screen.findByRole("heading", { name: "MFA Recovery Requests" })).toBeTruthy();
+    expect(await screen.findByRole("dialog", { name: "MFA Recovery Requests" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "MFA Recovery Requests" })).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: /approve request/i }));
 
     expect(await screen.findByText("ABCD-1234")).toBeTruthy();

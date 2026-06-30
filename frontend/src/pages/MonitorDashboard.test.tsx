@@ -83,6 +83,13 @@ const permanentlyDeleteArchivedRecordMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
+const updateSchoolHeadAccountStatusMock = vi.fn();
+const activateSchoolHeadAccountMock = vi.fn();
+const issueSchoolHeadAccountActionVerificationCodeMock = vi.fn();
+const issueSchoolHeadPasswordResetLinkMock = vi.fn();
+const issueSchoolHeadTemporaryPasswordMock = vi.fn();
+const upsertSchoolHeadAccountProfileMock = vi.fn();
+const removeSchoolHeadAccountMock = vi.fn();
 const defaultReviewInboxRow = {
   schoolKey: "code:900001",
   schoolId: "1",
@@ -181,6 +188,13 @@ describe("MonitorDashboard School Head delivery flows", () => {
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
     scrollIntoViewMock.mockReset();
+    updateSchoolHeadAccountStatusMock.mockReset();
+    activateSchoolHeadAccountMock.mockReset();
+    issueSchoolHeadAccountActionVerificationCodeMock.mockReset();
+    issueSchoolHeadPasswordResetLinkMock.mockReset();
+    issueSchoolHeadTemporaryPasswordMock.mockReset();
+    upsertSchoolHeadAccountProfileMock.mockReset();
+    removeSchoolHeadAccountMock.mockReset();
     HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(defaultReviewInboxResponse()), {
       status: 200,
@@ -391,14 +405,14 @@ describe("MonitorDashboard School Head delivery flows", () => {
       restoreRecord: restoreRecordMock,
       permanentlyDeleteArchivedRecord: permanentlyDeleteArchivedRecordMock,
       sendReminder: sendReminderMock,
-      updateSchoolHeadAccountStatus: vi.fn(),
-      activateSchoolHeadAccount: vi.fn(),
-      issueSchoolHeadAccountActionVerificationCode: vi.fn(),
+      updateSchoolHeadAccountStatus: updateSchoolHeadAccountStatusMock,
+      activateSchoolHeadAccount: activateSchoolHeadAccountMock,
+      issueSchoolHeadAccountActionVerificationCode: issueSchoolHeadAccountActionVerificationCodeMock,
       issueSchoolHeadSetupLink: issueSchoolHeadSetupLinkMock,
-      issueSchoolHeadPasswordResetLink: vi.fn(),
-      issueSchoolHeadTemporaryPassword: vi.fn(),
-      upsertSchoolHeadAccountProfile: vi.fn(),
-      removeSchoolHeadAccount: vi.fn(),
+      issueSchoolHeadPasswordResetLink: issueSchoolHeadPasswordResetLinkMock,
+      issueSchoolHeadTemporaryPassword: issueSchoolHeadTemporaryPasswordMock,
+      upsertSchoolHeadAccountProfile: upsertSchoolHeadAccountProfileMock,
+      removeSchoolHeadAccount: removeSchoolHeadAccountMock,
       removeSchoolHeadAccountsBatch: vi.fn(),
       bulkImportRecords: bulkImportRecordsMock,
     });
@@ -571,6 +585,75 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(within(menu).getByRole("menuitem", { name: "MFA Recovery Requests" }));
     expect(await screen.findByRole("dialog", { name: "MFA Recovery Requests" })).toBeTruthy();
+  });
+
+  it("surfaces School Head account management actions in a fixed dialog", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
+    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Accounts" })).toBeTruthy();
+    expect(within(schoolsSection).queryByRole("button", { name: "More actions" })).toBeNull();
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Manage Account" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Manage School Head Account" });
+    expect(within(dialog).getByText("Account Summary")).toBeTruthy();
+    expect(within(dialog).getByText("Account Profile")).toBeTruthy();
+    expect(within(dialog).getByText("Account Access")).toBeTruthy();
+    expect(within(dialog).getAllByText("Account Status").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("Flags").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("School Record").length).toBeGreaterThan(0);
+    expect(within(dialog).getAllByText("Danger Zone").length).toBeGreaterThan(0);
+    expect(within(dialog).getByRole("button", { name: "Send setup link" })).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Open school record" })).toBeTruthy();
+  });
+
+  it("opens the existing confirmation flow for sensitive account status actions", async () => {
+    const currentData = vi.mocked(useData).getMockImplementation()?.();
+    expect(currentData).toBeTruthy();
+    const activeRecord = {
+      ...currentData!.records[0],
+      schoolHeadAccount: {
+        ...currentData!.records[0].schoolHeadAccount!,
+        accountStatus: "active",
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+      },
+    };
+    vi.mocked(useData).mockReturnValue({
+      ...currentData!,
+      records: [activeRecord],
+    });
+
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const schoolsSection = await waitFor(() => {
+      const section = document.getElementById("monitor-school-records");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
+    fireEvent.click(await within(schoolsSection).findByRole("button", { name: "Manage Account" }));
+    const managementDialog = await screen.findByRole("dialog", { name: "Manage School Head Account" });
+
+    fireEvent.click(within(managementDialog).getByRole("button", { name: "Suspend account" }));
+
+    const confirmationDialog = await screen.findByRole("dialog", { name: "Suspend account" });
+    expect(within(confirmationDialog).getByLabelText("Reason")).toBeTruthy();
+    expect(within(confirmationDialog).getByRole("button", { name: "Send code" })).toBeTruthy();
+    expect(updateSchoolHeadAccountStatusMock).not.toHaveBeenCalled();
   });
 
   it("uses existing import and archived-school flows from the Schools More menu", async () => {

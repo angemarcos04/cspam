@@ -181,7 +181,6 @@ export function useMonitorSchoolHeadAccountsPanelState({
 
   const openPendingDeleteSchoolRecord = useCallback(
     async (record: SchoolRecord) => {
-      schoolHeadAccountActions.toggleAccountRowMenu(record.id);
       setPendingDeleteSchoolRecord(record);
       setPendingDeleteSchoolRecordPreview(null);
       setPendingDeleteSchoolRecordError("");
@@ -198,7 +197,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
         setIsDeleteSchoolRecordLoading(false);
       }
     },
-    [previewDeleteRecord, schoolHeadAccountActions],
+    [previewDeleteRecord],
   );
 
   const confirmDeleteSchoolRecord = useCallback(async () => {

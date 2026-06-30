@@ -188,7 +188,7 @@ export function MonitorMfaResetApprovalsDialog({
       <section
         role="dialog"
         aria-modal="true"
-        aria-label="MFA recovery approvals"
+        aria-labelledby="monitor-mfa-recovery-title"
         className="fixed z-[97] inset-x-4 bottom-4 max-h-[84vh] w-[calc(100vw-2rem)] overflow-y-auto rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-28 sm:w-[min(54rem,calc(100vw-2rem))] sm:-translate-x-1/2"
       >
         <div className="flex items-start justify-between gap-3">
@@ -197,7 +197,9 @@ export function MonitorMfaResetApprovalsDialog({
               <ShieldCheck className="h-4 w-4" />
               Security
             </p>
-            <h2 className="mt-1 text-base font-extrabold text-slate-900">MFA Recovery Requests</h2>
+            <h2 id="monitor-mfa-recovery-title" className="mt-1 text-base font-extrabold text-slate-900">
+              MFA Recovery Requests
+            </h2>
             <p className="mt-1 text-xs text-slate-600">
               Approve monitor MFA recovery requests and share one-time recovery tokens securely.
             </p>
