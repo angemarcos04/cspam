@@ -23,6 +23,7 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   isSchoolDrawerSubmissionsLoading: MonitorSchoolDrawerLoadingState["isSchoolDrawerSubmissionsLoading"];
   schoolDrawerSubmissionsError: MonitorSchoolDrawerLoadingState["schoolDrawerSubmissionsError"];
   schoolDetail: MonitorSchoolDrawerData["schoolDetail"];
+  selectedSchoolRecord: MonitorSchoolDrawerData["selectedSchoolRecord"];
   schoolDrawerYearDetail: MonitorSchoolDrawerData["schoolDrawerYearDetail"];
   schoolDrawerHistorySummary: MonitorSchoolDrawerData["schoolDrawerHistorySummary"];
   schoolDrawerCriticalAlerts: MonitorSchoolDrawerData["schoolDrawerCriticalAlerts"];
@@ -43,6 +44,10 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   handleJumpToReturnedIndicators: MonitorSchoolDrawerActions["handleJumpToReturnedIndicators"];
   toggleDrawerIndicatorLabel: MonitorSchoolDrawerActions["toggleDrawerIndicatorLabel"];
   onReviewDataChanged?: MonitorSchoolDrawerActions["onReviewDataChanged"];
+  updateRecord: MonitorSchoolDrawerActions["updateRecord"];
+  previewDeleteRecord: MonitorSchoolDrawerActions["previewDeleteRecord"];
+  deleteRecord: MonitorSchoolDrawerActions["deleteRecord"];
+  onManagementToast: MonitorSchoolDrawerActions["onManagementToast"];
   workflowTone: MonitorSchoolDrawerFormatting["workflowTone"];
   workflowLabel: MonitorSchoolDrawerFormatting["workflowLabel"];
   formatDateTime: MonitorSchoolDrawerFormatting["formatDateTime"];
@@ -63,6 +68,7 @@ export function buildMonitorSchoolDrawerProps({
   isSchoolDrawerSubmissionsLoading,
   schoolDrawerSubmissionsError,
   schoolDetail,
+  selectedSchoolRecord,
   schoolDrawerYearDetail,
   schoolDrawerHistorySummary,
   schoolDrawerCriticalAlerts,
@@ -83,6 +89,10 @@ export function buildMonitorSchoolDrawerProps({
   handleJumpToReturnedIndicators,
   toggleDrawerIndicatorLabel,
   onReviewDataChanged,
+  updateRecord,
+  previewDeleteRecord,
+  deleteRecord,
+  onManagementToast,
   workflowTone,
   workflowLabel,
   formatDateTime,
@@ -106,6 +116,7 @@ export function buildMonitorSchoolDrawerProps({
     },
     data: {
       schoolDetail,
+      selectedSchoolRecord,
       availableSchoolDrawerYears,
       schoolDrawerYearDetail,
       schoolDrawerHistorySummary,
@@ -129,6 +140,10 @@ export function buildMonitorSchoolDrawerProps({
       handleJumpToReturnedIndicators,
       toggleDrawerIndicatorLabel,
       onReviewDataChanged,
+      updateRecord,
+      previewDeleteRecord,
+      deleteRecord,
+      onManagementToast,
     },
     formatting: {
       workflowTone,

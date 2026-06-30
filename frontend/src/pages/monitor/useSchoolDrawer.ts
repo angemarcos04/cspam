@@ -20,7 +20,7 @@ const SCHOOL_DETAIL_COUNTS_CACHE_TTL_MS = 45_000;
 type SchoolDetailCounts = { students: number; teachers: number };
 type SchoolDetailCountsCacheEntry = SchoolDetailCounts & { fetchedAt: number };
 
-export type SchoolDrawerTab = "submissions" | "history" | "audit";
+export type SchoolDrawerTab = "submissions" | "history" | "audit" | "management";
 
 interface UseSchoolDrawerOptions {
   authSessionKey: string;

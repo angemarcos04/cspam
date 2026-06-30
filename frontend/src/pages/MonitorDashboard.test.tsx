@@ -73,6 +73,10 @@ const issueSchoolHeadSetupLinkMock = vi.fn();
 const sendReminderMock = vi.fn();
 const bulkImportRecordsMock = vi.fn();
 const addRecordMock = vi.fn();
+const updateRecordMock = vi.fn();
+const deleteRecordMock = vi.fn();
+const previewDeleteRecordMock = vi.fn();
+const permanentlyDeleteArchivedRecordMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
@@ -165,6 +169,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     sendReminderMock.mockReset();
     bulkImportRecordsMock.mockReset();
     addRecordMock.mockReset();
+    updateRecordMock.mockReset();
+    deleteRecordMock.mockReset();
+    previewDeleteRecordMock.mockReset();
+    permanentlyDeleteArchivedRecordMock.mockReset();
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
     scrollIntoViewMock.mockReset();
@@ -228,6 +236,20 @@ describe("MonitorDashboard School Head delivery flows", () => {
       ],
     });
     addRecordMock.mockResolvedValue(null);
+    updateRecordMock.mockResolvedValue(null);
+    deleteRecordMock.mockResolvedValue(undefined);
+    previewDeleteRecordMock.mockResolvedValue({
+      id: "1",
+      schoolId: "900001",
+      schoolName: "Santiago Elementary",
+      dependencies: {
+        students: 120,
+        sections: 4,
+        indicatorSubmissions: 2,
+        histories: 3,
+        linkedUsers: 1,
+      },
+    });
 
     vi.mocked(useAuth).mockReturnValue({
       role: "monitor",
@@ -334,12 +356,12 @@ describe("MonitorDashboard School Head delivery flows", () => {
       syncStatus: "updated",
       refreshRecords: refreshRecordsMock,
       addRecord: addRecordMock,
-      updateRecord: vi.fn(),
-      deleteRecord: vi.fn(),
-      previewDeleteRecord: vi.fn(),
+      updateRecord: updateRecordMock,
+      deleteRecord: deleteRecordMock,
+      previewDeleteRecord: previewDeleteRecordMock,
       listArchivedRecords: vi.fn(),
       restoreRecord: vi.fn(),
-      permanentlyDeleteArchivedRecord: vi.fn(),
+      permanentlyDeleteArchivedRecord: permanentlyDeleteArchivedRecordMock,
       sendReminder: sendReminderMock,
       updateSchoolHeadAccountStatus: vi.fn(),
       activateSchoolHeadAccount: vi.fn(),
@@ -486,6 +508,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(schoolsSection).queryByText("Download CSV Format")).toBeNull();
     expect(within(schoolsSection).queryByText("Import CSV")).toBeNull();
     expect(within(schoolsSection).queryByText("MFA Recovery Requests")).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: "Edit School Details" })).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: "Archive School Record" })).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: /delete/i })).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: /suspend/i })).toBeNull();
   });
 
   it("shows Add School as a locked sidebar section between Schools and Reviews", () => {
@@ -757,6 +783,117 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
     });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it("opens the School Detail Management tab without restoring Schools-section actions", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    const schoolDetail = await waitFor(() => {
+      const drawer = screen.getByText("School Detail").closest("aside");
+      expect(drawer).toBeTruthy();
+      return drawer as HTMLElement;
+    });
+
+    expect(within(schoolDetail).getByRole("button", { name: "Submissions" })).toBeTruthy();
+    expect(within(schoolDetail).getByRole("button", { name: "Indicator History" })).toBeTruthy();
+    expect(within(schoolDetail).getByRole("button", { name: "Audit Trail" })).toBeTruthy();
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
+
+    expect(await within(schoolDetail).findByRole("heading", { name: "School Information" })).toBeTruthy();
+    expect(within(schoolDetail).getByRole("heading", { name: "School Status" })).toBeTruthy();
+    expect(within(schoolDetail).getByRole("heading", { name: "School Head Account Access" })).toBeTruthy();
+    expect(within(schoolDetail).getByRole("heading", { name: "Archive School Record" })).toBeTruthy();
+    expect(within(schoolDetail).queryByRole("button", { name: /permanent/i })).toBeNull();
+    expect(within(schoolDetail).queryByText(/suspended/i)).toBeNull();
+  });
+
+  it("saves selected school details from the drawer Management tab with School Code read-only", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    const schoolDetail = await waitFor(() => {
+      const drawer = screen.getByText("School Detail").closest("aside");
+      expect(drawer).toBeTruthy();
+      return drawer as HTMLElement;
+    });
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
+    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Edit School Details" }));
+
+    const schoolCodeInput = within(schoolDetail).getByLabelText("School Code") as HTMLInputElement;
+    expect(schoolCodeInput.readOnly).toBe(true);
+
+    fireEvent.change(within(schoolDetail).getByLabelText("School Name"), {
+      target: { value: "Santiago Central Elementary" },
+    });
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(updateRecordMock).toHaveBeenCalledWith("1", expect.objectContaining({
+        schoolId: "900001",
+        schoolName: "Santiago Central Elementary",
+        status: "active",
+      }));
+    });
+    const payload = updateRecordMock.mock.calls[updateRecordMock.mock.calls.length - 1]?.[1] ?? {};
+    expect(payload).not.toHaveProperty("schoolHeadAccount");
+  });
+
+  it("updates selected school status from the drawer without sending suspended", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    const schoolDetail = await waitFor(() => {
+      const drawer = screen.getByText("School Detail").closest("aside");
+      expect(drawer).toBeTruthy();
+      return drawer as HTMLElement;
+    });
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
+    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Mark as Inactive" }));
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Confirm status change" }));
+
+    await waitFor(() => {
+      expect(updateRecordMock).toHaveBeenCalledWith("1", expect.objectContaining({
+        status: "inactive",
+      }));
+    });
+    const payload = updateRecordMock.mock.calls[updateRecordMock.mock.calls.length - 1]?.[1] ?? {};
+    expect(JSON.stringify(payload)).not.toContain("suspended");
+    expect(within(schoolDetail).queryByText(/suspended/i)).toBeNull();
+  });
+
+  it("archives a selected school from the drawer through preview and confirmation only", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    const schoolDetail = await waitFor(() => {
+      const drawer = screen.getByText("School Detail").closest("aside");
+      expect(drawer).toBeTruthy();
+      return drawer as HTMLElement;
+    });
+    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
+    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Archive School Record" }));
+
+    await waitFor(() => {
+      expect(previewDeleteRecordMock).toHaveBeenCalledWith("1");
+    });
+
+    const dialog = await within(schoolDetail).findByRole("dialog", { name: "Archive this school record?" });
+    expect(within(dialog).getByText(/Santiago Elementary/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Archive School Record" }));
+
+    await waitFor(() => {
+      expect(deleteRecordMock).toHaveBeenCalledWith("1");
+    });
+    expect(permanentlyDeleteArchivedRecordMock).not.toHaveBeenCalled();
   });
 
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {

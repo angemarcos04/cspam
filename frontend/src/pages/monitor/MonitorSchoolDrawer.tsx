@@ -5,6 +5,7 @@ import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
 import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError } from "@/lib/api";
 import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
+import { MonitorSchoolManagementPanel } from "@/pages/monitor/MonitorSchoolManagementPanel";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import type {
   MonitorDrawerHistorySummary,
@@ -18,7 +19,13 @@ import type {
   SchoolIndicatorRowGroup,
 } from "@/pages/monitor/monitorDrawerTypes";
 import type { SchoolDrawerTab } from "@/pages/monitor/useSchoolDrawer";
-import type { IndicatorSubmission, IndicatorSubmissionFileType } from "@/types";
+import type {
+  IndicatorSubmission,
+  IndicatorSubmissionFileType,
+  SchoolRecord,
+  SchoolRecordDeletePreview,
+  SchoolRecordPayload,
+} from "@/types";
 interface MonitorSchoolDrawerViewState {
   isOpen: boolean;
   showNavigatorManual: boolean;
@@ -39,6 +46,7 @@ interface MonitorSchoolDrawerLoadingState {
 
 interface MonitorSchoolDrawerData {
   schoolDetail: SchoolDetailSnapshot | null;
+  selectedSchoolRecord?: SchoolRecord | null;
   availableSchoolDrawerYears: MonitorDrawerYearOption[];
   schoolDrawerYearDetail: MonitorDrawerYearDetail | null;
   schoolDrawerHistorySummary: MonitorDrawerHistorySummary | null;
@@ -62,6 +70,10 @@ interface MonitorSchoolDrawerActions {
   handleJumpToMissingIndicators: () => void;
   handleJumpToReturnedIndicators: () => void;
   toggleDrawerIndicatorLabel: (key: string) => void;
+  updateRecord?: (id: string, updates: SchoolRecordPayload) => Promise<void>;
+  previewDeleteRecord?: (id: string) => Promise<SchoolRecordDeletePreview>;
+  deleteRecord?: (id: string) => Promise<void>;
+  onManagementToast?: (message: string, tone?: "success" | "info" | "warning") => void;
   onReviewDataChanged?: (payload: {
     reason: "scope-review" | "file-preview-stale";
     submission?: IndicatorSubmission;
@@ -302,6 +314,7 @@ export function MonitorSchoolDrawer({
   } = loadingState;
   const {
     schoolDetail,
+    selectedSchoolRecord,
     availableSchoolDrawerYears,
     schoolDrawerYearDetail,
   } = data;
@@ -309,9 +322,28 @@ export function MonitorSchoolDrawer({
     setActiveSchoolDrawerTab,
     setSelectedSchoolDrawerYear,
     closeSchoolDrawer,
+    updateRecord,
+    previewDeleteRecord,
+    deleteRecord,
+    onManagementToast,
     onReviewDataChanged,
   } = actions;
   const { formatDateTime } = formatting;
+  const manageSchoolUpdate = updateRecord ?? (async () => undefined);
+  const previewSchoolArchive = previewDeleteRecord ?? (async () => ({
+    id: "",
+    schoolId: schoolDetail?.schoolCode ?? "",
+    schoolName: schoolDetail?.schoolName ?? "Selected school",
+    dependencies: {
+      students: 0,
+      sections: 0,
+      indicatorSubmissions: 0,
+      histories: 0,
+      linkedUsers: 0,
+    },
+  }));
+  const archiveSchoolRecord = deleteRecord ?? (async () => undefined);
+  const showManagementToast = onManagementToast ?? (() => undefined);
 
   useEffect(() => {
     setLocalScopeReviewOverrides({});
@@ -554,6 +586,7 @@ export function MonitorSchoolDrawer({
                         { id: "submissions", label: "Submissions" },
                         { id: "history", label: "Indicator History" },
                         { id: "audit", label: "Audit Trail" },
+                        { id: "management", label: "Management" },
                       ] as Array<{ id: SchoolDrawerTab; label: string }>).map((tab) => (
                         <button
                           key={`school-drawer-tab-${tab.id}`}
@@ -861,6 +894,18 @@ export function MonitorSchoolDrawer({
                   description="Recent workflow activity for this school and selected academic year."
                   schoolCode={schoolDetail.schoolCode}
                   academicYearLabel={schoolDrawerYearDetail?.selectedYearLabel ?? selectedSchoolDrawerYear}
+                />
+              )}
+
+              {activeSchoolDrawerTab === "management" && (
+                <MonitorSchoolManagementPanel
+                  record={selectedSchoolRecord ?? null}
+                  isSaving={false}
+                  updateRecord={manageSchoolUpdate}
+                  previewDeleteRecord={previewSchoolArchive}
+                  deleteRecord={archiveSchoolRecord}
+                  onArchived={closeSchoolDrawer}
+                  onToast={showManagementToast}
                 />
               )}
             </div>

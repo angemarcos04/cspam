@@ -792,6 +792,11 @@ export function MonitorDashboard() {
     listTeachers,
   });
 
+  const selectedSchoolDrawerRecord = useMemo(
+    () => resolveSchoolDrawerRecord(schoolDrawerKey),
+    [resolveSchoolDrawerRecord, schoolDrawerKey],
+  );
+
   const schoolDrawerIndicatorSubmissions = useMemo(() => {
     const normalizedSchoolCode = schoolDrawerSchoolCode.trim().toUpperCase();
     if (!normalizedSchoolCode) {
@@ -1103,6 +1108,7 @@ export function MonitorDashboard() {
       isSchoolDrawerSubmissionsLoading,
       schoolDrawerSubmissionsError,
       schoolDetail,
+      selectedSchoolRecord: selectedSchoolDrawerRecord,
       schoolDrawerYearDetail,
       schoolDrawerHistorySummary,
       schoolDrawerCriticalAlerts,
@@ -1123,6 +1129,10 @@ export function MonitorDashboard() {
       handleJumpToReturnedIndicators,
       toggleDrawerIndicatorLabel,
       onReviewDataChanged: handleSchoolDrawerReviewDataChanged,
+      updateRecord,
+      previewDeleteRecord,
+      deleteRecord,
+      onManagementToast: pushToast,
       workflowTone,
       workflowLabel,
       formatDateTime,
