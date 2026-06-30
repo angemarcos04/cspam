@@ -87,11 +87,12 @@ export const MONITOR_NAVIGATOR_MANUAL: ManualStep[] = [
 ];
 
 export const MONITOR_MANUAL_STATUS_GUIDE = [
-  "Not Submitted: Requirement not yet submitted by school.",
-  "For Review: Submitted and waiting for monitor review.",
-  "Returned for Correction: Sent back to school head for correction.",
-  "Submitted: Package was sent by school.",
-  "Validated: Approved and closed.",
+  "Not Submitted - The school has not submitted this requirement yet.",
+  "For Review - The school submitted the requirement and it is waiting for monitor review.",
+  "Returned for Correction - The monitor returned the requirement because something needs to be fixed.",
+  "Submitted - The school sent the package or requirement.",
+  "Validated - The requirement was checked and accepted.",
+  "Missing - Required data or a required file is still missing.",
 ];
 
 export const REQUIREMENT_FILTER_OPTIONS: Array<{ id: RequirementFilter; label: string }> = [

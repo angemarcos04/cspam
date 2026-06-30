@@ -682,6 +682,42 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(document.getElementById("monitor-school-records")).toBeNull();
   });
 
+  it("opens the updated monitor User Manual with locked-section and recovery guidance", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: /open user manual/i }));
+
+    expect(await screen.findByRole("heading", { name: "User Manual" })).toBeTruthy();
+    [
+      "Dashboard Overview",
+      "Schools",
+      "Add School",
+      "Reviews",
+      "School Detail",
+      "Audit Trail",
+      "Account Setup & Account Recovery",
+      "Status Guide",
+      "Quick Reminders",
+      "School Head Account Setup",
+      "School Head Password Reset",
+      "Confirmation Codes for Sensitive Actions",
+      "Email Delivery Troubleshooting",
+      "Division Monitor Password Recovery",
+      "Division Monitor MFA Recovery",
+    ].forEach((heading) => {
+      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    });
+
+    expect(screen.getByText(/The Review Inbox shows School, Location, Level, Type, Status, Last Activity, and Actions/i)).toBeTruthy();
+    expect(screen.getByText(/Use Unverify when a verified requirement must be reopened for review/i)).toBeTruthy();
+    expect(screen.queryByText("Schools -> Accounts")).toBeNull();
+    expect(screen.queryByText("Schools -> More -> MFA Recovery Requests")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Return to Dashboard Data" }));
+    expect(screen.queryByRole("heading", { name: "User Manual" })).toBeNull();
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+  });
+
   it("opens School Detail for a queue row when no dashboard filters are active", async () => {
     render(<MonitorDashboard />);
 

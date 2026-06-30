@@ -26,9 +26,9 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
   if (!open) return null;
 
   const isMonitor = variant === "monitor";
-  const title = isMonitor ? "Account Setup & Email Delivery" : "Account Setup & Sign-in Help";
+  const title = isMonitor ? "User Manual" : "Account Setup & Sign-in Help";
   const subtitle = isMonitor
-    ? "How setup links, reset links, and verification codes work."
+    ? "Open the monitor manual for dashboard sections, account setup, email delivery, and recovery."
     : "How to activate your account and regain access.";
 
   return (
@@ -67,103 +67,19 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
 
         <div className="mt-4 space-y-3">
           {isMonitor ? (
-            <>
-              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Reset Link (School Head setup)
-                </h3>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>
-                    Open <span className="font-semibold text-slate-900">Schools</span>, select a school, then open{" "}
-                    <span className="font-semibold text-slate-900">Accounts</span>.
-                  </li>
-                  <li>
-                    Click <span className="font-semibold text-slate-900">Reset Link</span> to email a{" "}
-                    <span className="font-semibold text-slate-900">one-time setup link</span> (it never sends a
-                    password).
-                  </li>
-                  <li>
-                    If email fails, you can copy the setup link and share it through a secure channel.
-                  </li>
-                  <li>Setup links expire; just re-issue if needed.</li>
-                </ul>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">
-                  Sensitive actions require a confirmation code
-                </h3>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>
-                    Suspending/locking/archiving a School Head account asks for a{" "}
-                    <span className="font-semibold text-slate-900">6-digit confirmation code</span>.
-                  </li>
-                  <li>
-                    Click <span className="font-semibold text-slate-900">Send code</span>, then check your monitor
-                    email inbox/spam.
-                  </li>
-                  <li>Enter the 6-digit code before it expires, then confirm the action.</li>
-                </ul>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Email troubleshooting</h3>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>
-                    Use real recipient emails (seeded <span className="font-semibold">@cspams.local</span> addresses
-                    will never receive mail).
-                  </li>
-                  <li>
-                    If you see <span className="font-semibold text-slate-900">logged</span>, the backend is configured
-                    to write emails to logs instead of sending.
-                  </li>
-                  <li>
-                    If you see <span className="font-semibold text-slate-900">failed</span>, the provider rejected the
-                    message; check Render logs and verify credentials.
-                  </li>
-                  <li>
-                    For Gmail SMTP, <span className="font-semibold text-slate-900">MAIL_PASSWORD</span> must be a{" "}
-                    <span className="font-semibold text-slate-900">Google App Password</span> (not your normal Gmail
-                    password).
-                  </li>
-                </ul>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Forgot your monitor password?</h3>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>
-                    On the <span className="font-semibold text-slate-900">Sign In</span> page, choose{" "}
-                    <span className="font-semibold text-slate-900">Division Monitor</span>.
-                  </li>
-                  <li>
-                    Click <span className="font-semibold text-slate-900">Forgot password?</span> to request a reset
-                    link by email.
-                  </li>
-                  <li>Open the email and set a new password, then sign in again.</li>
-                </ul>
-              </article>
-
-              <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
-                <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Can't complete monitor MFA?</h3>
-                <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
-                  <li>Use the 6-digit email code or a stored backup code on the sign-in MFA screen when available.</li>
-                  <li>
-                    If neither option works, click{" "}
-                    <span className="font-semibold text-slate-900">Can't complete MFA? Request recovery</span>.
-                  </li>
-                  <li>
-                    Submit the request, then ask another Division Monitor to approve it via{" "}
-                    <span className="font-semibold text-slate-900">Schools → More → MFA Recovery Requests</span>.
-                  </li>
-                  <li>
-                    Complete recovery using the XXXX-XXXX recovery token, then store the new{" "}
-                    <span className="font-semibold text-slate-900">backup codes</span> securely.
-                  </li>
-                  <li>Production recovery requires at least two active Division Monitor accounts.</li>
-                </ul>
-              </article>
-            </>
+            <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+              <h3 className="text-xs font-bold uppercase tracking-wide text-slate-700">Monitor User Manual</h3>
+              <p className="mt-2 text-xs leading-5 text-slate-700">
+                Open <span className="font-semibold text-slate-900">User Manual</span> in the left navigation and
+                read <span className="font-semibold text-slate-900">Account Setup & Account Recovery</span> for
+                setup links, reset links, email delivery troubleshooting, monitor password recovery, and monitor MFA
+                recovery.
+              </p>
+              <p className="mt-2 text-xs leading-5 text-slate-700">
+                The manual also explains Schools, Add School, Reviews, School Detail, and Audit Trail for the current
+                monitor workspace.
+              </p>
+            </article>
           ) : (
             <>
               <article className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
@@ -194,7 +110,7 @@ export function DashboardHelpDialog({ open, variant, onClose }: DashboardHelpDia
                 <ul className="mt-2 list-disc space-y-1 pl-4 text-xs text-slate-700">
                   <li>Check spam/junk/promotions folders.</li>
                   <li>Confirm your email address in CSPAMS is correct.</li>
-                  <li>If emails still don't arrive, tell your Division Monitor - email delivery may be misconfigured.</li>
+                  <li>If emails still do not arrive, tell your Division Monitor - email delivery may be misconfigured.</li>
                 </ul>
               </article>
             </>
