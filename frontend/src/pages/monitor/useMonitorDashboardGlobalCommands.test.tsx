@@ -46,4 +46,23 @@ describe("useMonitorDashboardGlobalCommands", () => {
 
     expect(args.onToast).toHaveBeenCalledWith("Some dashboard data failed to refresh. Please try again.", "warning");
   });
+
+  it("uses instant non-highlighted scrolling for monitor navigation", () => {
+    vi.useFakeTimers();
+    const args = buildArgs();
+    const { result } = renderHook(() => useMonitorDashboardGlobalCommands(args));
+
+    act(() => {
+      result.current.handleMonitorTopNavigate("reviews");
+      vi.runAllTimers();
+    });
+
+    expect(args.setShowNavigatorManual).toHaveBeenCalledWith(false);
+    expect(args.setActiveTopNavigator).toHaveBeenCalledWith("reviews");
+    expect(args.focusAndScrollTo).toHaveBeenCalledWith("monitor-requirements-table", {
+      smooth: false,
+      highlight: false,
+    });
+    vi.useRealTimers();
+  });
 });

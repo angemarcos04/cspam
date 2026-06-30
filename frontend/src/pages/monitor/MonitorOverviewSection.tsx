@@ -59,7 +59,7 @@ export function MonitorOverviewSection({
 }: MonitorOverviewSectionProps) {
   return (
     <>
-      <section className={`surface-panel dashboard-shell mb-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-reports-header")}`}>
+      <section className={`surface-panel dashboard-shell mb-5 overflow-hidden ${sectionFocusClass("monitor-reports-header")}`}>
         <div id="monitor-reports-header" className="border-b border-slate-200 bg-white px-4 py-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
@@ -83,10 +83,8 @@ export function MonitorOverviewSection({
 
       {renderAdvancedAnalytics && (
         <section
-          className={`surface-panel dashboard-shell overflow-hidden transition-[max-height,opacity,transform,margin] duration-[240ms] ease-in-out ${
-            isHidingAdvancedAnalytics
-              ? "mt-0 max-h-0 -translate-y-1 opacity-0 pointer-events-none"
-              : "mt-5 max-h-[2600px] translate-y-0 opacity-100 animate-fade-slide"
+          className={`surface-panel dashboard-shell overflow-hidden ${
+            isHidingAdvancedAnalytics ? "hidden" : "mt-5"
           }`}
         >
           <div id="monitor-targets-snapshot" className={`p-4 ${sectionFocusClass("monitor-targets-snapshot")}`}>

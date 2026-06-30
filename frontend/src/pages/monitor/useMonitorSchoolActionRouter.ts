@@ -3,6 +3,7 @@ import { messageForApiError } from "@/lib/api";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
+import type { MonitorFocusOptions } from "@/pages/monitor/useMonitorDashboardShell";
 import type { SchoolRecord, SchoolReminderReceipt } from "@/types";
 
 type ToastTone = "success" | "info" | "warning";
@@ -18,7 +19,7 @@ interface UseMonitorSchoolActionRouterArgs {
   schoolRequirementByKey: Map<string, MonitorSchoolRequirementSummary>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
   openSchoolDrawer: (schoolKey: string) => void;
-  focusAndScrollTo: (targetId: string) => void;
+  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   sendReminder: (id: string, notes?: string | null) => Promise<SchoolReminderReceipt>;
 }
@@ -33,13 +34,13 @@ export interface UseMonitorSchoolActionRouterResult {
   handleOpenSchoolRecord: (record: SchoolRecord) => void;
 }
 
-function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: string) {
+function scheduleFocus(focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void, targetId: string) {
   if (typeof window === "undefined") {
     return;
   }
 
   window.setTimeout(() => {
-    focusAndScrollTo(targetId);
+    focusAndScrollTo(targetId, { smooth: false, highlight: false });
   }, 80);
 }
 

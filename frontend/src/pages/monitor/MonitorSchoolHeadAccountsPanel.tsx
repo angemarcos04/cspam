@@ -851,7 +851,7 @@ export function MonitorSchoolHeadAccountsPanel({
             role="dialog"
             aria-modal="true"
             aria-label="Account action"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl ${
               isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
             }`}
           >
@@ -985,7 +985,7 @@ export function MonitorSchoolHeadAccountsPanel({
             role="dialog"
             aria-modal="true"
             aria-label="Archive school record"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl ${
               isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
             }`}
           >
@@ -1060,7 +1060,7 @@ export function MonitorSchoolHeadAccountsPanel({
             role="dialog"
             aria-modal="true"
             aria-label="Batch delete flagged schools"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl animate-fade-slide ${
+            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl ${
               isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
             }`}
           >

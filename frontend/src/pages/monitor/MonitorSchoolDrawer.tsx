@@ -485,7 +485,7 @@ export function MonitorSchoolDrawer({
 
     setActiveSchoolDrawerTab("history");
     window.setTimeout(() => {
-      document.getElementById(sectionId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(sectionId)?.scrollIntoView({ behavior: "auto", block: "start" });
     }, 0);
   };
 
@@ -511,13 +511,13 @@ export function MonitorSchoolDrawer({
         className={
           activeTopNavigator === "reviews"
             ? !showNavigatorManual && isOpen
-              ? "surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
+              ? "surface-panel dashboard-shell mt-5 overflow-hidden rounded-sm border border-slate-200 bg-white shadow-sm"
               : "hidden"
             : isMobileViewport
-              ? `mobile-bottom-sheet mobile-safe-bottom fixed inset-x-0 bottom-0 z-[75] flex flex-col rounded-t-2xl border-t border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
+              ? `mobile-bottom-sheet mobile-safe-bottom fixed inset-x-0 bottom-0 z-[75] flex flex-col rounded-t-2xl border-t border-slate-200 bg-white shadow-2xl ${
                   !showNavigatorManual && isOpen ? "translate-y-0" : "translate-y-full"
                 }`
-              : `fixed right-0 z-[75] flex w-[min(48rem,100vw)] flex-col border-l border-slate-200 bg-white shadow-2xl transition-transform duration-[160ms] ${
+              : `fixed right-0 z-[75] flex w-[min(48rem,100vw)] flex-col border-l border-slate-200 bg-white shadow-2xl ${
                   !showNavigatorManual && isOpen ? "translate-x-0" : "translate-x-full"
                 }`
         }

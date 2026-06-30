@@ -48,7 +48,7 @@ export function useMonitorDrawerJumpActions({
           return;
         }
 
-        row.scrollIntoView({ behavior: "smooth", block: "center" });
+        row.scrollIntoView({ behavior: "auto", block: "center" });
         setHighlightedDrawerIndicatorKey(targetKey);
         window.setTimeout(() => {
           setHighlightedDrawerIndicatorKey((current) => (current === targetKey ? null : current));

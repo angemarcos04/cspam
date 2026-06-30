@@ -46,7 +46,7 @@ export function MonitorSideNavigator({
   onToggleManual,
 }: MonitorSideNavigatorProps) {
   return (
-    <aside className="dashboard-side-rail hidden w-full rounded-sm p-3 transition-[padding] duration-[240ms] ease-in-out lg:block lg:w-auto lg:self-stretch lg:min-h-full">
+    <aside className="dashboard-side-rail hidden w-full rounded-sm p-3 lg:block lg:w-auto lg:self-stretch lg:min-h-full">
       <div className="dashboard-side-rail-sticky flex min-h-full flex-col">
         <div className="flex items-start justify-between gap-2">
           <div className={`w-full ${showNavigatorHeaderText ? "" : "text-center"}`}>
@@ -99,7 +99,7 @@ export function MonitorSideNavigator({
               </button>
             </div>
             <p
-              className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
+              className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 ${
                 showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
               }`}
             >
@@ -109,7 +109,7 @@ export function MonitorSideNavigator({
         </div>
 
         <div
-          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
+          className={`overflow-hidden ${
             shouldRenderNavigatorItems ? "mt-4 max-h-[34rem] opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >
@@ -166,7 +166,7 @@ export function MonitorSideNavigator({
         </div>
 
         <div
-          className={`overflow-hidden transition-[max-height,opacity,margin] duration-[240ms] ease-in-out ${
+          className={`overflow-hidden ${
             shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
           }`}
         >

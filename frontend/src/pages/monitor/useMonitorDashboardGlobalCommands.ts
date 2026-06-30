@@ -1,5 +1,6 @@
 import { useCallback, type Dispatch, type SetStateAction } from "react";
 import { runRefreshBatches, type RefreshOptions } from "@/lib/runRefreshBatches";
+import type { MonitorFocusOptions } from "@/pages/monitor/useMonitorDashboardShell";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 
 type DashboardToastTone = "success" | "info" | "warning";
@@ -13,7 +14,7 @@ interface UseMonitorDashboardGlobalCommandsArgs {
   onToast: (message: string, tone?: DashboardToastTone) => void;
   setShowNavigatorManual: Dispatch<SetStateAction<boolean>>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
-  focusAndScrollTo: (targetId: string) => void;
+  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
   isMobileViewport: boolean;
   setIsNavigatorVisible: Dispatch<SetStateAction<boolean>>;
 }
@@ -67,7 +68,7 @@ export function useMonitorDashboardGlobalCommands({
         const targetId = TOP_NAV_TARGET_BY_ID[id];
         if (targetId) {
           window.setTimeout(() => {
-            focusAndScrollTo(targetId);
+            focusAndScrollTo(targetId, { smooth: false, highlight: false });
           }, 70);
         }
       }

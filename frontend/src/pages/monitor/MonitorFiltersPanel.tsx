@@ -32,7 +32,7 @@ export function MonitorFiltersPanel({
         role="dialog"
         aria-modal="true"
         aria-label="Filters"
-        className={`fixed z-[73] animate-fade-slide border border-slate-200 bg-white p-4 shadow-2xl ${
+        className={`fixed z-[73] border border-slate-200 bg-white p-4 shadow-2xl ${
           isMobileViewport
             ? "inset-x-0 bottom-0 max-h-[84vh] overflow-y-auto rounded-t-sm"
             : "left-1/2 top-24 w-[min(56rem,calc(100vw-2rem))] -translate-x-1/2 rounded-sm"

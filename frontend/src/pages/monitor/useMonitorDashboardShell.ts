@@ -12,6 +12,11 @@ interface DashboardToast {
   tone: ToastTone;
 }
 
+export interface MonitorFocusOptions {
+  smooth?: boolean;
+  highlight?: boolean;
+}
+
 export interface UseMonitorDashboardShellResult {
   isNavigatorCompact: boolean;
   setIsNavigatorCompact: Dispatch<SetStateAction<boolean>>;
@@ -37,7 +42,7 @@ export interface UseMonitorDashboardShellResult {
   toasts: DashboardToast[];
   pushToast: (message: string, tone?: ToastTone) => void;
   dismissToast: (id: number) => void;
-  focusAndScrollTo: (targetId: string) => void;
+  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
   sectionFocusClass: (targetId: string) => string;
 }
 
@@ -150,13 +155,15 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
     focusTimeoutsRef.current.push(timeout);
   };
 
-  const focusAndScrollTo = (targetId: string) => {
+  const focusAndScrollTo = (targetId: string, options: MonitorFocusOptions = {}) => {
     if (typeof document === "undefined") return;
     const section = document.getElementById(targetId);
     if (!section) return;
-    section.scrollIntoView({ behavior: "smooth", block: "start" });
-    setFocusedSectionId(targetId);
-    clearFocusAfterDelay(targetId);
+    section.scrollIntoView({ behavior: options.smooth ? "smooth" : "auto", block: "start" });
+    if (options.highlight) {
+      setFocusedSectionId(targetId);
+      clearFocusAfterDelay(targetId);
+    }
   };
 
   const sectionFocusClass = (targetId: string) => (focusedSectionId === targetId ? "dashboard-focus-glow" : "");

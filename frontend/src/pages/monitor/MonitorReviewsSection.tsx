@@ -159,7 +159,7 @@ export function MonitorReviewsSection({
 
   return (
     <>
-      <section id="monitor-requirements-table" className={`surface-panel dashboard-shell animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
+      <section id="monitor-requirements-table" className={`surface-panel dashboard-shell overflow-hidden ${sectionFocusClass("monitor-requirements-table")}`}>
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>

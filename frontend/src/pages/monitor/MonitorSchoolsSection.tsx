@@ -155,7 +155,7 @@ export function MonitorSchoolsSection({
 
       <section
         id="monitor-school-records"
-        className={`surface-panel dashboard-shell mt-5 animate-fade-slide overflow-hidden ${sectionFocusClass("monitor-school-records")}`}
+        className={`surface-panel dashboard-shell mt-5 overflow-hidden ${sectionFocusClass("monitor-school-records")}`}
       >
         <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">

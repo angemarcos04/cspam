@@ -194,7 +194,7 @@ export function MonitorManualScreen({ onClose }: MonitorManualScreenProps) {
   return (
     <section
       id="monitor-user-manual"
-      className="dashboard-shell mb-5 animate-fade-slide overflow-hidden rounded-sm border border-slate-200 bg-white"
+      className="dashboard-shell mb-5 overflow-hidden rounded-sm border border-slate-200 bg-white"
     >
       <div className="p-4 md:p-6 xl:p-8">
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">

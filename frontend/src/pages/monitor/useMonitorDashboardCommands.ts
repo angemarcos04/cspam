@@ -1,6 +1,7 @@
 import { useCallback, useMemo, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { ALL_SCHOOL_SCOPE, type MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
+import type { MonitorFocusOptions } from "@/pages/monitor/useMonitorDashboardShell";
 
 type DashboardToastTone = "success" | "info" | "warning";
 
@@ -25,7 +26,7 @@ interface UseMonitorDashboardCommandsArgs {
   openSchoolDrawer: (schoolKey: string) => void;
   onReviewSchool: (summary: MonitorSchoolRequirementSummary) => void;
   onOpenSchool: (summary: MonitorSchoolRequirementSummary) => void;
-  focusAndScrollTo: (targetId: string) => void;
+  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
 }
 
 interface UseMonitorDashboardCommandsResult {

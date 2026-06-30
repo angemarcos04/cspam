@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import type { QuickJumpItem } from "@/pages/monitor/monitorDashboardConfig";
+import type { MonitorFocusOptions } from "@/pages/monitor/useMonitorDashboardShell";
 
 export interface MonitorQuickJumpMeta {
   resolvedTargetId: string;
@@ -15,7 +16,7 @@ interface UseMonitorQuickJumpArgs {
   showAdvancedAnalytics: boolean;
   setShowAdvancedFilters: Dispatch<SetStateAction<boolean>>;
   setShowAdvancedAnalytics: Dispatch<SetStateAction<boolean>>;
-  focusAndScrollTo: (targetId: string) => void;
+  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
 }
 
 export interface UseMonitorQuickJumpResult {
@@ -26,14 +27,14 @@ export interface UseMonitorQuickJumpResult {
   getQuickJumpMeta: (item: QuickJumpItem) => MonitorQuickJumpMeta;
 }
 
-function scheduleFocus(focusAndScrollTo: (targetId: string) => void, targetId: string) {
+function scheduleFocus(focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void, targetId: string) {
   if (typeof window === "undefined") {
-    focusAndScrollTo(targetId);
+    focusAndScrollTo(targetId, { smooth: false, highlight: false });
     return;
   }
 
   window.setTimeout(() => {
-    focusAndScrollTo(targetId);
+    focusAndScrollTo(targetId, { smooth: false, highlight: false });
   }, 80);
 }
 
@@ -93,7 +94,7 @@ export function useMonitorQuickJump({
         return;
       }
 
-      focusAndScrollTo(resolvedTargetId);
+      focusAndScrollTo(resolvedTargetId, { smooth: false, highlight: false });
     },
     [
       focusAndScrollTo,

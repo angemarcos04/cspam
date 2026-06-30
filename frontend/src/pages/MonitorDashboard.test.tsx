@@ -556,7 +556,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(document.getElementById("monitor-school-records")).toBeNull();
   });
 
-  it("uses the same focus-and-scroll behavior for keyboard top navigation", async () => {
+  it("uses instant non-pulsing focus-and-scroll behavior for keyboard top navigation", async () => {
     render(<MonitorDashboard />);
     scrollIntoViewMock.mockClear();
 
@@ -565,9 +565,29 @@ describe("MonitorDashboard School Head delivery flows", () => {
     await waitFor(() => {
       expect(scrollIntoViewMock).toHaveBeenCalled();
     });
+    expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "auto", block: "start" });
+    expect(document.querySelector(".dashboard-focus-glow")).toBeNull();
 
     const openReviewsButtons = screen.getAllByRole("button", { name: "Open Reviews" });
     expect(openReviewsButtons.every((button) => button.getAttribute("aria-current") === "page")).toBe(true);
+  });
+
+  it("keeps side navigator collapse immediate without layout transition classes", () => {
+    render(<MonitorDashboard />);
+
+    const layout = document.querySelector(".dashboard-left-layout") as HTMLElement | null;
+    const rail = document.querySelector(".dashboard-side-rail") as HTMLElement | null;
+    expect(layout).toBeTruthy();
+    expect(rail).toBeTruthy();
+    expect(layout?.className).not.toContain("transition-[grid-template-columns]");
+    expect(layout?.className).not.toContain("duration-[240ms]");
+    expect(rail?.className).not.toContain("transition-[padding]");
+
+    fireEvent.click(screen.getByRole("button", { name: "Collapse navigator" }));
+
+    expect(screen.getByRole("button", { name: "Expand navigator" })).toBeTruthy();
+    expect(layout?.className).not.toContain("transition-[grid-template-columns]");
+    expect(rail?.className).not.toContain("transition-[padding]");
   });
 
   it("forces monitor review data refresh after a School Head sends a scope", async () => {
