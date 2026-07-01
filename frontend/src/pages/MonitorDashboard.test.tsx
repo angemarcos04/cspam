@@ -570,7 +570,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
-    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Accounts" })).toBeTruthy();
+    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Account Management" })).toBeTruthy();
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
     const menu = within(schoolsSection).getByRole("menu", { name: "Schools management menu" });
@@ -599,13 +599,14 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
-    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Accounts" })).toBeTruthy();
+    expect(await within(schoolsSection).findByRole("heading", { name: "School Head Account Management" })).toBeTruthy();
     expect(within(schoolsSection).queryByRole("button", { name: "Manage Account" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Actions" }));
 
-    const menu = await within(schoolsSection).findByRole("menu", { name: "Santiago Elementary account actions" });
+    const menu = await screen.findByRole("menu", { name: "Santiago Elementary account actions" });
+    expect(schoolsSection.contains(menu)).toBe(false);
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
       "Send Password Reset Link",
       "Suspend Account",
@@ -647,7 +648,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
     fireEvent.click(await within(schoolsSection).findByRole("button", { name: "Actions" }));
-    const menu = await within(schoolsSection).findByRole("menu", { name: "Santiago Elementary account actions" });
+    const menu = await screen.findByRole("menu", { name: "Santiago Elementary account actions" });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Suspend Account" }));
 
     const confirmationDialog = await screen.findByRole("dialog", { name: "Suspend Account" });

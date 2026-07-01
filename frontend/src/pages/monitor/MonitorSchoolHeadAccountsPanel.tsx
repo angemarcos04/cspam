@@ -8,7 +8,8 @@ import {
   Search,
   X,
 } from "lucide-react";
-import type { ReactElement } from "react";
+import { useState, type ReactElement } from "react";
+import { createPortal } from "react-dom";
 import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
@@ -163,6 +164,13 @@ const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label:
   { id: "active", label: "Active" },
   { id: "suspended", label: "Suspended" },
 ];
+const ACCOUNT_ACTION_MENU_WIDTH = 224;
+const ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT = 126;
+
+interface AccountActionMenuPosition {
+  top: number;
+  left: number;
+}
 
 export function MonitorSchoolHeadAccountsPanel({
   isOpen,
@@ -199,6 +207,8 @@ export function MonitorSchoolHeadAccountsPanel({
   formatDateTime,
   actions,
 }: MonitorSchoolHeadAccountsPanelProps) {
+  const [accountActionMenuPosition, setAccountActionMenuPosition] = useState<AccountActionMenuPosition | null>(null);
+
   if (!isOpen) {
     return null;
   }
@@ -212,12 +222,41 @@ export function MonitorSchoolHeadAccountsPanel({
   );
   const filterCounts = accountStatusCounts ?? fallbackStatusCounts;
 
+  const handleToggleAccountActionMenu = (
+    schoolId: string,
+    button: HTMLButtonElement,
+  ) => {
+    if (actions.openAccountRowMenuSchoolId === schoolId) {
+      setAccountActionMenuPosition(null);
+      actions.toggleAccountRowMenu(schoolId);
+      return;
+    }
+
+    const rect = button.getBoundingClientRect();
+    const viewportWidth = typeof window === "undefined" ? ACCOUNT_ACTION_MENU_WIDTH : window.innerWidth;
+    const viewportHeight = typeof window === "undefined" ? ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT : window.innerHeight;
+    const spaceBelow = viewportHeight - rect.bottom;
+    const opensUp = spaceBelow < ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT && rect.top > ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT;
+    const left = Math.min(
+      Math.max(8, rect.right - ACCOUNT_ACTION_MENU_WIDTH),
+      Math.max(8, viewportWidth - ACCOUNT_ACTION_MENU_WIDTH - 8),
+    );
+
+    setAccountActionMenuPosition({
+      left,
+      top: opensUp
+        ? Math.max(8, rect.top - ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT - 4)
+        : Math.min(viewportHeight - 8, rect.bottom + 4),
+    });
+    actions.toggleAccountRowMenu(schoolId);
+  };
+
   return (
     <>
       <section className="mx-5 mt-4 overflow-visible rounded-sm border border-slate-200 bg-white">
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">School Head Accounts</h3>
+            <h3 className="text-sm font-bold text-slate-900">School Head Account Management</h3>
           </div>
           <button
             type="button"
@@ -517,13 +556,10 @@ export function MonitorSchoolHeadAccountsPanel({
                               )}
                             </button>
                             {account && (
-                              <div
-                                ref={actions.openAccountRowMenuSchoolId === resolvedRecord.id ? actions.accountRowMenuRef : undefined}
-                                className="relative inline-flex"
-                              >
+                              <div className="relative inline-flex">
                                 <button
                                   type="button"
-                                  onClick={() => actions.toggleAccountRowMenu(resolvedRecord.id)}
+                                  onClick={(event) => handleToggleAccountActionMenu(resolvedRecord.id, event.currentTarget)}
                                   disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
                                   aria-haspopup="menu"
                                   aria-expanded={actions.openAccountRowMenuSchoolId === resolvedRecord.id}
@@ -532,11 +568,17 @@ export function MonitorSchoolHeadAccountsPanel({
                                   Actions
                                   <ChevronDown className="h-3.5 w-3.5" />
                                 </button>
-                                {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
+                                {actions.openAccountRowMenuSchoolId === resolvedRecord.id && accountActionMenuPosition && createPortal(
                                   <div
+                                    ref={actions.accountRowMenuRef}
                                     role="menu"
                                     aria-label={`${resolvedRecord.schoolName} account actions`}
-                                    className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-sm border border-slate-200 bg-white py-1 text-left shadow-lg"
+                                    style={{
+                                      left: accountActionMenuPosition.left,
+                                      top: accountActionMenuPosition.top,
+                                      width: ACCOUNT_ACTION_MENU_WIDTH,
+                                    }}
+                                    className="fixed z-[95] overflow-hidden rounded-sm border border-slate-200 bg-white py-1 text-left shadow-2xl"
                                   >
                                     <button
                                       type="button"
@@ -582,7 +624,8 @@ export function MonitorSchoolHeadAccountsPanel({
                                     >
                                       Remove Account and School
                                     </button>
-                                  </div>
+                                  </div>,
+                                  document.body,
                                 )}
                               </div>
                             )}

@@ -91,6 +91,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     );
 
     expect(screen.getByPlaceholderText("Search school, code, name, or email...")).not.toBeNull();
+    expect(screen.getByRole("heading", { name: "School Head Account Management" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Active/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Suspended/i })).not.toBeNull();
@@ -98,6 +99,141 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByRole("button", { name: /Temporary password active/i })).toBeNull();
     expect(screen.queryByText(/Showing \d+ of \d+ schools/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Open batch delete flagged schools" })).toBeNull();
+  });
+
+  it("filters rows without mutating account status or firing account actions", () => {
+    const activeRecord: SchoolRecord = {
+      id: "school-active",
+      schoolId: "910001",
+      schoolCode: "910001",
+      schoolName: "Active Account School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-08T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-active",
+        name: "Active Head",
+        email: "active@cspams.local",
+        accountStatus: "active",
+        mustResetPassword: false,
+        lifecycleState: "active_ready",
+        lifecycleStateLabel: "Active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-02T08:00:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+    const suspendedRecord: SchoolRecord = {
+      ...activeRecord,
+      id: "school-suspended",
+      schoolId: "910002",
+      schoolCode: "910002",
+      schoolName: "Suspended Account School",
+      schoolHeadAccount: {
+        ...activeRecord.schoolHeadAccount!,
+        id: "account-suspended",
+        name: "Suspended Head",
+        email: "suspended@cspams.local",
+        accountStatus: "suspended",
+        lifecycleState: "suspended",
+        lifecycleStateLabel: "Suspended",
+      },
+    };
+
+    const openPendingAccountAction = vi.fn();
+    const handleUpdateSchoolHeadAccount = vi.fn();
+    const handleIssueSchoolHeadSetupLink = vi.fn();
+
+    function Wrapper(): ReactElement {
+      const [statusFilter, setStatusFilter] = useState<SchoolHeadAccountsStatusFilter>("all");
+      const actions = buildActions();
+      actions.openPendingAccountAction = openPendingAccountAction;
+      actions.handleUpdateSchoolHeadAccount = handleUpdateSchoolHeadAccount;
+      actions.handleIssueSchoolHeadSetupLink = handleIssueSchoolHeadSetupLink;
+      const allRows = [activeRecord, suspendedRecord];
+      const filteredRows = allRows
+        .filter((record) => statusFilter === "all" || record.schoolHeadAccount?.accountStatus === statusFilter)
+        .map((record) => ({
+          schoolKey: record.id,
+          schoolCode: record.schoolCode ?? "",
+          schoolName: record.schoolName,
+          record,
+        }));
+
+      return (
+        <MonitorSchoolHeadAccountsPanel
+          isOpen
+          isSaving={false}
+          isMobileViewport={false}
+          rows={filteredRows}
+          totalCount={allRows.length}
+          accountStatusCounts={{ all: 2, active: 1, suspended: 1 }}
+          query=""
+          statusFilter={statusFilter}
+          onlyFlagged={false}
+          onlyDeleteFlagged={false}
+          onQueryChange={vi.fn()}
+          onStatusFilterChange={setStatusFilter}
+          onOnlyFlaggedChange={vi.fn()}
+          onOnlyDeleteFlaggedChange={vi.fn()}
+          onClearFilters={vi.fn()}
+          onClose={vi.fn()}
+          onOpenSchoolRecord={vi.fn()}
+          pendingDeleteSchoolRecord={null}
+          pendingDeleteSchoolRecordPreview={null}
+          pendingDeleteSchoolRecordError=""
+          isDeleteSchoolRecordLoading={false}
+          onPreviewDeleteSchoolRecord={vi.fn()}
+          onClosePendingDeleteSchoolRecord={vi.fn()}
+          onConfirmDeleteSchoolRecord={vi.fn()}
+          formatDateTime={(value) => value ?? "-"}
+          actions={actions}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+    expect(screen.getByText("Active Account School")).not.toBeNull();
+    expect(screen.getByText("Suspended Account School")).not.toBeNull();
+    const filterGroup = screen.getByLabelText("School Head account filters");
+
+    fireEvent.click(within(filterGroup).getByRole("button", { name: /Active/i }));
+    expect(screen.getByText("Active Account School")).not.toBeNull();
+    expect(screen.queryByText("Suspended Account School")).toBeNull();
+    expect(activeRecord.schoolHeadAccount?.accountStatus).toBe("active");
+    expect(suspendedRecord.schoolHeadAccount?.accountStatus).toBe("suspended");
+
+    fireEvent.click(within(filterGroup).getByRole("button", { name: /Suspended/i }));
+    expect(screen.queryByText("Active Account School")).toBeNull();
+    expect(screen.getByText("Suspended Account School")).not.toBeNull();
+    expect(activeRecord.schoolHeadAccount?.accountStatus).toBe("active");
+    expect(suspendedRecord.schoolHeadAccount?.accountStatus).toBe("suspended");
+    expect(openPendingAccountAction).not.toHaveBeenCalled();
+    expect(handleUpdateSchoolHeadAccount).not.toHaveBeenCalled();
+    expect(handleIssueSchoolHeadSetupLink).not.toHaveBeenCalled();
   });
 
   it("keeps no-account rows limited to the create-account action", () => {
@@ -351,8 +487,33 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByRole("button", { name: "Manage Account" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
 
-    fireEvent.click(within(activeRow!).getByRole("button", { name: "Actions" }));
+    const actionButton = within(activeRow!).getByRole("button", { name: "Actions" });
+    Object.defineProperty(window, "innerHeight", {
+      configurable: true,
+      writable: true,
+      value: 520,
+    });
+    Object.defineProperty(window, "innerWidth", {
+      configurable: true,
+      writable: true,
+      value: 1024,
+    });
+    actionButton.getBoundingClientRect = vi.fn(() => ({
+      x: 780,
+      y: 460,
+      width: 80,
+      height: 32,
+      top: 460,
+      right: 860,
+      bottom: 492,
+      left: 780,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent.click(actionButton);
     const menu = screen.getByRole("menu", { name: "Active School account actions" });
+    expect(menu.closest(".overflow-x-auto")).toBeNull();
+    expect(Number.parseFloat(menu.style.top)).toBeLessThan(460);
     const menuItems = within(menu).getAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
       "Send Password Reset Link",

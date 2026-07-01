@@ -349,12 +349,17 @@ export function useSchoolHeadAccountActions({
         setOpenAccountRowMenuSchoolId(null);
       }
     };
+    const closeMenu = () => setOpenAccountRowMenuSchoolId(null);
 
     window.addEventListener("mousedown", onPointerDown);
     window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("resize", closeMenu);
+    window.addEventListener("scroll", closeMenu, true);
     return () => {
       window.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("resize", closeMenu);
+      window.removeEventListener("scroll", closeMenu, true);
     };
   }, [openAccountRowMenuSchoolId]);
 
