@@ -13,19 +13,20 @@ function makeRouter(sendReminder = vi.fn()) {
   } as SchoolRecord;
   const recordMap = new Map<string, SchoolRecord>([["401777", record]]);
   const pushToast = vi.fn();
+  const setActiveTopNavigator = vi.fn();
+  const openSchoolDrawer = vi.fn();
 
   const { result } = renderHook(() => useMonitorSchoolActionRouter({
     scopedRecordBySchoolKey: recordMap,
     recordBySchoolKey: recordMap,
     schoolRequirementByKey: new Map(),
-    setActiveTopNavigator: vi.fn(),
-    openSchoolDrawer: vi.fn(),
-    focusAndScrollTo: vi.fn(),
+    setActiveTopNavigator,
+    openSchoolDrawer,
     pushToast,
     sendReminder,
   }));
 
-  return { result, pushToast, sendReminder };
+  return { result, pushToast, sendReminder, setActiveTopNavigator, openSchoolDrawer, record };
 }
 
 describe("useMonitorSchoolActionRouter", () => {
@@ -95,5 +96,17 @@ describe("useMonitorSchoolActionRouter", () => {
     expect(pushToast).toHaveBeenCalledWith(SERVICE_UNAVAILABLE_MESSAGE, "warning");
     expect(pushToast).not.toHaveBeenCalledWith("Request failed with status 503.", "warning");
     expect(result.current.remindingSchoolKey).toBeNull();
+  });
+
+  it("opens account-management school records under Reviews without scrolling to Schools", () => {
+    const { result, setActiveTopNavigator, openSchoolDrawer, pushToast, record } = makeRouter();
+
+    act(() => {
+      result.current.handleOpenSchoolRecord(record);
+    });
+
+    expect(setActiveTopNavigator).toHaveBeenCalledWith("reviews");
+    expect(openSchoolDrawer).toHaveBeenCalledWith("code:401777");
+    expect(pushToast).toHaveBeenCalledWith("Opened school details for AMA Computer College - Santiago.", "info");
   });
 });

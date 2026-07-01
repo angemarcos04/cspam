@@ -236,7 +236,6 @@ export function MonitorDashboard() {
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
-    removeSchoolHeadAccountsBatch,
     bulkImportRecords,
   } = useData();
   const {
@@ -1024,7 +1023,6 @@ export function MonitorDashboard() {
     schoolRequirementByKey: reviewInboxRequirementByKey,
     setActiveTopNavigator,
     openSchoolDrawer,
-    focusAndScrollTo,
     pushToast,
     sendReminder,
   });
@@ -1242,7 +1240,6 @@ export function MonitorDashboard() {
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
-    removeSchoolHeadAccountsBatch,
     onDownloadCsvFormat: handleDownloadSchoolCsvFormat,
     onOpenSchoolRecord: handleOpenSchoolRecord,
     onOpenSchool: handleOpenSchool,

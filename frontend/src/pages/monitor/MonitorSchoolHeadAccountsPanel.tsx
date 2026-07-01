@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
-import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
+import type { SchoolRecord } from "@/types";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
@@ -51,20 +51,6 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   onClearFilters: () => void;
   onClose: () => void;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
-  pendingDeleteSchoolRecord: SchoolRecord | null;
-  pendingDeleteSchoolRecordPreview: SchoolRecordDeletePreview | null;
-  pendingDeleteSchoolRecordError: string;
-  isDeleteSchoolRecordLoading: boolean;
-  onPreviewDeleteSchoolRecord: (record: SchoolRecord) => void | Promise<void>;
-  onClosePendingDeleteSchoolRecord: () => void;
-  onConfirmDeleteSchoolRecord: () => void | Promise<void>;
-  deleteFlaggedSchoolCount?: number;
-  isBatchDeleteSchoolRecordsPending?: boolean;
-  isBatchDeleteSchoolRecordsLoading?: boolean;
-  batchDeleteSchoolRecordsError?: string;
-  onOpenPendingBatchDeleteSchoolRecords?: () => void;
-  onClosePendingBatchDeleteSchoolRecords?: () => void;
-  onConfirmBatchDeleteSchoolRecords?: () => void | Promise<void>;
   formatDateTime: (value: string | null) => string;
   actions: SchoolHeadAccountActionsApi;
 }
@@ -190,20 +176,6 @@ export function MonitorSchoolHeadAccountsPanel({
   onClearFilters,
   onClose,
   onOpenSchoolRecord,
-  pendingDeleteSchoolRecord,
-  pendingDeleteSchoolRecordPreview,
-  pendingDeleteSchoolRecordError,
-  isDeleteSchoolRecordLoading,
-  onPreviewDeleteSchoolRecord,
-  onClosePendingDeleteSchoolRecord,
-  onConfirmDeleteSchoolRecord,
-  deleteFlaggedSchoolCount = 0,
-  isBatchDeleteSchoolRecordsPending = false,
-  isBatchDeleteSchoolRecordsLoading = false,
-  batchDeleteSchoolRecordsError = "",
-  onOpenPendingBatchDeleteSchoolRecords = () => {},
-  onClosePendingBatchDeleteSchoolRecords = () => {},
-  onConfirmBatchDeleteSchoolRecords = () => {},
   formatDateTime,
   actions,
 }: MonitorSchoolHeadAccountsPanelProps) {
@@ -567,7 +539,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                 <button
                                   type="button"
                                   onClick={(event) => handleToggleAccountActionMenu(resolvedRecord.id, event.currentTarget)}
-                                  disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
+                                  disabled={isRowSaving || isSaving}
                                   aria-haspopup="menu"
                                   aria-expanded={actions.openAccountRowMenuSchoolId === resolvedRecord.id}
                                   className="inline-flex h-8 items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
@@ -793,146 +765,6 @@ export function MonitorSchoolHeadAccountsPanel({
         </>
       )}
 
-      {pendingDeleteSchoolRecord && (
-        <>
-          <button
-            type="button"
-            onClick={onClosePendingDeleteSchoolRecord}
-            className="fixed inset-0 z-[90] bg-slate-900/40"
-            aria-label="Close school archive dialog"
-          />
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Archive school record"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl ${
-              isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Archive school record</h3>
-              </div>
-              <button
-                type="button"
-                onClick={onClosePendingDeleteSchoolRecord}
-                className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-3 text-xs text-slate-700">
-              {isDeleteSchoolRecordLoading && !pendingDeleteSchoolRecordPreview ? (
-                <p>Loading archive preview...</p>
-              ) : pendingDeleteSchoolRecordPreview ? (
-                <div className="space-y-1">
-                  <p className="font-semibold text-slate-900">Linked records that will leave the active workspace with this school:</p>
-                  <p>Students: {pendingDeleteSchoolRecordPreview.dependencies.students}</p>
-                  <p>Sections: {pendingDeleteSchoolRecordPreview.dependencies.sections}</p>
-                  <p>Indicator submissions: {pendingDeleteSchoolRecordPreview.dependencies.indicatorSubmissions}</p>
-                  <p>Submission histories: {pendingDeleteSchoolRecordPreview.dependencies.histories}</p>
-                  <p>Linked users: {pendingDeleteSchoolRecordPreview.dependencies.linkedUsers}</p>
-                </div>
-              ) : (
-                <p>Delete preview is unavailable right now.</p>
-              )}
-            </div>
-
-            {pendingDeleteSchoolRecordError && (
-              <p className="mt-3 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                {pendingDeleteSchoolRecordError}
-              </p>
-            )}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClosePendingDeleteSchoolRecord}
-                disabled={isDeleteSchoolRecordLoading}
-                className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void onConfirmDeleteSchoolRecord()}
-                disabled={isDeleteSchoolRecordLoading || !pendingDeleteSchoolRecordPreview}
-                className="inline-flex items-center gap-1 rounded-sm border border-rose-200 bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isDeleteSchoolRecordLoading ? "Deleting..." : "Delete school"}
-              </button>
-            </div>
-          </section>
-        </>
-      )}
-
-      {isBatchDeleteSchoolRecordsPending && (
-        <>
-          <button
-            type="button"
-            onClick={onClosePendingBatchDeleteSchoolRecords}
-            className="fixed inset-0 z-[90] bg-slate-900/40"
-            aria-label="Close batch delete dialog"
-          />
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Batch delete flagged schools"
-            className={`fixed z-[91] w-[min(32rem,calc(100vw-2rem))] rounded-sm border border-slate-200 bg-white p-4 shadow-2xl ${
-              isMobileViewport ? "inset-x-4 bottom-4" : "left-1/2 top-32 -translate-x-1/2"
-            }`}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-bold text-slate-900">Delete flagged schools</h3>
-                <p className="mt-1 text-xs text-slate-600">
-                  Permanently delete {deleteFlaggedSchoolCount} flagged school{deleteFlaggedSchoolCount === 1 ? "" : "s"} and their linked School Head account data.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={onClosePendingBatchDeleteSchoolRecords}
-                className="inline-flex items-center rounded-sm border border-slate-300 bg-white p-1 text-slate-600 transition hover:bg-slate-100"
-                aria-label="Close"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <div className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-800">
-              This permanently removes the school record and all linked School Head account rows for each flagged school.
-            </div>
-
-            {batchDeleteSchoolRecordsError ? (
-              <div className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                {batchDeleteSchoolRecordsError}
-              </div>
-            ) : null}
-
-            <div className="mt-4 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={onClosePendingBatchDeleteSchoolRecords}
-                disabled={isBatchDeleteSchoolRecordsLoading}
-                className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void onConfirmBatchDeleteSchoolRecords()}
-                disabled={isBatchDeleteSchoolRecordsLoading || deleteFlaggedSchoolCount === 0}
-                aria-label="Confirm batch delete flagged schools"
-                className="rounded-sm bg-rose-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {isBatchDeleteSchoolRecordsLoading ? "Deleting..." : "Delete flagged schools"}
-              </button>
-            </div>
-          </section>
-        </>
-      )}
     </>
   );
 }

@@ -142,6 +142,7 @@ export function AuditTrailPanel({
   const realtimeRefreshTimerRef = useRef<number | null>(null);
   const token = apiToken ?? COOKIE_SESSION_TOKEN;
   const effectiveActionPrefix = eventPrefix ?? actionPrefix;
+  const hasDescription = description.trim().length > 0;
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams();
@@ -245,7 +246,7 @@ export function AuditTrailPanel({
       <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-primary-700">{title}</p>
-          <p className="mt-1 text-xs text-slate-600">{description}</p>
+          {hasDescription ? <p className="mt-1 text-xs text-slate-600">{description}</p> : null}
           {lastLoadedAt && (
             <p className="mt-1 text-[11px] text-slate-500">Loaded {formatDateTime(lastLoadedAt)}</p>
           )}

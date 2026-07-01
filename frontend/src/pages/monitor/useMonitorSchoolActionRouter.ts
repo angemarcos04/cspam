@@ -3,7 +3,6 @@ import { messageForApiError } from "@/lib/api";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
-import type { MonitorFocusOptions } from "@/pages/monitor/useMonitorDashboardShell";
 import type { SchoolRecord, SchoolReminderReceipt } from "@/types";
 
 type ToastTone = "success" | "info" | "warning";
@@ -19,7 +18,6 @@ interface UseMonitorSchoolActionRouterArgs {
   schoolRequirementByKey: Map<string, MonitorSchoolRequirementSummary>;
   setActiveTopNavigator: Dispatch<SetStateAction<MonitorTopNavigatorId>>;
   openSchoolDrawer: (schoolKey: string) => void;
-  focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void;
   pushToast: (message: string, tone?: ToastTone) => void;
   sendReminder: (id: string, notes?: string | null) => Promise<SchoolReminderReceipt>;
 }
@@ -32,16 +30,6 @@ export interface UseMonitorSchoolActionRouterResult {
   handleSendReminder: (summary: SchoolActionSummary, notes?: string | null) => Promise<void>;
   handleReviewRecord: (record: SchoolRecord) => void;
   handleOpenSchoolRecord: (record: SchoolRecord) => void;
-}
-
-function scheduleFocus(focusAndScrollTo: (targetId: string, options?: MonitorFocusOptions) => void, targetId: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  window.setTimeout(() => {
-    focusAndScrollTo(targetId, { smooth: false, highlight: false });
-  }, 80);
 }
 
 function reminderToastForReceipt(receipt: SchoolReminderReceipt): { message: string; tone: ToastTone } {
@@ -78,7 +66,6 @@ export function useMonitorSchoolActionRouter({
   schoolRequirementByKey,
   setActiveTopNavigator,
   openSchoolDrawer,
-  focusAndScrollTo,
   pushToast,
   sendReminder,
 }: UseMonitorSchoolActionRouterArgs): UseMonitorSchoolActionRouterResult {
@@ -161,12 +148,11 @@ export function useMonitorSchoolActionRouter({
         return;
       }
 
-      setActiveTopNavigator("schools");
+      setActiveTopNavigator("reviews");
       openSchoolDrawer(schoolKey);
-      scheduleFocus(focusAndScrollTo, "monitor-school-records");
       pushToast(`Opened school details for ${record.schoolName}.`, "info");
     },
-    [focusAndScrollTo, openSchoolDrawer, pushToast, setActiveTopNavigator],
+    [openSchoolDrawer, pushToast, setActiveTopNavigator],
   );
 
   return {

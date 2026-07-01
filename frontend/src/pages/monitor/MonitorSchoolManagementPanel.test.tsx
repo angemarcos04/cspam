@@ -63,12 +63,28 @@ describe("MonitorSchoolManagementPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Suspended")).toBeTruthy();
+    expect(screen.getAllByText("Suspended")).toHaveLength(2);
     expect(screen.queryByText("Inactive")).toBeNull();
     expect(screen.queryByText("Update school profile fields for this selected school.")).toBeNull();
     expect(screen.queryByText(/Manage School Head account actions/)).toBeNull();
     expect(screen.queryByRole("button", { name: "Mark as Suspended" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Archive School Record" })).toBeNull();
     expect(record.status).toBe("active");
+  });
+
+  it("formats School Head account status labels in the management tab", () => {
+    const record = buildRecord("pending_setup");
+
+    render(
+      <MonitorSchoolManagementPanel
+        record={record}
+        isSaving={false}
+        updateRecord={vi.fn()}
+        onToast={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Pending Setup")).toBeTruthy();
+    expect(screen.queryByText("pending setup")).toBeNull();
   });
 });

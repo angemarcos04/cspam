@@ -40,6 +40,7 @@ import type {
 
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
+const ACCOUNT_STATUS_OVERRIDE_TTL_MS = 5 * 60 * 1000;
 
 export interface SchoolRecordRefreshFilters {
   search?: string | null;
@@ -273,6 +274,13 @@ function normalizeRecordCount(value: unknown, fallback = 0): number {
   return Math.trunc(parsed);
 }
 
+interface AccountStatusOverride {
+  schoolId: string;
+  schoolCode?: string | null;
+  accountStatus: string;
+  appliedAt: string;
+}
+
 function normalizeSchoolRecordRefreshFilters(
   filters?: SchoolRecordRefreshFilters | null,
 ): NormalizedSchoolRecordRefreshFilters {
@@ -307,6 +315,69 @@ function buildSchoolRecordRefreshUrl(filters: NormalizedSchoolRecordRefreshFilte
   return `/api/dashboard/records${query ? `?${query}` : ""}`;
 }
 
+function schoolRecordMatchesAccountStatusOverride(record: SchoolRecord, override: AccountStatusOverride): boolean {
+  if (String(record.id) === String(override.schoolId)) return true;
+  if (record.schoolId !== null && record.schoolId !== undefined && String(record.schoolId) === String(override.schoolId)) return true;
+  if (override.schoolCode && String(record.schoolCode ?? "").trim() === String(override.schoolCode).trim()) return true;
+  return false;
+}
+
+function pruneAccountStatusOverrides(
+  records: SchoolRecord[],
+  overrides: AccountStatusOverride[],
+  nowMs = Date.now(),
+): AccountStatusOverride[] {
+  return overrides.filter((override) => {
+    const appliedAtMs = Date.parse(override.appliedAt);
+    if (Number.isFinite(appliedAtMs) && nowMs - appliedAtMs > ACCOUNT_STATUS_OVERRIDE_TTL_MS) {
+      return false;
+    }
+
+    const matchingRecord = records.find((record) => schoolRecordMatchesAccountStatusOverride(record, override));
+    if (!matchingRecord?.schoolHeadAccount) {
+      return true;
+    }
+
+    const serverStatus = String(matchingRecord.schoolHeadAccount.accountStatus ?? "").toLowerCase();
+    const overrideStatus = String(override.accountStatus ?? "").toLowerCase();
+    if (serverStatus === overrideStatus) {
+      return false;
+    }
+
+    const lastUpdatedMs = Date.parse(String(matchingRecord.lastUpdated ?? ""));
+    if (Number.isFinite(appliedAtMs) && Number.isFinite(lastUpdatedMs) && lastUpdatedMs > appliedAtMs) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function applyAccountStatusOverrides(records: SchoolRecord[], overrides: AccountStatusOverride[]): SchoolRecord[] {
+  if (overrides.length === 0) {
+    return records;
+  }
+
+  return records.map((record) => {
+    const override = overrides.find((candidate) => schoolRecordMatchesAccountStatusOverride(record, candidate));
+    if (!override || !record.schoolHeadAccount) {
+      return record;
+    }
+
+    if (String(record.schoolHeadAccount.accountStatus ?? "") === String(override.accountStatus ?? "")) {
+      return record;
+    }
+
+    return {
+      ...record,
+      schoolHeadAccount: {
+        ...record.schoolHeadAccount,
+        accountStatus: override.accountStatus,
+      },
+    };
+  });
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const { user, role, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
@@ -322,6 +393,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<SyncScope>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [accountStatusOverrides, setAccountStatusOverrides] = useState<AccountStatusOverride[]>([]);
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const syncQueuedForceRef = useRef(false);
@@ -331,6 +403,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
   const recordsRef = useRef<SchoolRecord[]>([]);
+  const accountStatusOverridesRef = useRef<AccountStatusOverride[]>([]);
   const emptyRecordsRecoveryRef = useRef(false);
   const activeRecordFiltersRef = useRef<NormalizedSchoolRecordRefreshFilters>(
     normalizeSchoolRecordRefreshFilters(),
@@ -354,6 +427,38 @@ export function DataProvider({ children }: { children: ReactNode }) {
   }, [records]);
 
   useEffect(() => {
+    accountStatusOverridesRef.current = accountStatusOverrides;
+  }, [accountStatusOverrides]);
+
+  const applyRecordSyncPayload = useCallback((nextRecords: SchoolRecord[]) => {
+    const prunedOverrides = pruneAccountStatusOverrides(nextRecords, accountStatusOverridesRef.current);
+    accountStatusOverridesRef.current = prunedOverrides;
+    setAccountStatusOverrides(prunedOverrides);
+    setRecords(applyAccountStatusOverrides(nextRecords, prunedOverrides));
+  }, []);
+
+  const rememberAccountStatusOverride = useCallback((schoolId: string, record: SchoolRecord | undefined, accountStatus: string) => {
+    const override: AccountStatusOverride = {
+      schoolId,
+      schoolCode: record?.schoolCode ?? record?.schoolId ?? null,
+      accountStatus,
+      appliedAt: new Date().toISOString(),
+    };
+    const matcher = {
+      id: schoolId,
+      schoolId: record?.schoolId ?? schoolId,
+      schoolCode: record?.schoolCode ?? null,
+    } as SchoolRecord;
+    const next = [
+      override,
+      ...accountStatusOverridesRef.current.filter((candidate) => !schoolRecordMatchesAccountStatusOverride(matcher, candidate)),
+    ];
+
+    accountStatusOverridesRef.current = next;
+    setAccountStatusOverrides(next);
+  }, []);
+
+  useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
       return;
     }
@@ -367,8 +472,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
     syncScopeKeyRef.current = "";
     activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters();
     recordsEndpointRef.current = "/api/dashboard/records";
+    accountStatusOverridesRef.current = [];
     clearRealtimeSyncTimer();
     setRecords([]);
+    setAccountStatusOverrides([]);
     setRecordCount(0);
     setTargetsMet(null);
     setSyncAlerts([]);
@@ -433,6 +540,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setSyncStatus("idle");
         etagRef.current = "";
         syncScopeKeyRef.current = "";
+        accountStatusOverridesRef.current = [];
+        setAccountStatusOverrides([]);
         activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters();
         recordsEndpointRef.current = "/api/dashboard/records";
         syncQueuedForceRef.current = false;
@@ -525,7 +634,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const nextRecords = Array.isArray(payload?.data) ? payload.data : [];
         const nextRecordCount = normalizeRecordCount(payload?.meta?.recordCount, nextRecords.length);
 
-        setRecords(nextRecords);
+        applyRecordSyncPayload(nextRecords);
         setRecordCount(nextRecordCount);
         setTargetsMet(payload?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(payload?.meta?.alerts) ? payload.meta.alerts : []);
@@ -565,7 +674,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [token, handleApiError],
+    [token, handleApiError, applyRecordSyncPayload],
   );
 
   const refreshRecords = useCallback(async (options?: SchoolRecordRefreshOptions) => {
@@ -930,15 +1039,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Account update response is empty.");
         }
 
+        const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
+        rememberAccountStatusOverride(schoolId, existingRecord, result.account.accountStatus);
         setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
+          current.map((record) => {
+            const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
+              schoolId,
+              schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
+              accountStatus: result.account.accountStatus,
+              appliedAt: new Date().toISOString(),
+            }) : record.id === schoolId;
+
+            return shouldUpdateRecord
+              ? { ...record, schoolHeadAccount: result.account }
+              : record;
+          }),
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
@@ -953,7 +1068,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, rememberAccountStatusOverride, syncRecords],
   );
 
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
@@ -1022,15 +1137,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Account activation response is empty.");
         }
 
+        const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
+        rememberAccountStatusOverride(schoolId, existingRecord, result.account.accountStatus);
         setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
+          current.map((record) => {
+            const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
+              schoolId,
+              schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
+              accountStatus: result.account.accountStatus,
+              appliedAt: new Date().toISOString(),
+            }) : record.id === schoolId;
+
+            return shouldUpdateRecord
+              ? { ...record, schoolHeadAccount: result.account }
+              : record;
+          }),
         );
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
@@ -1045,7 +1166,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, rememberAccountStatusOverride, syncRecords],
   );
 
   const issueSchoolHeadSetupLink = useCallback(

@@ -78,13 +78,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={null}
-        pendingDeleteSchoolRecordPreview={null}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
         formatDateTime={(value) => value ?? "-"}
         actions={buildActions()}
       />,
@@ -202,13 +195,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           onClearFilters={vi.fn()}
           onClose={vi.fn()}
           onOpenSchoolRecord={vi.fn()}
-          pendingDeleteSchoolRecord={null}
-          pendingDeleteSchoolRecordPreview={null}
-          pendingDeleteSchoolRecordError=""
-          isDeleteSchoolRecordLoading={false}
-          onPreviewDeleteSchoolRecord={vi.fn()}
-          onClosePendingDeleteSchoolRecord={vi.fn()}
-          onConfirmDeleteSchoolRecord={vi.fn()}
           formatDateTime={(value) => value ?? "-"}
           actions={actions}
         />
@@ -237,7 +223,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
   });
 
   it("keeps no-account rows limited to the create-account action", () => {
-    const onPreviewDeleteSchoolRecord = vi.fn();
     const record: SchoolRecord = {
       id: "school-1",
       schoolId: "900001",
@@ -300,13 +285,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           }}
           onClose={vi.fn()}
           onOpenSchoolRecord={vi.fn()}
-          pendingDeleteSchoolRecord={null}
-          pendingDeleteSchoolRecordPreview={null}
-          pendingDeleteSchoolRecordError=""
-          isDeleteSchoolRecordLoading={false}
-          onPreviewDeleteSchoolRecord={onPreviewDeleteSchoolRecord}
-          onClosePendingDeleteSchoolRecord={vi.fn()}
-          onConfirmDeleteSchoolRecord={vi.fn()}
           formatDateTime={(value) => value ?? "-"}
           actions={actions}
         />
@@ -322,7 +300,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Manage Account" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Archive school record" })).toBeNull();
-    expect(onPreviewDeleteSchoolRecord).not.toHaveBeenCalled();
   });
 
   it("opens compact account action dropdowns with the guarded action items", () => {
@@ -460,13 +437,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           }}
           onClose={vi.fn()}
           onOpenSchoolRecord={vi.fn()}
-          pendingDeleteSchoolRecord={null}
-          pendingDeleteSchoolRecordPreview={null}
-          pendingDeleteSchoolRecordError=""
-          isDeleteSchoolRecordLoading={false}
-          onPreviewDeleteSchoolRecord={vi.fn()}
-          onClosePendingDeleteSchoolRecord={vi.fn()}
-          onConfirmDeleteSchoolRecord={vi.fn()}
           formatDateTime={(value) => value ?? "-"}
           actions={actions}
         />
@@ -628,13 +598,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           onClearFilters={vi.fn()}
           onClose={vi.fn()}
           onOpenSchoolRecord={vi.fn()}
-          pendingDeleteSchoolRecord={null}
-          pendingDeleteSchoolRecordPreview={null}
-          pendingDeleteSchoolRecordError=""
-          isDeleteSchoolRecordLoading={false}
-          onPreviewDeleteSchoolRecord={vi.fn()}
-          onClosePendingDeleteSchoolRecord={vi.fn()}
-          onConfirmDeleteSchoolRecord={vi.fn()}
           formatDateTime={(value) => value ?? "-"}
           actions={actions}
         />
@@ -812,13 +775,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={null}
-        pendingDeleteSchoolRecordPreview={null}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
         formatDateTime={(value) => value ?? "-"}
         actions={buildActions()}
       />,
@@ -904,13 +860,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={null}
-        pendingDeleteSchoolRecordPreview={null}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
         formatDateTime={() => "5/14/2026 06:41 AM"}
         actions={buildActions()}
       />,
@@ -992,13 +941,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={null}
-        pendingDeleteSchoolRecordPreview={null}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
         formatDateTime={() => "5/14/2026 06:55 AM"}
         actions={buildActions()}
       />,
@@ -1134,8 +1076,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         issueSchoolHeadTemporaryPassword: vi.fn() as any,
         upsertSchoolHeadAccountProfile: vi.fn() as any,
         removeSchoolHeadAccount: vi.fn() as any,
-        deleteRecord: vi.fn(async () => {}),
-        previewDeleteRecord: vi.fn() as any,
         onOpenSchoolRecord: vi.fn(),
         formatDateTime: (value) => value,
       }),
@@ -1252,8 +1192,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         issueSchoolHeadTemporaryPassword: vi.fn() as any,
         upsertSchoolHeadAccountProfile: vi.fn() as any,
         removeSchoolHeadAccount: vi.fn() as any,
-        deleteRecord: vi.fn(async () => {}),
-        previewDeleteRecord: vi.fn() as any,
         onOpenSchoolRecord: vi.fn(),
         formatDateTime: (value) => value,
       }),
@@ -1398,8 +1336,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         issueSchoolHeadTemporaryPassword: vi.fn() as any,
         upsertSchoolHeadAccountProfile: vi.fn() as any,
         removeSchoolHeadAccount: vi.fn() as any,
-        deleteRecord: vi.fn(async () => {}),
-        previewDeleteRecord: vi.fn() as any,
         onOpenSchoolRecord: vi.fn(),
         formatDateTime: (value) => value,
       }),
@@ -1610,42 +1546,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={{
-          id: "school-13",
-          schoolId: "901013",
-          schoolCode: "901013",
-          schoolName: "Batal Elementary School",
-          level: "Elementary",
-          district: "District 1",
-          address: "District 1",
-          type: "public",
-          studentCount: 0,
-          teacherCount: 0,
-          region: "Region II",
-          status: "active",
-          submittedBy: "Monitor User",
-          lastUpdated: "2026-05-09T08:00:00.000Z",
-          deletedAt: null,
-          schoolHeadAccount: null,
-          indicatorLatest: null,
-        }}
-        pendingDeleteSchoolRecordPreview={{
-          id: "school-13",
-          schoolId: "901013",
-          schoolName: "Batal Elementary School",
-          dependencies: {
-            students: 0,
-            sections: 0,
-            indicatorSubmissions: 0,
-            histories: 0,
-            linkedUsers: 0,
-          },
-        }}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
         formatDateTime={(value) => value ?? "-"}
         actions={actions}
       />,
@@ -1678,20 +1578,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         onClearFilters={vi.fn()}
         onClose={vi.fn()}
         onOpenSchoolRecord={vi.fn()}
-        pendingDeleteSchoolRecord={null}
-        pendingDeleteSchoolRecordPreview={null}
-        pendingDeleteSchoolRecordError=""
-        isDeleteSchoolRecordLoading={false}
-        onPreviewDeleteSchoolRecord={vi.fn()}
-        onClosePendingDeleteSchoolRecord={vi.fn()}
-        onConfirmDeleteSchoolRecord={vi.fn()}
-        deleteFlaggedSchoolCount={3}
-        isBatchDeleteSchoolRecordsPending={false}
-        isBatchDeleteSchoolRecordsLoading={false}
-        batchDeleteSchoolRecordsError=""
-        onOpenPendingBatchDeleteSchoolRecords={vi.fn()}
-        onClosePendingBatchDeleteSchoolRecords={vi.fn()}
-        onConfirmBatchDeleteSchoolRecords={vi.fn()}
         formatDateTime={(value) => value ?? "-"}
         actions={buildActions()}
       />,

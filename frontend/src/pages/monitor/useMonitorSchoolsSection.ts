@@ -28,7 +28,6 @@ import type {
   SchoolBulkImportResult,
   SchoolBulkImportRowPayload,
   SchoolHeadAccountActionVerificationCodeResult,
-  SchoolHeadAccountBatchRemovalResult,
   SchoolHeadAccountPayload,
   SchoolHeadAccountProfileUpsertResult,
   SchoolHeadAccountRemovalPayload,
@@ -109,10 +108,6 @@ interface UseMonitorSchoolsSectionOptions {
     schoolId: string,
     payload: SchoolHeadAccountRemovalPayload,
   ) => Promise<SchoolHeadAccountRemovalResult>;
-  removeSchoolHeadAccountsBatch: (
-    schoolIds: string[],
-    payload?: { reason?: string | null },
-  ) => Promise<SchoolHeadAccountBatchRemovalResult>;
   onDownloadCsvFormat: () => void;
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   onOpenSchool: (summary: MonitorSchoolRequirementSummary) => void;
@@ -187,7 +182,6 @@ export function useMonitorSchoolsSection({
   issueSchoolHeadTemporaryPassword,
   upsertSchoolHeadAccountProfile,
   removeSchoolHeadAccount,
-  removeSchoolHeadAccountsBatch,
   onDownloadCsvFormat,
   onOpenSchoolRecord,
   onOpenSchool,
@@ -260,9 +254,6 @@ export function useMonitorSchoolsSection({
     issueSchoolHeadTemporaryPassword,
     upsertSchoolHeadAccountProfile,
     removeSchoolHeadAccount,
-    removeSchoolHeadAccountsBatch,
-    deleteRecord,
-    previewDeleteRecord,
     onOpenSchoolRecord,
     formatDateTime,
   });
