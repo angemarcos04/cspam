@@ -39,12 +39,16 @@ describe("Login", () => {
     );
 
     expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
+    expect(screen.getByLabelText("Passcode").getAttribute("placeholder")).toBeNull();
     expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
+    expect(screen.getByText("Enter Passcode")).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
 
     expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
+    expect(screen.getByLabelText("Passcode").getAttribute("placeholder")).toBeNull();
     expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
+    expect(screen.getByText("Enter Passcode")).toBeTruthy();
   });
 
   it("toggles passcode visibility and preserves forgot-password routing by role", () => {

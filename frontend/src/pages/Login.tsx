@@ -430,6 +430,7 @@ export function Login() {
                     {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
+                <p className="mt-1.5 text-xs text-slate-500">Enter Passcode</p>
                 {!pendingMfa && (
                   <div className="mt-2 flex justify-end">
                     <Link to={forgotPasswordHref} className="text-xs font-semibold text-primary-700 hover:text-primary-800">
