@@ -157,6 +157,11 @@ interface LocalIndicatorMutationEcho {
   occurredAt: number;
 }
 
+interface LoadSubmissionsForYearOptions {
+  force?: boolean;
+  signal?: AbortSignal;
+}
+
 type IndicatorRealtimePayload = {
   entity?: string;
   submissionId?: string;
@@ -184,7 +189,12 @@ export interface IndicatorDataContextType {
   refreshSubmissions: (options?: RefreshOptions) => Promise<void>;
   refreshAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<void>;
   listSubmissions: (params?: IndicatorListParams) => Promise<IndicatorListResult>;
-  loadSubmissionsForYear: (schoolId: string, academicYearId: string, status?: string) => Promise<IndicatorSubmission[]>;
+  loadSubmissionsForYear: (
+    schoolId: string,
+    academicYearId: string,
+    status?: string,
+    options?: LoadSubmissionsForYearOptions,
+  ) => Promise<IndicatorSubmission[]>;
   listSubmissionsForSchool: (schoolId: string, options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   loadAllSubmissions: (options?: LoadAllSubmissionsOptions) => Promise<IndicatorSubmission[]>;
   bootstrapSubmission: (payload: BootstrapIndicatorSubmissionPayload) => Promise<IndicatorSubmission>;
@@ -1197,10 +1207,18 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   );
 
   const loadSubmissionsForYear = useCallback(
-    async (schoolId: string, academicYearId: string, status?: string): Promise<IndicatorSubmission[]> => {
+    async (
+      schoolId: string,
+      academicYearId: string,
+      status?: string,
+      options?: LoadSubmissionsForYearOptions,
+    ): Promise<IndicatorSubmission[]> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
+
+      const signal = options?.signal;
+      throwIfAborted(signal);
 
       const normalizedSchoolId = normalizeFilterValue(schoolId);
       const normalizedAcademicYearId = normalizeFilterValue(academicYearId);
@@ -1212,7 +1230,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
 
       const cacheKey = `${sessionKey}:${normalizedSchoolId}:${normalizedAcademicYearId}:${normalizedStatus || "all"}`;
       const cached = yearSubmissionsCacheRef.current.get(cacheKey);
-      if (cached) {
+      if (!options?.force && cached) {
         return cached;
       }
 
@@ -1223,8 +1241,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           status: normalizedStatus || null,
           page,
           perPage: MAX_LIST_PER_PAGE,
+          signal,
         }),
+        signal,
       );
+      throwIfAborted(signal);
 
       const sortedRows = filterSchoolHeadScopedSubmissions(
         [...rows].sort((a, b) => toSubmissionSortTime(b) - toSubmissionSortTime(a)),

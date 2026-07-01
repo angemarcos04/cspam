@@ -11,7 +11,9 @@ import {
   resolveBatchSubmitScopeIds,
   resolveEditableWorkspaceSubmission,
   resolveMetricFromIndicatorInWorkspace,
+  getSubmissionFreshnessScore,
   resolvePreferredWorkspaceSubmission,
+  resolveEffectiveWorkspaceSubmission,
   shouldRestorePersistedWorkspaceDraft,
   shouldReplaceInScopeWorkspaceSubmission,
   workspaceDraftGuidanceCopy,
@@ -416,6 +418,129 @@ describe("workspace submission precedence", () => {
 
     expect(shouldReplaceInScopeWorkspaceSubmission(current, preferred)).toBe(true);
     expect(shouldReplaceInScopeWorkspaceSubmission(preferred, current)).toBe(false);
+  });
+
+  it("keeps a fresh mutation override instead of reverting to a stale selected-year row", () => {
+    const saved = buildSubmission({
+      id: "submission-1",
+      version: 4,
+      status: "returned",
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T10:00:00Z",
+    });
+    const staleListRow = buildSubmission({
+      id: "submission-1",
+      version: 3,
+      status: "draft",
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+
+    const resolved = resolveEffectiveWorkspaceSubmission({
+      activeSubmission: staleListRow,
+      mutationOverride: {
+        submissionId: saved.id,
+        academicYearId: "ay-1",
+        schoolId: "school-1",
+        submission: saved,
+        version: saved.version,
+        updatedAt: saved.updatedAt,
+        status: saved.status,
+        appliedAt: Date.now(),
+      },
+      scopedSubmissions: [staleListRow],
+      editingSubmissionId: saved.id,
+      academicYearId: "ay-1",
+      schoolId: "school-1",
+    });
+
+    expect(resolved?.status).toBe("returned");
+    expect(resolved?.version).toBe(4);
+  });
+
+  it("lets a server row clear the override when it confirms the same or newer version", () => {
+    const overrideSubmission = buildSubmission({
+      id: "submission-1",
+      version: 4,
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T10:00:00Z",
+    });
+    const confirmedRow = buildSubmission({
+      id: "submission-1",
+      version: 5,
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T10:01:00Z",
+    });
+
+    const resolved = resolveEffectiveWorkspaceSubmission({
+      activeSubmission: overrideSubmission,
+      mutationOverride: {
+        submissionId: overrideSubmission.id,
+        academicYearId: "ay-1",
+        schoolId: "school-1",
+        submission: overrideSubmission,
+        version: overrideSubmission.version,
+        updatedAt: overrideSubmission.updatedAt,
+        status: overrideSubmission.status,
+        appliedAt: Date.now(),
+      },
+      scopedSubmissions: [confirmedRow],
+      editingSubmissionId: overrideSubmission.id,
+      academicYearId: "ay-1",
+      schoolId: "school-1",
+    });
+
+    expect(resolved?.version).toBe(5);
+  });
+
+  it("uses updatedAt freshness when versions are not useful", () => {
+    const older = buildSubmission({
+      id: "older",
+      version: 0,
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+    const newer = buildSubmission({
+      id: "newer",
+      version: 0,
+      schoolId: "school-1",
+      academicYear: { id: "ay-1", name: "2025-2026" },
+      updatedAt: "2026-05-17T10:00:00Z",
+    });
+
+    expect(getSubmissionFreshnessScore(newer)).toBeGreaterThan(getSubmissionFreshnessScore(older));
+    expect(resolvePreferredWorkspaceSubmission([older, newer], null)?.id).toBe("newer");
+  });
+
+  it("ignores active workspace data from a different academic year", () => {
+    const previousYear = buildSubmission({
+      id: "previous-year",
+      status: "returned",
+      schoolId: "school-1",
+      academicYear: { id: "ay-previous", name: "2024-2025" },
+      updatedAt: "2026-05-17T10:00:00Z",
+    });
+    const selectedYear = buildSubmission({
+      id: "selected-year",
+      status: "draft",
+      schoolId: "school-1",
+      academicYear: { id: "ay-selected", name: "2025-2026" },
+      updatedAt: "2026-05-17T09:00:00Z",
+    });
+
+    expect(resolveEffectiveWorkspaceSubmission({
+      activeSubmission: previousYear,
+      mutationOverride: null,
+      scopedSubmissions: [selectedYear],
+      editingSubmissionId: null,
+      academicYearId: "ay-selected",
+      schoolId: "school-1",
+    })?.id).toBe("selected-year");
   });
 });
 

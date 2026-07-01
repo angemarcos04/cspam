@@ -109,6 +109,17 @@ type RecentlyMaterializedWorkspaceSubmission = {
   occurredAt: number;
 };
 
+export type SubmissionMutationOverride = {
+  submissionId: string;
+  academicYearId: string;
+  schoolId: string;
+  submission: IndicatorSubmission;
+  version?: number | null;
+  updatedAt?: string | null;
+  status?: string | null;
+  appliedAt: number;
+};
+
 type GroupBWorkspaceMode =
   | "blank"
   | "draft"
@@ -125,6 +136,10 @@ type WorkspaceSaveSection =
 
 const LOCAL_WORKSPACE_HYDRATION_GRACE_MS = 5_000;
 const WORKSPACE_AUTOSAVE_DEBOUNCE_MS = 1_500;
+const WORKSPACE_MANUAL_ACTION_GRACE_MS = 1_200;
+const WORKSPACE_MUTATION_OVERRIDE_TTL_MS = 3 * 60_000;
+const WORKSPACE_TRANSITION_SAFETY_RELEASE_MS = 12_000;
+const WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS = 3;
 const WORKSPACE_DETAIL_HYDRATION_RETRY_MS = 350;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_MS = 1_500;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS = 5;
@@ -290,6 +305,114 @@ export function shouldReplaceInScopeWorkspaceSubmission(
   return compareWorkspaceSubmissionRecency(preferred, current) < 0;
 }
 
+export function getSubmissionFreshnessScore(submission: IndicatorSubmission | null | undefined): number {
+  if (!submission) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const version = Number(submission.version);
+  if (Number.isFinite(version) && version > 0) {
+    return 1_000_000_000_000_000 + version;
+  }
+
+  return toSubmissionRecencyScore(submission);
+}
+
+function isWorkspaceSubmissionAtLeastAsFresh(
+  candidate: IndicatorSubmission | null | undefined,
+  reference: IndicatorSubmission | null | undefined,
+): boolean {
+  if (!candidate) {
+    return false;
+  }
+  if (!reference) {
+    return true;
+  }
+
+  return getSubmissionFreshnessScore(candidate) >= getSubmissionFreshnessScore(reference);
+}
+
+function mergeWorkspaceSubmissionCandidates(
+  candidates: Array<IndicatorSubmission | null | undefined>,
+): IndicatorSubmission[] {
+  const byId = new Map<string, IndicatorSubmission>();
+
+  for (const candidate of candidates) {
+    const id = String(candidate?.id ?? "").trim();
+    if (!candidate || !id) {
+      continue;
+    }
+
+    const existing = byId.get(id);
+    if (!existing || isWorkspaceSubmissionAtLeastAsFresh(candidate, existing)) {
+      byId.set(id, candidate);
+    }
+  }
+
+  return [...byId.values()].sort(compareWorkspaceSubmissionRecency);
+}
+
+function isSubmissionInSelectedWorkspaceScope(
+  submission: IndicatorSubmission | null | undefined,
+  academicYearId: string | null | undefined,
+  schoolId: string | null | undefined,
+): submission is IndicatorSubmission {
+  if (!submission || !academicYearId || !schoolId) {
+    return false;
+  }
+
+  const submissionAcademicYearId = String(submission.academicYear?.id ?? submission.academicYearId ?? "").trim();
+  const submissionSchoolId = String(resolveSubmissionSchoolId(submission) ?? submission.schoolId ?? "").trim();
+  return submissionAcademicYearId === String(academicYearId) && submissionSchoolId === String(schoolId);
+}
+
+function isIndicatorSubmissionResult(value: unknown): value is IndicatorSubmission {
+  return Boolean(value && typeof value === "object" && typeof (value as { id?: unknown }).id === "string");
+}
+
+export function resolveEffectiveWorkspaceSubmission(params: {
+  activeSubmission: IndicatorSubmission | null;
+  mutationOverride: SubmissionMutationOverride | null;
+  scopedSubmissions: IndicatorSubmission[];
+  editingSubmissionId: string | null;
+  academicYearId: string | null;
+  schoolId: string | null;
+}): IndicatorSubmission | null {
+  const overrideSubmission = (
+    params.mutationOverride
+    && Date.now() - params.mutationOverride.appliedAt <= WORKSPACE_MUTATION_OVERRIDE_TTL_MS
+    && params.mutationOverride.academicYearId === String(params.academicYearId ?? "")
+    && params.mutationOverride.schoolId === String(params.schoolId ?? "")
+  )
+    ? params.mutationOverride.submission
+    : null;
+
+  const scopedCandidates = mergeWorkspaceSubmissionCandidates([
+    ...params.scopedSubmissions,
+    params.activeSubmission,
+    overrideSubmission,
+  ]).filter((submission) => isSubmissionInSelectedWorkspaceScope(submission, params.academicYearId, params.schoolId));
+
+  if (overrideSubmission && isSubmissionInSelectedWorkspaceScope(overrideSubmission, params.academicYearId, params.schoolId)) {
+    const matchingServerRow = scopedCandidates.find((submission) => submission.id === overrideSubmission.id && submission !== overrideSubmission);
+    if (!matchingServerRow || !isWorkspaceSubmissionAtLeastAsFresh(matchingServerRow, overrideSubmission)) {
+      return overrideSubmission;
+    }
+  }
+
+  if (
+    params.activeSubmission
+    && isSubmissionInSelectedWorkspaceScope(params.activeSubmission, params.academicYearId, params.schoolId)
+  ) {
+    const matchingServerRow = scopedCandidates.find((submission) => submission.id === params.activeSubmission?.id);
+    if (!matchingServerRow || isWorkspaceSubmissionAtLeastAsFresh(params.activeSubmission, matchingServerRow)) {
+      return params.activeSubmission;
+    }
+  }
+
+  return resolvePreferredWorkspaceSubmission(scopedCandidates, params.editingSubmissionId) ?? null;
+}
+
 function buildWorkspaceSubmissionFingerprint(
   academicYearId: string | null,
   submission: IndicatorSubmission | null,
@@ -307,6 +430,23 @@ function buildWorkspaceSubmissionFingerprint(
     submission?.submittedAt ?? "",
     submission?.reviewedAt ?? "",
     ...SUBMISSION_FILE_TYPES.map((type) => `${type}:${hasUploadedSubmissionFile(submission, type) ? 1 : 0}`),
+  ].join(":");
+}
+
+function buildWorkspaceHydrationFingerprint(
+  submission: IndicatorSubmission | null | undefined,
+  academicYearId: string | null | undefined,
+): string {
+  if (!submission?.id) {
+    return "";
+  }
+
+  return [
+    academicYearId ?? "",
+    submission.id,
+    submission.version ?? "",
+    submission.updatedAt ?? "",
+    submission.status ?? "",
   ].join(":");
 }
 
@@ -1709,6 +1849,7 @@ function SchoolIndicatorPanelComponent({
   const autosaveInFlightRef = useRef(false);
   const autosaveTimeoutRef = useRef<number | null>(null);
   const lastAutosaveFingerprintRef = useRef("");
+  const manualActionStartedAtRef = useRef(0);
   const criticalActionInFlightRef = useRef(false);
   const groupBActionInFlightRef = useRef(false);
   const transitionEpochRef = useRef(0);
@@ -2269,10 +2410,6 @@ function SchoolIndicatorPanelComponent({
       }) ?? null,
     [scopedSubmissionsForYear],
   );
-  const latestSubmissionInScope = useMemo(
-    () => scopedSubmissionsForYear[0] ?? null,
-    [scopedSubmissionsForYear],
-  );
   const restorableServerSubmissionInScope = useMemo(
     () => draftSubmissionInScope,
     [draftSubmissionInScope],
@@ -2285,34 +2422,35 @@ function SchoolIndicatorPanelComponent({
     () => resolveEditableWorkspaceSubmission(scopedSubmissionsForYear, editingSubmissionId),
     [editingSubmissionId, scopedSubmissionsForYear],
   );
-  const preferredWorkspaceSubmission = useMemo(
-    () => resolvePreferredWorkspaceSubmission(scopedSubmissionsForYear, editingSubmissionId) ?? latestSubmissionInScope ?? null,
-    [editingSubmissionId, latestSubmissionInScope, scopedSubmissionsForYear],
-  );
   useEffect(() => {
+    const schoolId = user?.schoolId ? String(user.schoolId) : "";
     if (!activeAcademicYearId) {
       setActiveWorkspaceSubmission(null);
       return;
     }
 
     setActiveWorkspaceSubmission((current) => {
-      const currentInScope = (
-        current
-        && String(current.academicYear?.id ?? "") === String(activeAcademicYearId)
-      )
-        ? (scopedSubmissionsForYear.find((submission) => submission.id === current.id) ?? current)
-        : null;
-      if (shouldReplaceInScopeWorkspaceSubmission(currentInScope, preferredWorkspaceSubmission)) {
-        return preferredWorkspaceSubmission;
+      const resolved = resolveEffectiveWorkspaceSubmission({
+        activeSubmission: current,
+        mutationOverride: mutationOverrideRef.current,
+        scopedSubmissions: scopedSubmissionsForYear,
+        editingSubmissionId,
+        academicYearId: activeAcademicYearId,
+        schoolId,
+      });
+
+      if (
+        mutationOverrideRef.current
+        && resolved?.id === mutationOverrideRef.current.submissionId
+        && resolved !== mutationOverrideRef.current.submission
+        && isWorkspaceSubmissionAtLeastAsFresh(resolved, mutationOverrideRef.current.submission)
+      ) {
+        mutationOverrideRef.current = null;
       }
 
-      if (currentInScope) {
-        return currentInScope;
-      }
-
-      return preferredWorkspaceSubmission;
+      return resolved;
     });
-  }, [activeAcademicYearId, preferredWorkspaceSubmission, scopedSubmissionsForYear]);
+  }, [activeAcademicYearId, editingSubmissionId, scopedSubmissionsForYear, user?.schoolId]);
   useEffect(() => {
     const schoolId = user?.schoolId ? String(user.schoolId) : "";
     if (!schoolId || !activeAcademicYearId) {
@@ -2324,7 +2462,12 @@ function SchoolIndicatorPanelComponent({
 
     void loadSubmissionsForYear(schoolId, activeAcademicYearId)
       .then((rows) => {
-        if (cancelled || workspaceYearRequestRef.current !== requestId) {
+        if (
+          cancelled
+          || workspaceYearRequestRef.current !== requestId
+          || activeAcademicYearIdRef.current !== activeAcademicYearId
+          || String(user?.schoolId ?? "") !== schoolId
+        ) {
           return;
         }
 
@@ -2332,25 +2475,27 @@ function SchoolIndicatorPanelComponent({
           .filter((submission) => resolveSubmissionSchoolId(submission) === schoolId)
           .filter((submission) => String(submission.academicYear?.id ?? "") === String(activeAcademicYearId))
           .sort(compareWorkspaceSubmissionRecency);
-        const preferredSubmission = resolvePreferredWorkspaceSubmission(inScopeRows, editingSubmissionId);
 
         setActiveWorkspaceSubmission((current) => {
-          const currentInScope = (
-            current
-            && String(current.academicYear?.id ?? "") === String(activeAcademicYearId)
-          )
-            ? current
-            : null;
-          if (shouldReplaceInScopeWorkspaceSubmission(currentInScope, preferredSubmission)) {
-            return preferredSubmission;
+          const resolved = resolveEffectiveWorkspaceSubmission({
+            activeSubmission: current,
+            mutationOverride: mutationOverrideRef.current,
+            scopedSubmissions: inScopeRows,
+            editingSubmissionId,
+            academicYearId: activeAcademicYearId,
+            schoolId,
+          });
+
+          if (
+            mutationOverrideRef.current
+            && resolved?.id === mutationOverrideRef.current.submissionId
+            && resolved !== mutationOverrideRef.current.submission
+            && isWorkspaceSubmissionAtLeastAsFresh(resolved, mutationOverrideRef.current.submission)
+          ) {
+            mutationOverrideRef.current = null;
           }
 
-          if (currentInScope) {
-            const matchingRow = inScopeRows.find((submission) => submission.id === currentInScope.id);
-            return matchingRow ?? currentInScope;
-          }
-
-          return preferredSubmission;
+          return resolved;
         });
       })
       .catch(() => undefined);
@@ -2473,6 +2618,8 @@ function SchoolIndicatorPanelComponent({
   const postRefreshMessageRef = useRef<string | null>(null);
   const workspaceDetailHydrationTimeoutsRef = useRef<ReturnType<typeof globalThis.setTimeout>[]>([]);
   const workspaceDetailHydrationGenerationRef = useRef(0);
+  const workspaceDetailHydrationAttemptsRef = useRef<Map<string, { attempts: number; failedAt: number }>>(new Map());
+  const mutationOverrideRef = useRef<SubmissionMutationOverride | null>(null);
   useEffect(() => {
     activeAcademicYearIdRef.current = activeAcademicYearId;
   }, [activeAcademicYearId]);
@@ -2554,10 +2701,61 @@ function SchoolIndicatorPanelComponent({
     }
     workspaceDetailHydrationTimeoutsRef.current = [];
   }, []);
+  const cancelPendingAutosave = useCallback((_reason?: string) => {
+    manualActionStartedAtRef.current = Date.now();
+    if (typeof window !== "undefined" && autosaveTimeoutRef.current !== null) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+    autosaveInFlightRef.current = false;
+    setIsAutosavingDraft(false);
+  }, []);
+  const scheduleTransitionSafetyRelease = useCallback((epoch: number) => {
+    globalThis.setTimeout(() => {
+      if (transitionEpochRef.current !== epoch) {
+        return;
+      }
+      criticalActionInFlightRef.current = false;
+      groupBActionInFlightRef.current = false;
+      autosaveInFlightRef.current = false;
+      setIsWorkspaceTransitioning(false);
+      setIsGroupBActionRunning(false);
+      setIsAutosavingDraft(false);
+      setUploadingFileType(null);
+      setSavingSection(null);
+    }, WORKSPACE_TRANSITION_SAFETY_RELEASE_MS);
+  }, []);
+  const clearMutationOverride = useCallback(() => {
+    mutationOverrideRef.current = null;
+  }, []);
+  const applyMutationOverride = useCallback((submission: IndicatorSubmission | null | undefined) => {
+    const submissionId = String(submission?.id ?? "").trim();
+    const academicYearId = String(submission?.academicYear?.id ?? submission?.academicYearId ?? "").trim();
+    const schoolId = String(resolveSubmissionSchoolId(submission) ?? submission?.schoolId ?? user?.schoolId ?? "").trim();
+    if (!submission || !submissionId || !academicYearId || !schoolId) {
+      mutationOverrideRef.current = null;
+      return;
+    }
+
+    mutationOverrideRef.current = {
+      submissionId,
+      academicYearId,
+      schoolId,
+      submission,
+      version: Number.isFinite(Number(submission.version)) ? Number(submission.version) : null,
+      updatedAt: submission.updatedAt ?? null,
+      status: submission.status ?? null,
+      appliedAt: Date.now(),
+    };
+  }, [user?.schoolId]);
   useEffect(() => clearWorkspaceDetailHydrationRetries, [clearWorkspaceDetailHydrationRetries]);
   useEffect(() => {
     clearWorkspaceDetailHydrationRetries();
+    workspaceDetailHydrationAttemptsRef.current.clear();
   }, [activeAcademicYearId, clearWorkspaceDetailHydrationRetries, user?.id, user?.schoolId]);
+  useEffect(() => {
+    clearMutationOverride();
+  }, [clearMutationOverride, user?.id, user?.schoolId]);
   const invalidateAutosaveContext = useCallback((options: { resetFingerprint?: boolean } = {}) => {
     localAutosaveEpochRef.current += 1;
     autosaveInFlightRef.current = false;
@@ -2567,34 +2765,50 @@ function SchoolIndicatorPanelComponent({
     }
   }, []);
   const startControlledWorkspaceTransition = useCallback((options: { dismissRestoreBanner?: boolean } = {}) => {
+    cancelPendingAutosave("workspace transition");
     criticalActionInFlightRef.current = true;
     transitionEpochRef.current += 1;
+    const transitionEpoch = transitionEpochRef.current;
     setIsWorkspaceTransitioning(true);
+    scheduleTransitionSafetyRelease(transitionEpoch);
     clearTransientWorkspaceUiState(options);
     clearWorkspaceTransitionIntents();
     setIsSubmittedEditMode(false);
     setOptimisticSubmittedByType(createInitialSubmittedByTypeState());
-  }, [clearTransientWorkspaceUiState, clearWorkspaceTransitionIntents]);
+  }, [cancelPendingAutosave, clearTransientWorkspaceUiState, clearWorkspaceTransitionIntents, scheduleTransitionSafetyRelease]);
   const endControlledWorkspaceTransition = useCallback(() => {
     criticalActionInFlightRef.current = false;
     setIsWorkspaceTransitioning(false);
   }, []);
   const beginCriticalMutationTransition = useCallback(() => {
+    cancelPendingAutosave("manual action");
     criticalActionInFlightRef.current = true;
     transitionEpochRef.current += 1;
+    const transitionEpoch = transitionEpochRef.current;
     invalidateAutosaveContext();
     clearWorkspaceTransitionIntents();
     setIsWorkspaceTransitioning(true);
-  }, [clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
+    scheduleTransitionSafetyRelease(transitionEpoch);
+  }, [cancelPendingAutosave, clearWorkspaceTransitionIntents, invalidateAutosaveContext, scheduleTransitionSafetyRelease]);
   const getManualActionBlockReason = useCallback((): string | null => {
-    if (criticalActionInFlightRef.current || isWorkspaceTransitioning || isSaving || uploadingFileType !== null) {
-      return "Please wait for the current action to finish.";
+    if (savingSection) {
+      return "Saving section...";
+    }
+    if (uploadingFileType !== null) {
+      const label = SUBMISSION_FILE_DEFINITION_BY_TYPE[uploadingFileType]?.shortLabel ?? "file";
+      return `Uploading ${label}...`;
+    }
+    if (isSaving) {
+      return "Saving section...";
+    }
+    if (criticalActionInFlightRef.current || isWorkspaceTransitioning) {
+      return "Refreshing workspace...";
     }
     if (isAutosavingDraft) {
-      return "Please wait for autosave to finish.";
+      return "Autosaving draft...";
     }
     return null;
-  }, [isAutosavingDraft, isSaving, isWorkspaceTransitioning, uploadingFileType]);
+  }, [isAutosavingDraft, isSaving, isWorkspaceTransitioning, savingSection, uploadingFileType]);
   const blockIfManualActionBusy = useCallback((): boolean => {
     const reason = getManualActionBlockReason();
     if (!reason) {
@@ -2610,16 +2824,27 @@ function SchoolIndicatorPanelComponent({
 
     resolvedAcademicYearBoundaryRef.current = activeAcademicYearId;
     transitionEpochRef.current += 1;
+    cancelPendingAutosave("academic year changed");
     invalidateAutosaveContext();
     clearWorkspaceTransitionIntents();
-  }, [activeAcademicYearId, clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
+    setPendingUploadFileByType(createInitialPendingUploadFileState());
+    setUploadErrorByType(createInitialUploadErrorState());
+    setPendingFocusCellId(null);
+    setUploadingFileType(null);
+    workspaceDetailHydrationAttemptsRef.current.clear();
+  }, [activeAcademicYearId, cancelPendingAutosave, clearWorkspaceTransitionIntents, invalidateAutosaveContext]);
   const refreshResolvedWorkspace = useCallback(async () => {
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
+    const schoolId = String(user?.schoolId ?? "").trim();
+    const academicYearId = String(activeAcademicYearIdRef.current ?? "").trim();
+    if (schoolId && academicYearId) {
+      await loadSubmissionsForYear(schoolId, academicYearId, undefined, { force: true }).catch(() => []);
+    }
     await refreshSubmissions();
     workspaceFingerprintRef.current = "";
     lastHydratedWorkspaceScopeRef.current = "";
-  }, [refreshSubmissions]);
+  }, [loadSubmissionsForYear, refreshSubmissions, user?.schoolId]);
   const fetchFreshWorkspaceSubmission = useCallback(
     async (
       submission: IndicatorSubmission,
@@ -2632,6 +2857,7 @@ function SchoolIndicatorPanelComponent({
       for (let attempt = 0; attempt <= retries; attempt += 1) {
         try {
           const fresh = await fetchSubmission(submission.id);
+          applyMutationOverride(fresh);
           if (typeof window !== "undefined") {
             localStorage.removeItem(autosaveKey);
           }
@@ -2655,7 +2881,7 @@ function SchoolIndicatorPanelComponent({
       setPendingLocalDraft(null);
       return submission;
     },
-    [autosaveKey, fetchSubmission],
+    [applyMutationOverride, autosaveKey, fetchSubmission],
   );
   const buildOptimisticWorkspaceReportSubmission = useCallback((
     savedSubmission: IndicatorSubmission,
@@ -2784,14 +3010,31 @@ function SchoolIndicatorPanelComponent({
       return;
     }
 
-    if (pendingSubmissionDetailRequestRef.current === submissionId) {
+    const hydrationFingerprint = buildWorkspaceHydrationFingerprint(latestActiveWorkspaceSubmission, activeAcademicYearId);
+    const failedAttempt = workspaceDetailHydrationAttemptsRef.current.get(hydrationFingerprint);
+    if (
+      failedAttempt
+      && failedAttempt.attempts >= WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS
+      && Date.now() - failedAttempt.failedAt < WORKSPACE_DETAIL_BACKGROUND_RETRY_MS * failedAttempt.attempts
+    ) {
+      setAutosaveError("Latest package details are still refreshing. Saved workspace values remain visible.");
       return;
     }
 
-    pendingSubmissionDetailRequestRef.current = submissionId;
+    if (pendingSubmissionDetailRequestRef.current === hydrationFingerprint) {
+      return;
+    }
+
+    pendingSubmissionDetailRequestRef.current = hydrationFingerprint;
     void fetchSubmission(submissionId)
       .then((submission) => {
-        if (submission.id === submissionId) {
+        if (
+          submission.id === submissionId
+          && activeAcademicYearIdRef.current === activeAcademicYearId
+          && isSubmissionInAcademicYear(submission, activeAcademicYearId)
+        ) {
+          workspaceDetailHydrationAttemptsRef.current.delete(hydrationFingerprint);
+          applyMutationOverride(submission);
           setActiveWorkspaceSubmission((current) => (
             current && current.id === submission.id ? submission : current
           ));
@@ -2799,18 +3042,28 @@ function SchoolIndicatorPanelComponent({
         }
       })
       .catch((error) => {
+        const currentAttempt = workspaceDetailHydrationAttemptsRef.current.get(hydrationFingerprint);
+        workspaceDetailHydrationAttemptsRef.current.set(hydrationFingerprint, {
+          attempts: (currentAttempt?.attempts ?? 0) + 1,
+          failedAt: Date.now(),
+        });
         console.error("[SchoolIndicatorPanel] Unable to load full submission detail:", error);
       })
       .finally(() => {
-        if (pendingSubmissionDetailRequestRef.current === submissionId) {
+        if (pendingSubmissionDetailRequestRef.current === hydrationFingerprint) {
           pendingSubmissionDetailRequestRef.current = null;
         }
       });
   }, [
+    activeAcademicYearId,
+    applyMutationOverride,
     fetchSubmission,
     latestActiveWorkspaceSubmission,
     latestActiveWorkspaceSubmission?.id,
+    latestActiveWorkspaceSubmission?.status,
+    latestActiveWorkspaceSubmission?.version,
     latestActiveWorkspaceSubmission?.updatedAt,
+    isSubmissionInAcademicYear,
     requestResolvedWorkspaceRehydrate,
     shouldSuppressFallbackWorkspaceDetailHydration,
   ]);
@@ -2845,6 +3098,9 @@ function SchoolIndicatorPanelComponent({
       const actionEpoch = transitionEpochRef.current;
       try {
         const result = await options.mutation();
+        if (isIndicatorSubmissionResult(result)) {
+          applyMutationOverride(result);
+        }
         if (transitionEpochRef.current !== actionEpoch) {
           throw new Error("The workspace changed before this action completed. No stale changes were applied. Review the workspace and try again.");
         }
@@ -2874,7 +3130,7 @@ function SchoolIndicatorPanelComponent({
         return null;
       }
     },
-    [beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, requestResolvedWorkspaceRehydrate],
+    [applyMutationOverride, beginCriticalMutationTransition, blockIfManualActionBusy, clearWorkspaceTransitionIntents, endControlledWorkspaceTransition, requestResolvedWorkspaceRehydrate],
   );
   const runCriticalWorkspaceTransition = useCallback(
     async <T,>(
@@ -2928,6 +3184,7 @@ function SchoolIndicatorPanelComponent({
         return;
       }
 
+      cancelPendingAutosave(label);
       groupBActionInFlightRef.current = true;
       setIsGroupBActionRunning(true);
       setSubmitError("");
@@ -2944,7 +3201,7 @@ function SchoolIndicatorPanelComponent({
         setIsGroupBActionRunning(false);
       }
     },
-    [getManualActionBlockReason, isSaving, isWorkspaceTransitioning, toGroupBActionErrorMessage, uploadingFileType],
+    [cancelPendingAutosave, getManualActionBlockReason, isSaving, isWorkspaceTransitioning, toGroupBActionErrorMessage, uploadingFileType],
   );
   const rehydrateWorkspaceFromSubmission = useCallback((submission: IndicatorSubmission | null) => {
     localAutosaveEpochRef.current += 1;
@@ -3003,6 +3260,15 @@ function SchoolIndicatorPanelComponent({
       submissionAcademicYearId || String(activeAcademicYearIdRef.current ?? "").trim(),
       submissionId,
     ].join(":");
+    const hydrationFingerprint = buildWorkspaceHydrationFingerprint(
+      submission,
+      submissionAcademicYearId || String(activeAcademicYearIdRef.current ?? "").trim(),
+    );
+    const failedAttempt = workspaceDetailHydrationAttemptsRef.current.get(hydrationFingerprint);
+    if (failedAttempt && failedAttempt.attempts >= WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS) {
+      setAutosaveError("Latest package details are still refreshing. Saved workspace values remain visible.");
+      return;
+    }
     clearWorkspaceDetailHydrationRetries();
     const generation = workspaceDetailHydrationGenerationRef.current;
 
@@ -3058,6 +3324,8 @@ function SchoolIndicatorPanelComponent({
           return;
         }
 
+        workspaceDetailHydrationAttemptsRef.current.delete(hydrationFingerprint);
+        applyMutationOverride(fresh);
         preserveLocalWorkspaceAfterMutationRef.current = {
           academicYearId: activeYearId ?? submissionAcademicYearId,
           submissionId,
@@ -3071,10 +3339,19 @@ function SchoolIndicatorPanelComponent({
         setAutosaveError("");
         setServerAutosaveAt(fresh.updatedAt ?? new Date().toISOString());
       } catch {
-        if (attempt < WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS && isCurrentHydrationContext()) {
+        workspaceDetailHydrationAttemptsRef.current.set(hydrationFingerprint, {
+          attempts: attempt,
+          failedAt: Date.now(),
+        });
+        if (
+          attempt < Math.min(WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS, WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS)
+          && isCurrentHydrationContext()
+        ) {
           scheduleAttempt(WORKSPACE_DETAIL_BACKGROUND_RETRY_MS * attempt, () => {
             void run();
           });
+        } else {
+          setAutosaveError("Latest package details are still refreshing. Saved workspace values remain visible.");
         }
       }
     };
@@ -3083,6 +3360,7 @@ function SchoolIndicatorPanelComponent({
       void run();
     });
   }, [
+    applyMutationOverride,
     clearWorkspaceDetailHydrationRetries,
     fetchSubmission,
     isSubmissionInAcademicYear,
@@ -4500,6 +4778,7 @@ function SchoolIndicatorPanelComponent({
             { workspaceSection: activeTab?.kind === "category" ? activeTab.id : null },
           )
         : await createSubmission(payload);
+      applyMutationOverride(result);
       if (guard) {
         if (
           activeAcademicYearIdRef.current !== guard.academicYearId
@@ -4522,7 +4801,7 @@ function SchoolIndicatorPanelComponent({
 
       return result;
     },
-    [createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, mutableActiveWorkspaceSubmission, updateSubmission],
+    [applyMutationOverride, createSubmission, editableWorkspaceSubmissionInScope, isAcademicYearValueAligned, isSubmissionInAcademicYear, mutableActiveWorkspaceSubmission, updateSubmission],
   );
 
   const ensureWorkspaceSubmission = useCallback(async (): Promise<IndicatorSubmission> => {
@@ -4551,6 +4830,7 @@ function SchoolIndicatorPanelComponent({
       reportingPeriod,
     });
 
+    applyMutationOverride(bootstrapped);
     preserveLocalWorkspaceAfterMutationRef.current = {
       academicYearId: activeAcademicYearId,
       submissionId: bootstrapped.id,
@@ -4564,10 +4844,16 @@ function SchoolIndicatorPanelComponent({
     lastAutosaveFingerprintRef.current = "";
 
     return bootstrapped;
-  }, [activeAcademicYearId, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, mutableActiveWorkspaceSubmission, reportingPeriod]);
+  }, [activeAcademicYearId, applyMutationOverride, bootstrapSubmission, editableWorkspaceSubmissionInScope, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, mutableActiveWorkspaceSubmission, reportingPeriod]);
 
   const triggerServerAutosave = useCallback(async () => {
+    if (Date.now() - manualActionStartedAtRef.current < WORKSPACE_MANUAL_ACTION_GRACE_MS) {
+      return;
+    }
     if (!canShowSaveAndSubmitActions) {
+      return;
+    }
+    if (isSelectedSubmissionFinalized) {
       return;
     }
     if (isCurrentScopeVerified) {
@@ -4609,10 +4895,13 @@ function SchoolIndicatorPanelComponent({
       autosaveInFlightRef.current = false;
       setIsAutosavingDraft(false);
     }
-  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isCurrentScopeVerified, isSaving, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
+  }, [activeAcademicYearId, activeWorkspaceSubmission?.id, buildSubmissionPayloadFromCurrentWorkspace, canShowSaveAndSubmitActions, editingSubmissionId, ensureWorkspaceLineageAlignment, isAcademicYearValueAligned, isCurrentScopeVerified, isSaving, isSelectedSubmissionFinalized, isWorkspaceTransitioning, persistDraftPayload, uploadingFileType]);
 
   const scheduleServerAutosave = useCallback((delayMs: number) => {
     if (typeof window === "undefined") {
+      return;
+    }
+    if (Date.now() - manualActionStartedAtRef.current < WORKSPACE_MANUAL_ACTION_GRACE_MS) {
       return;
     }
     if (autosaveTimeoutRef.current !== null) {
