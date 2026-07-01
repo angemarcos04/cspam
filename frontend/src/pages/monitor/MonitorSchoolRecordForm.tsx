@@ -1,8 +1,7 @@
 import type { FormEvent } from "react";
 import { Save } from "lucide-react";
 import type { SchoolHeadAccountProvisioningReceipt } from "@/types";
-
-const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
+import { BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS } from "@/pages/monitor/schoolLevelLabels";
 
 export interface MonitorSchoolRecordFormState {
   schoolId: string;
@@ -108,7 +107,8 @@ export function MonitorSchoolRecordForm({
               recordFormErrors.level ? "border-primary-300" : "border-slate-200"
             }`}
           >
-            {SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
+            {/* Junior/Senior High options require backend validation support before they can be submitted. */}
+            {BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
               <option key={levelOption} value={levelOption}>
                 {levelOption}
               </option>

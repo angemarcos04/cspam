@@ -5,9 +5,8 @@ import type {
   MonitorSchoolRecordFormProps,
   MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
+import { coerceBackendSupportedSchoolLevel } from "@/pages/monitor/schoolLevelLabels";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
-
-const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
 
 const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
   schoolId: "",
@@ -48,17 +47,7 @@ function extractApiValidationErrors(payload: unknown): Record<string, string> {
 }
 
 function normalizeSchoolLevel(value: string): string {
-  const normalized = value.trim().toLowerCase().replace(/[_-]+/g, " ");
-
-  if (normalized === "high school" || normalized === "secondary") {
-    return "High School";
-  }
-
-  if (normalized === "elementary") {
-    return "Elementary";
-  }
-
-  return SCHOOL_LEVEL_OPTIONS[0];
+  return coerceBackendSupportedSchoolLevel(value);
 }
 
 interface UseMonitorSchoolRecordFormOptions {

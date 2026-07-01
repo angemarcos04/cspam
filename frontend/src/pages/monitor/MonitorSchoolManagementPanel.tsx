@@ -2,6 +2,11 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Edit3 } from "lucide-react";
 import { messageForApiError } from "@/lib/api";
 import { monitorSchoolStatusLabel, resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
+import {
+  BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS,
+  coerceBackendSupportedSchoolLevel,
+  formatSchoolLevelLabel,
+} from "@/pages/monitor/schoolLevelLabels";
 import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 
 type ToastTone = "success" | "info" | "warning";
@@ -51,7 +56,7 @@ function formatSchoolType(type: string | null | undefined): "public" | "private"
 function buildFormState(record: SchoolRecord | null): SchoolManagementFormState {
   return {
     schoolName: record?.schoolName ?? "",
-    level: record?.level ?? "Elementary",
+    level: coerceBackendSupportedSchoolLevel(record?.level),
     type: formatSchoolType(record?.type),
     address: record?.address ?? "",
     district: record?.district ?? "",
@@ -63,7 +68,7 @@ function buildBasePayload(record: SchoolRecord, form: SchoolManagementFormState)
   return {
     schoolId: record.schoolCode ?? record.schoolId ?? "",
     schoolName: form.schoolName.trim(),
-    level: form.level,
+    level: coerceBackendSupportedSchoolLevel(form.level),
     type: form.type,
     address: form.address.trim(),
     district: form.district.trim() || null,
@@ -182,7 +187,7 @@ export function MonitorSchoolManagementPanel({
             </div>
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Level</dt>
-              <dd className="text-sm text-slate-700">{record.level ?? "N/A"}</dd>
+              <dd className="text-sm text-slate-700">{formatSchoolLevelLabel(record.level)}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Type</dt>
@@ -228,8 +233,12 @@ export function MonitorSchoolManagementPanel({
                   onChange={(event) => updateFormField("level", event.target.value)}
                   className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-900"
                 >
-                  <option value="Elementary">Elementary</option>
-                  <option value="High School">High School</option>
+                  {/* Junior/Senior High options require backend validation support before they can be submitted. */}
+                  {BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
+                    <option key={levelOption} value={levelOption}>
+                      {levelOption}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">

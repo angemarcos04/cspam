@@ -24,6 +24,7 @@ import {
   resolveWorkflowStatus,
 } from "@/pages/monitor/monitorRequirementRules";
 import { resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
+import { normalizeSchoolLevelToken } from "@/pages/monitor/schoolLevelLabels";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
 
@@ -142,17 +143,13 @@ export function normalizeSchoolSector(value: string | null | undefined): Exclude
 }
 
 export function normalizeSchoolLevel(value: string | null | undefined): Exclude<SchoolLevelFilter, "all"> | null {
-  const normalized = String(value ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
+  const token = normalizeSchoolLevelToken(value);
 
-  if (normalized === "elementary") {
+  if (token === "elementary") {
     return "elementary";
   }
 
-  if (normalized === "high school" || normalized === "secondary") {
+  if (token === "high_school") {
     return "high_school";
   }
 

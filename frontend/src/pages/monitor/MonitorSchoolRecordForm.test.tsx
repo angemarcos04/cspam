@@ -74,4 +74,15 @@ describe("MonitorSchoolRecordForm", () => {
       ).length,
     ).toBeGreaterThan(0);
   });
+
+  it("exposes only backend-supported school level options", () => {
+    render(<MonitorSchoolRecordForm {...buildProps()} />);
+
+    const levelSelect = screen.getByLabelText("Level") as HTMLSelectElement;
+    const options = Array.from(levelSelect.options).map((option) => option.value);
+
+    expect(options).toEqual(["Elementary", "High School"]);
+    expect(options).not.toContain("Junior High");
+    expect(options).not.toContain("Senior High");
+  });
 });

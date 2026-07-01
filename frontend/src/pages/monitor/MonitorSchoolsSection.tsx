@@ -16,6 +16,7 @@ import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/mo
 import type { SchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirementData";
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import type { SchoolLevelFilter, SchoolSectorFilter } from "@/pages/monitor/monitorFilters";
+import { formatSchoolLevelLabel } from "@/pages/monitor/schoolLevelLabels";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;
@@ -148,8 +149,8 @@ export function MonitorSchoolsSection({
               className={selectClass}
             >
               <option value="all">All public levels</option>
-              <option value="elementary">Elementary ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
-              <option value="high_school">High School ({schoolCategoryCounts.publicHighSchool.toLocaleString()})</option>
+              <option value="elementary">{formatSchoolLevelLabel("elementary")} ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
+              <option value="high_school">{formatSchoolLevelLabel("high_school")} ({schoolCategoryCounts.publicHighSchool.toLocaleString()})</option>
             </select>
           </article>
 
@@ -177,8 +178,8 @@ export function MonitorSchoolsSection({
               className={selectClass}
             >
               <option value="all">All private levels</option>
-              <option value="elementary">Elementary ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
-              <option value="high_school">High School ({schoolCategoryCounts.privateHighSchool.toLocaleString()})</option>
+              <option value="elementary">{formatSchoolLevelLabel("elementary")} ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
+              <option value="high_school">{formatSchoolLevelLabel("high_school")} ({schoolCategoryCounts.privateHighSchool.toLocaleString()})</option>
             </select>
           </article>
         </div>

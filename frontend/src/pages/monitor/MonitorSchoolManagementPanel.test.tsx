@@ -1,7 +1,11 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { MonitorSchoolManagementPanel } from "@/pages/monitor/MonitorSchoolManagementPanel";
 import type { SchoolHeadAccountSummary, SchoolRecord } from "@/types";
+
+afterEach(() => {
+  cleanup();
+});
 
 function buildAccount(accountStatus: string): SchoolHeadAccountSummary {
   return {
@@ -86,5 +90,27 @@ describe("MonitorSchoolManagementPanel", () => {
 
     expect(screen.getByText("Pending Setup")).toBeTruthy();
     expect(screen.queryByText("pending setup")).toBeNull();
+  });
+
+  it("formats school levels for display while keeping edit options backend-supported", () => {
+    render(
+      <MonitorSchoolManagementPanel
+        record={{ ...buildRecord("active"), level: "Senior High" }}
+        isSaving={false}
+        updateRecord={vi.fn()}
+        onToast={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("Senior High")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit School Details" }));
+
+    const levelSelect = screen.getByLabelText("Level") as HTMLSelectElement;
+    const options = Array.from(levelSelect.options).map((option) => option.value);
+
+    expect(options).toEqual(["Elementary", "High School"]);
+    expect(options).not.toContain("Junior High");
+    expect(options).not.toContain("Senior High");
   });
 });
