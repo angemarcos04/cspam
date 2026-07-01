@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, Archive, Edit3 } from "lucide-react";
 import { messageForApiError } from "@/lib/api";
+import { monitorSchoolStatusLabel, resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
 import type { SchoolRecord, SchoolRecordDeletePreview, SchoolRecordPayload, SchoolStatus } from "@/types";
 
 type ToastTone = "success" | "info" | "warning";
@@ -25,9 +26,7 @@ interface MonitorSchoolManagementPanelProps {
 }
 
 function formatSchoolStatus(status: SchoolStatus | string | null | undefined): string {
-  if (status === "active") return "Active";
-  if (status === "inactive") return "Inactive";
-  if (status === "pending") return "Pending";
+  if (status === "active" || status === "inactive" || status === "pending") return monitorSchoolStatusLabel(status);
   return "Unknown";
 }
 
@@ -98,13 +97,14 @@ export function MonitorSchoolManagementPanel({
   const hasRecord = Boolean(record);
   const isBusy = isSaving || pendingAction !== null;
   const schoolHeadAccount = record?.schoolHeadAccount ?? null;
+  const displayStatus = resolveMonitorSchoolDisplayStatus(record);
 
   const statusActions = useMemo<Array<{ status: SchoolStatus; label: string; description: string }>>(() => {
     if (!record) return [];
     if (record.status === "active") {
       return [{
         status: "inactive",
-        label: "Mark as Inactive",
+        label: "Mark as Suspended",
         description: "This removes the school from normal active monitoring views without deleting its records.",
       }];
     }
@@ -125,7 +125,7 @@ export function MonitorSchoolManagementPanel({
       },
       {
         status: "inactive",
-        label: "Mark as Inactive",
+        label: "Mark as Suspended",
         description: "This removes the school from normal active monitoring views without deleting its records.",
       },
     ];
@@ -387,7 +387,7 @@ export function MonitorSchoolManagementPanel({
       <section className="rounded-sm border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-bold text-slate-900">School Status</h3>
         <p className="mt-1 text-xs text-slate-600">
-          Current status: <span className="font-semibold text-slate-900">{formatSchoolStatus(record.status)}</span>
+          Current status: <span className="font-semibold text-slate-900">{formatSchoolStatus(displayStatus)}</span>
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {statusActions.map((action) => (

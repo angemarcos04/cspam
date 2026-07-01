@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import { FilterBar, type FilterBarOption } from "@/components/shared/FilterBar";
 import { SchoolScopeSelector } from "@/pages/monitor/SchoolScopeSelector";
+import { monitorSchoolStatusLabel } from "@/pages/monitor/monitorSchoolStatus";
 import type {
   MonitorTopNavigatorId,
   QueueLane,
@@ -83,7 +84,7 @@ export function MonitorQuickFiltersContent({
   const statusOptions: FilterBarOption[] = [
     { value: "all", label: `All (${schoolStatusCounts.all})` },
     { value: "active", label: `Active (${schoolStatusCounts.active})` },
-    { value: "inactive", label: `Inactive (${schoolStatusCounts.inactive})` },
+    { value: "inactive", label: `${monitorSchoolStatusLabel("inactive")} (${schoolStatusCounts.inactive})` },
     { value: "pending", label: `Pending (${schoolStatusCounts.pending})` },
   ];
 

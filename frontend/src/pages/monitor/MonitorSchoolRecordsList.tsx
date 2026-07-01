@@ -1,6 +1,7 @@
 import { AlertCircle, Building2 } from "lucide-react";
 import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type { SchoolQuickPreset, RequirementFilter } from "@/pages/monitor/monitorFilters";
+import { monitorSchoolStatusLabel } from "@/pages/monitor/monitorSchoolStatus";
 import type { SchoolRecord, SchoolReminderSummary, SchoolStatus } from "@/types";
 
 export interface SubmissionProgressBadge {
@@ -166,7 +167,7 @@ export function MonitorSchoolRecordsList({
           const rowTone = isUrgentRequirement(summary) ? urgencyRowTone(summary) : "bg-white";
           const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
           const statusPillPressed = statusFilter === rowStatus;
-          const schoolStatusLabel = rowStatus === "inactive" ? "Suspended" : statusLabel(rowStatus);
+          const schoolStatusLabel = monitorSchoolStatusLabel(rowStatus);
           const submissionProgress = summary.submissionProgress ?? {
             submitted: summary.hasAnySubmitted ? 1 : 0,
             total: Math.max(1, summary.missingCount + (summary.hasAnySubmitted ? 1 : 0)),

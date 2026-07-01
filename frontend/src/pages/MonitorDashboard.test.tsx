@@ -896,7 +896,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
           const filters = options?.filters;
           return options?.force === true
             && filters?.search === "Santiago"
-            && filters?.status === "active"
+            && filters?.status === "all"
             && filters?.dateFrom === "2026-01-01"
             && filters?.dateTo === "2026-12-31"
             && filters?.schoolId === "1";
@@ -1038,7 +1038,6 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(schoolDetail).getByText(/Manage School Head account actions from Schools -> Accounts/)).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "Archive School Record" })).toBeTruthy();
     expect(within(schoolDetail).queryByRole("button", { name: /permanent/i })).toBeNull();
-    expect(within(schoolDetail).queryByText(/suspended/i)).toBeNull();
   });
 
   it("saves selected school details from the drawer Management tab with School Code read-only", async () => {
@@ -1086,7 +1085,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       return drawer as HTMLElement;
     });
     fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
-    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Mark as Inactive" }));
+    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Mark as Suspended" }));
     fireEvent.click(within(schoolDetail).getByRole("button", { name: "Confirm status change" }));
 
     await waitFor(() => {
@@ -1096,7 +1095,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
     const payload = updateRecordMock.mock.calls[updateRecordMock.mock.calls.length - 1]?.[1] ?? {};
     expect(JSON.stringify(payload)).not.toContain("suspended");
-    expect(within(schoolDetail).queryByText(/suspended/i)).toBeNull();
+    expect(within(schoolDetail).getByText("School status updated to Suspended.")).toBeTruthy();
   });
 
   it("archives a selected school from the drawer through preview and confirmation only", async () => {

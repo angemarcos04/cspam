@@ -23,6 +23,7 @@ import {
   queuePriorityScore,
   resolveWorkflowStatus,
 } from "@/pages/monitor/monitorRequirementRules";
+import { resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
 
@@ -471,11 +472,12 @@ export function useMonitorRequirementData({
     };
 
     for (const record of records) {
-      const row = ensureRow(record.schoolId ?? record.schoolCode ?? null, record.schoolName, record.region, record.status);
+      const displayStatus = resolveMonitorSchoolDisplayStatus(record);
+      const row = ensureRow(record.schoolId ?? record.schoolCode ?? null, record.schoolName, record.region, displayStatus);
       if (!row) continue;
 
       row.hasComplianceRecord = true;
-      row.schoolStatus = record.status;
+      row.schoolStatus = displayStatus;
       row.schoolLevel = record.level ?? null;
       row.schoolType = record.type ?? null;
       row.hasReminderRecipient = record.hasReminderRecipient ?? true;

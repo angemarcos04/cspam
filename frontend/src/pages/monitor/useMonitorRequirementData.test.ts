@@ -9,7 +9,7 @@ import {
   normalizeSchoolSector,
   useMonitorRequirementData,
 } from "@/pages/monitor/useMonitorRequirementData";
-import type { IndicatorSubmission, SchoolRecord } from "@/types";
+import type { IndicatorSubmission, SchoolHeadAccountSummary, SchoolRecord, SchoolStatus } from "@/types";
 
 const REQUIREMENT_FILTER_OPTIONS = [
   { id: "all" as const, label: "All" },
@@ -88,7 +88,37 @@ function buildSubmission(overrides: Partial<IndicatorSubmission> = {}): Indicato
   };
 }
 
-function renderRequirementHook(records: SchoolRecord[], allSubmissions: IndicatorSubmission[] = []) {
+function buildSchoolHeadAccount(accountStatus: string): SchoolHeadAccountSummary {
+  return {
+    id: `account-${accountStatus}`,
+    name: "School Head",
+    email: `${accountStatus}@cspams.local`,
+    emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+    lastLoginAt: null,
+    accountStatus,
+    mustResetPassword: false,
+    lifecycleState: accountStatus === "suspended" ? "suspended" : "active_ready",
+    lifecycleStateLabel: accountStatus === "suspended" ? "Suspended" : "Active",
+    recommendedAction: "none",
+    verifiedAt: "2026-05-01T08:00:00.000Z",
+    verifiedByUserId: "1",
+    verifiedByName: "Monitor User",
+    verificationNotes: null,
+    flagged: false,
+    flaggedAt: null,
+    flagReason: null,
+    deleteRecordFlagged: false,
+    deleteRecordFlaggedAt: null,
+    deleteRecordReason: null,
+    setupLinkExpiresAt: null,
+  };
+}
+
+function renderRequirementHook(
+  records: SchoolRecord[],
+  allSubmissions: IndicatorSubmission[] = [],
+  statusFilter: SchoolStatus | "all" = "all",
+) {
   return renderHook(({ currentRecords, currentSubmissions }: { currentRecords: SchoolRecord[]; currentSubmissions: IndicatorSubmission[] }) =>
     useMonitorRequirementData({
       records: currentRecords,
@@ -100,7 +130,7 @@ function renderRequirementHook(records: SchoolRecord[], allSubmissions: Indicato
       filterDateFrom: "",
       filterDateTo: "",
       requirementFilter: "all",
-      statusFilter: "all",
+      statusFilter,
       schoolQuickPreset: "all",
       schoolSectorFilter: "all",
       schoolLevelFilter: "all",
@@ -312,6 +342,39 @@ describe("buildMonitorRequirementSummaryState", () => {
     const { result } = renderRequirementHook([privateRecord], [privateSubmission]);
 
     expect(result.current.paginatedCompactSchoolRows[0].summary.submissionProgress?.label).toBe("Submitted 1/2");
+  });
+
+  it("uses suspended account status as the monitor display status for cards, counts, and filters", () => {
+    const activeRecord = buildRecord("validated", {
+      id: "record-active",
+      schoolId: "108323",
+      schoolCode: "108323",
+      schoolName: "Active Account School",
+      status: "active",
+      schoolHeadAccount: buildSchoolHeadAccount("active"),
+    });
+    const suspendedAccountRecord = buildRecord("validated", {
+      id: "record-suspended",
+      schoolId: "108324",
+      schoolCode: "108324",
+      schoolName: "Suspended Account School",
+      status: "active",
+      schoolHeadAccount: buildSchoolHeadAccount("suspended"),
+    });
+    const { result: allResult } = renderRequirementHook([activeRecord, suspendedAccountRecord]);
+
+    const suspendedRow = allResult.current.paginatedCompactSchoolRows.find((row) => row.summary.schoolName === "Suspended Account School");
+    const activeRow = allResult.current.paginatedCompactSchoolRows.find((row) => row.summary.schoolName === "Active Account School");
+
+    expect(suspendedRow?.summary.schoolStatus).toBe("inactive");
+    expect(activeRow?.summary.schoolStatus).toBe("active");
+    expect(suspendedAccountRecord.status).toBe("active");
+    expect(allResult.current.schoolStatusCounts).toMatchObject({ all: 2, active: 1, inactive: 1, pending: 0 });
+
+    const { result: suspendedFilterResult } = renderRequirementHook([activeRecord, suspendedAccountRecord], [], "inactive");
+    expect(suspendedFilterResult.current.paginatedCompactSchoolRows.map((row) => row.summary.schoolName)).toEqual([
+      "Suspended Account School",
+    ]);
   });
 
   it("normalizes school sector and level values used by monitor school filters", () => {

@@ -22,6 +22,12 @@ import { MonitorSchoolsSection } from "@/pages/monitor/MonitorSchoolsSection";
 import { MonitorSideNavigator } from "@/pages/monitor/MonitorSideNavigator";
 import { MonitorToastStack } from "@/pages/monitor/MonitorToastStack";
 import {
+  applyMonitorAccountStatusOverrides,
+  buildMonitorAccountStatusOverride,
+  pruneMonitorAccountStatusOverrides,
+  type MonitorAccountStatusOverride,
+} from "@/pages/monitor/monitorAccountStatusOverrides";
+import {
   MONITOR_QUICK_JUMPS,
   MONITOR_TOP_NAVIGATOR_IDS,
   RECORD_PAGE_SIZE,
@@ -201,6 +207,7 @@ export function MonitorDashboard() {
   const isAuthenticated = Boolean(user);
   const authSessionKey = user ? `${user.role}:${user.id}` : "";
   const [reviewStatusOverrides, setReviewStatusOverrides] = useState<Record<string, MonitorReviewStatusOverride>>({});
+  const [accountStatusOverrides, setAccountStatusOverrides] = useState<Record<string, MonitorAccountStatusOverride>>({});
   const {
     records,
     recordCount,
@@ -351,11 +358,13 @@ export function MonitorDashboard() {
   const globalSearchInputRef = useRef<HTMLInputElement | null>(null);
   const schoolRecordRefreshFilters = useMemo<SchoolRecordRefreshFilters>(() => ({
     search: effectiveSearch,
-    status: statusFilter,
+    // Monitor school status is a display projection that can include account suspension.
+    // Keep backend record refresh unfiltered by raw school status, then filter locally.
+    status: "all",
     dateFrom: filterDateFrom,
     dateTo: filterDateTo,
     schoolId: selectedSchoolScope?.id ?? null,
-  }), [effectiveSearch, filterDateFrom, filterDateTo, selectedSchoolScope?.id, statusFilter]);
+  }), [effectiveSearch, filterDateFrom, filterDateTo, selectedSchoolScope?.id]);
   const refreshRecordsForCurrentFilters = useCallback(
     (options?: Parameters<typeof refreshRecords>[0]) =>
       refreshRecords({
@@ -396,7 +405,16 @@ export function MonitorDashboard() {
 
   useEffect(() => {
     setReviewStatusOverrides({});
+    setAccountStatusOverrides({});
   }, [authSessionKey]);
+
+  useEffect(() => {
+    if (Object.keys(accountStatusOverrides).length === 0) {
+      return;
+    }
+
+    setAccountStatusOverrides((current) => pruneMonitorAccountStatusOverrides(records, current));
+  }, [accountStatusOverrides, records]);
 
   useEffect(() => {
     if (Object.keys(reviewStatusOverrides).length === 0) {
@@ -434,9 +452,14 @@ export function MonitorDashboard() {
     });
   }, [records, reviewStatusOverrides]);
 
+  const recordsWithAccountStatusOverrides = useMemo(
+    () => applyMonitorAccountStatusOverrides(records, accountStatusOverrides),
+    [accountStatusOverrides, records],
+  );
+
   const recordsWithReviewStatusOverrides = useMemo(
-    () => applyMonitorReviewStatusOverrides(records, reviewStatusOverrides),
-    [records, reviewStatusOverrides],
+    () => applyMonitorReviewStatusOverrides(recordsWithAccountStatusOverrides, reviewStatusOverrides),
+    [recordsWithAccountStatusOverrides, reviewStatusOverrides],
   );
 
   const scopedRecords = useMemo(() => {
@@ -1169,13 +1192,28 @@ export function MonitorDashboard() {
     );
   }, [records]);
 
+  const updateSchoolHeadAccountStatusWithOverride = useCallback(
+    async (schoolId: string, payload: Parameters<typeof updateSchoolHeadAccountStatus>[1]) => {
+      const result = await updateSchoolHeadAccountStatus(schoolId, payload);
+      const matchingRecord = records.find((record) => record.id === schoolId || record.schoolId === schoolId || record.schoolCode === schoolId) ?? null;
+
+      setAccountStatusOverrides((current) => ({
+        ...current,
+        [schoolId]: buildMonitorAccountStatusOverride(schoolId, matchingRecord, result.account),
+      }));
+
+      return result;
+    },
+    [records, updateSchoolHeadAccountStatus],
+  );
+
   const schoolsSectionApi = useMonitorSchoolsSection({
     isMobileViewport,
     isLoading,
     isSaving,
     keepCreateFormOpen: activeTopNavigator === "add_school",
-    records,
-    recordsLength: records.length,
+    records: recordsWithReviewStatusOverrides,
+    recordsLength: recordsWithReviewStatusOverrides.length,
     totalSchoolsInScope,
     hasDashboardFilters,
     compactSchoolRows,
@@ -1198,7 +1236,7 @@ export function MonitorDashboard() {
     restoreRecord,
     permanentlyDeleteArchivedRecord,
     bulkImportRecords,
-    updateSchoolHeadAccountStatus,
+    updateSchoolHeadAccountStatus: updateSchoolHeadAccountStatusWithOverride,
     activateSchoolHeadAccount,
     issueSchoolHeadAccountActionVerificationCode,
     issueSchoolHeadSetupLink,

@@ -13,9 +13,9 @@ import {
   SCHOOL_QUICK_PRESET_OPTIONS,
 } from "@/pages/monitor/monitorDashboardConfig";
 import { queueLaneLabel, requirementFilterLabel } from "@/pages/monitor/monitorDashboardUiUtils";
+import { monitorSchoolStatusLabel } from "@/pages/monitor/monitorSchoolStatus";
 import type { ScopeDropdownId } from "@/pages/monitor/useMonitorLookups";
 import type { SchoolStatus } from "@/types";
-import { statusLabel } from "@/utils/analytics";
 
 type FilterChipId =
   | "search"
@@ -154,7 +154,7 @@ export function useMonitorFilterUi({
     const chips: MonitorFilterChip[] = [];
 
     if (effectiveSearch.trim()) chips.push({ id: "search", label: `Search: ${effectiveSearch.trim()}` });
-    if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${statusLabel(statusFilter)}` });
+    if (statusFilter !== "all") chips.push({ id: "status", label: `Status: ${monitorSchoolStatusLabel(statusFilter)}` });
     if (requirementFilter !== "all") {
       chips.push({ id: "requirement", label: `Queue: ${requirementFilterLabel(requirementFilter)}` });
     }
