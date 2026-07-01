@@ -160,8 +160,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
   }, [schoolHeadAccountActions]);
 
   const openSchoolHeadAccountsPanelWithStatus = useCallback((status: SchoolHeadAccountsStatusFilter = "all") => {
+    const visibleStatus = status === "active" || status === "suspended" ? status : "all";
     setSchoolHeadAccountsQuery("");
-    setSchoolHeadAccountsStatusFilter(status);
+    setSchoolHeadAccountsStatusFilter(visibleStatus);
     setSchoolHeadAccountsOnlyFlagged(false);
     setSchoolHeadAccountsOnlyDeleteFlagged(false);
     setShowSchoolHeadAccountsPanel(true);

@@ -92,8 +92,11 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     expect(screen.getByPlaceholderText("Search school, code, name, or email...")).not.toBeNull();
     expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Needs account/i })).not.toBeNull();
-    expect(screen.getByRole("button", { name: /Temporary password active/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Active/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Suspended/i })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: /Needs account/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Temporary password active/i })).toBeNull();
+    expect(screen.queryByText(/Showing \d+ of \d+ schools/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Open batch delete flagged schools" })).toBeNull();
   });
 
@@ -186,7 +189,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(onPreviewDeleteSchoolRecord).not.toHaveBeenCalled();
   });
 
-  it("opens visible management dialogs with status-specific account actions", () => {
+  it("opens compact account action dropdowns with the guarded action items", () => {
     const pendingRecord: SchoolRecord = {
       id: "school-2",
       schoolId: "900002",
@@ -345,42 +348,25 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(activeRow).not.toBeUndefined();
     expect(lockedRow).not.toBeUndefined();
     expect(within(pendingRow!).getByText("Setup link")).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "Manage Account" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
 
-    fireEvent.click(within(pendingRow!).getByRole("button", { name: "Manage Account" }));
-    let dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
-    expect(within(dialog).getByText("Account Summary")).not.toBeNull();
-    expect(within(dialog).getByText("Account Profile")).not.toBeNull();
-    expect(within(dialog).getByText("Account Access")).not.toBeNull();
-    expect(within(dialog).getAllByText("Account Status").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("School Record").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Danger Zone").length).toBeGreaterThan(0);
-    expect(within(dialog).getByRole("button", { name: "Send setup link" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "Archive account" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Send password reset link" })).toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Remove account and school" })).not.toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-
-    fireEvent.click(within(activeRow!).getByRole("button", { name: "Manage Account" }));
-    dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
-    expect(within(dialog).getByRole("button", { name: "Send password reset link" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Suspend account" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Open school record" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Remove account and school" })).not.toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Regenerate temporary password" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Lock account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Archive account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Flag school record" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Flag account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Archive school record" })).toBeNull();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
-
-    fireEvent.click(within(lockedRow!).getByRole("button", { name: "Manage Account" }));
-    dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
-    expect(within(dialog).getByRole("button", { name: "Send password reset link" })).not.toBeNull();
-    expect(within(dialog).getByRole("button", { name: "Reactivate account" })).not.toBeNull();
+    fireEvent.click(within(activeRow!).getByRole("button", { name: "Actions" }));
+    const menu = screen.getByRole("menu", { name: "Active School account actions" });
+    const menuItems = within(menu).getAllByRole("menuitem");
+    expect(menuItems.map((item) => item.textContent)).toEqual([
+      "Send Password Reset Link",
+      "Suspend Account",
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send setup link" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Open school record" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Regenerate temporary password" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Lock account" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Archive account" })).toBeNull();
   });
 
-  it("keeps remove-account-and-school reachable from the fixed management dialog", () => {
+  it("dispatches dropdown actions through the existing guarded flows", () => {
     const buildRecord = (
       id: string,
       schoolCode: string,
@@ -438,12 +424,23 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       buildRecord("school-43", "940004", "Another Bottom School", null),
     ];
 
+    const openPendingAccountAction = vi.fn();
+    const handleUpdateSchoolHeadAccount = vi.fn();
+
     function Wrapper(): ReactElement {
       const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
       const actions = buildActions();
       actions.openAccountRowMenuSchoolId = openAccountRowMenuSchoolId;
       actions.toggleAccountRowMenu = (schoolId: string) => {
         setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
+      };
+      actions.openPendingAccountAction = (action) => {
+        setOpenAccountRowMenuSchoolId(null);
+        openPendingAccountAction(action);
+      };
+      actions.handleUpdateSchoolHeadAccount = (record, update, actionLabel) => {
+        setOpenAccountRowMenuSchoolId(null);
+        handleUpdateSchoolHeadAccount(record, update, actionLabel);
       };
 
       return (
@@ -487,11 +484,38 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     expect(bottomRow).not.toBeUndefined();
 
-    fireEvent.click(within(bottomRow!).getByRole("button", { name: "Manage Account" }));
+    fireEvent.click(within(bottomRow!).getByRole("button", { name: "Actions" }));
+    let menu = screen.getByRole("menu", { name: "Another Bottom School account actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Send Password Reset Link" }));
+    expect(openPendingAccountAction).toHaveBeenCalledWith({
+      kind: "reset_password",
+      schoolId: "school-43",
+      schoolName: "Another Bottom School",
+      actionLabel: "Send Password Reset Link",
+    });
+    expect(screen.queryByRole("menu", { name: "Another Bottom School account actions" })).toBeNull();
 
-    const dialog = screen.getByRole("dialog", { name: "Manage School Head Account" });
-    expect(within(dialog).getByRole("button", { name: "Remove account and school" })).not.toBeNull();
-    expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
+    fireEvent.click(within(bottomRow!).getByRole("button", { name: "Actions" }));
+    menu = screen.getByRole("menu", { name: "Another Bottom School account actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Suspend Account" }));
+    expect(handleUpdateSchoolHeadAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "school-43", schoolName: "Another Bottom School" }),
+      { accountStatus: "suspended" },
+      "Suspend Account",
+    );
+    expect(screen.queryByRole("menu", { name: "Another Bottom School account actions" })).toBeNull();
+
+    fireEvent.click(within(bottomRow!).getByRole("button", { name: "Actions" }));
+    menu = screen.getByRole("menu", { name: "Another Bottom School account actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Remove Account and School" }));
+    expect(openPendingAccountAction).toHaveBeenCalledWith({
+      kind: "remove",
+      schoolId: "school-43",
+      schoolName: "Another Bottom School",
+      actionLabel: "Remove Account and School",
+    });
+    expect(screen.queryByRole("menu", { name: "Another Bottom School account actions" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
   });
 
   it("shows setup-link and temporary-password states distinctly in the Temp Pass column", () => {
@@ -1060,8 +1084,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     });
 
     expect(result.current.schoolHeadAccountsPanelProps?.totalCount).toBe(2);
+    expect(result.current.schoolHeadAccountsPanelProps?.statusFilter).toBe("all");
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
       "Filtered Out No Account School",
+      "Visible Account School",
     ]);
   });
 

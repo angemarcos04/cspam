@@ -587,7 +587,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(await screen.findByRole("dialog", { name: "MFA Recovery Requests" })).toBeTruthy();
   });
 
-  it("surfaces School Head account management actions in a fixed dialog", async () => {
+  it("surfaces School Head account actions in a compact dropdown", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
@@ -600,25 +600,21 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
     expect(await within(schoolsSection).findByRole("heading", { name: "School Head Accounts" })).toBeTruthy();
-    expect(within(schoolsSection).queryByRole("button", { name: "More actions" })).toBeNull();
+    expect(within(schoolsSection).queryByRole("button", { name: "Manage Account" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
 
-    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Manage Account" }));
+    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Actions" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Manage School Head Account" });
-    expect(within(dialog).getByText("Account Summary")).toBeTruthy();
-    expect(within(dialog).getByText("Account Profile")).toBeTruthy();
-    expect(within(dialog).getByText("Account Access")).toBeTruthy();
-    expect(within(dialog).getAllByText("Account Status").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("School Record").length).toBeGreaterThan(0);
-    expect(within(dialog).getAllByText("Danger Zone").length).toBeGreaterThan(0);
-    expect(within(dialog).getByRole("button", { name: "Send setup link" })).toBeTruthy();
-    expect(within(dialog).getByRole("button", { name: "Open school record" })).toBeTruthy();
-    expect(within(dialog).queryByRole("button", { name: "Lock account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Archive account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Flag account" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Flag school record" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Archive school record" })).toBeNull();
-    expect(within(dialog).queryByRole("button", { name: "Regenerate temporary password" })).toBeNull();
+    const menu = await within(schoolsSection).findByRole("menu", { name: "Santiago Elementary account actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Send Password Reset Link",
+      "Suspend Account",
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send setup link" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Open school record" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Lock account" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Archive account" })).toBeNull();
   });
 
   it("opens the existing confirmation flow for sensitive account status actions", async () => {
@@ -650,12 +646,11 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "Accounts" }));
-    fireEvent.click(await within(schoolsSection).findByRole("button", { name: "Manage Account" }));
-    const managementDialog = await screen.findByRole("dialog", { name: "Manage School Head Account" });
+    fireEvent.click(await within(schoolsSection).findByRole("button", { name: "Actions" }));
+    const menu = await within(schoolsSection).findByRole("menu", { name: "Santiago Elementary account actions" });
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Suspend Account" }));
 
-    fireEvent.click(within(managementDialog).getByRole("button", { name: "Suspend account" }));
-
-    const confirmationDialog = await screen.findByRole("dialog", { name: "Suspend account" });
+    const confirmationDialog = await screen.findByRole("dialog", { name: "Suspend Account" });
     expect(within(confirmationDialog).getByLabelText("Reason")).toBeTruthy();
     expect(within(confirmationDialog).getByRole("button", { name: "Send code" })).toBeTruthy();
     expect(updateSchoolHeadAccountStatusMock).not.toHaveBeenCalled();

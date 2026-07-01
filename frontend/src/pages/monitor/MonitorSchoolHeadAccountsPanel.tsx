@@ -1,16 +1,15 @@
 import {
   AlertTriangle,
+  ChevronDown,
   Database,
   Edit2,
   Plus,
-  RefreshCw,
   Save,
   Search,
   X,
 } from "lucide-react";
-import { useEffect, useState, type ReactElement } from "react";
+import type { ReactElement } from "react";
 import type { SchoolRecord, SchoolRecordDeletePreview } from "@/types";
-import { MonitorSchoolHeadAccountManagementDialog } from "./MonitorSchoolHeadAccountManagementDialog";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 export type SchoolHeadAccountsStatusFilter =
@@ -159,20 +158,10 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
   };
 }
 
-function shouldShowQuickSetupLink(status: string | null | undefined): boolean {
-  return String(status ?? "").toLowerCase() === "pending_setup";
-}
-
 const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label: string }> = [
   { id: "all", label: "All" },
-  { id: "no_account", label: "Needs account" },
-  { id: "temporary_password_active", label: "Temporary password active" },
-  { id: "password_reset_required", label: "Password reset required" },
-  { id: "pending_setup", label: "Pending setup" },
   { id: "active", label: "Active" },
   { id: "suspended", label: "Suspended" },
-  { id: "locked", label: "Locked" },
-  { id: "archived", label: "Archived" },
 ];
 
 export function MonitorSchoolHeadAccountsPanel({
@@ -210,14 +199,6 @@ export function MonitorSchoolHeadAccountsPanel({
   formatDateTime,
   actions,
 }: MonitorSchoolHeadAccountsPanelProps) {
-  const [selectedManagedAccountRecord, setSelectedManagedAccountRecord] = useState<SchoolRecord | null>(null);
-
-  useEffect(() => {
-    if (!isOpen) {
-      setSelectedManagedAccountRecord(null);
-    }
-  }, [isOpen]);
-
   if (!isOpen) {
     return null;
   }
@@ -294,10 +275,6 @@ export function MonitorSchoolHeadAccountsPanel({
                   className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
                 />
               </div>
-            </div>
-            <div className="text-xs font-semibold text-slate-500">
-              Showing <span className="text-slate-700">{rows.length}</span> of{" "}
-              <span className="text-slate-700">{totalCount}</span> schools
             </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-1.5" aria-label="School Head account filters">
@@ -539,27 +516,75 @@ export function MonitorSchoolHeadAccountsPanel({
                                 </span>
                               )}
                             </button>
-                            {account && shouldShowQuickSetupLink(account.accountStatus) && (
-                              <button
-                                type="button"
-                                onClick={() => void actions.handleIssueSchoolHeadSetupLink(resolvedRecord)}
-                                disabled={isRowSaving || isSaving}
-                                className="inline-flex h-8 w-8 items-center justify-center rounded-sm border border-primary-200 bg-primary-50 text-primary-700 transition hover:bg-primary-100 disabled:cursor-not-allowed disabled:opacity-60"
-                                title="Send Setup Link"
-                              >
-                                <RefreshCw className="h-4 w-4" />
-                                <span className="sr-only">Send Setup Link</span>
-                              </button>
-                            )}
                             {account && (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedManagedAccountRecord(resolvedRecord)}
-                                disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
-                                className="inline-flex h-8 items-center justify-center rounded-sm border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                              <div
+                                ref={actions.openAccountRowMenuSchoolId === resolvedRecord.id ? actions.accountRowMenuRef : undefined}
+                                className="relative inline-flex"
                               >
-                                Manage Account
-                              </button>
+                                <button
+                                  type="button"
+                                  onClick={() => actions.toggleAccountRowMenu(resolvedRecord.id)}
+                                  disabled={isRowSaving || isSaving || isDeleteSchoolRecordLoading}
+                                  aria-haspopup="menu"
+                                  aria-expanded={actions.openAccountRowMenuSchoolId === resolvedRecord.id}
+                                  className="inline-flex h-8 items-center justify-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                  Actions
+                                  <ChevronDown className="h-3.5 w-3.5" />
+                                </button>
+                                {actions.openAccountRowMenuSchoolId === resolvedRecord.id && (
+                                  <div
+                                    role="menu"
+                                    aria-label={`${resolvedRecord.schoolName} account actions`}
+                                    className="absolute right-0 top-full z-40 mt-1 w-56 overflow-hidden rounded-sm border border-slate-200 bg-white py-1 text-left shadow-lg"
+                                  >
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() =>
+                                        actions.openPendingAccountAction({
+                                          kind: "reset_password",
+                                          schoolId: resolvedRecord.id,
+                                          schoolName: resolvedRecord.schoolName,
+                                          actionLabel: "Send Password Reset Link",
+                                        })
+                                      }
+                                      className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                      Send Password Reset Link
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() =>
+                                        actions.handleUpdateSchoolHeadAccount(
+                                          resolvedRecord,
+                                          { accountStatus: "suspended" },
+                                          "Suspend Account",
+                                        )
+                                      }
+                                      className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                    >
+                                      Suspend Account
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      onClick={() =>
+                                        actions.openPendingAccountAction({
+                                          kind: "remove",
+                                          schoolId: resolvedRecord.id,
+                                          schoolName: resolvedRecord.schoolName,
+                                          actionLabel: "Remove Account and School",
+                                        })
+                                      }
+                                      className="block w-full px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
+                                    >
+                                      Remove Account and School
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             )}
                           </div>
                         )}
@@ -572,18 +597,6 @@ export function MonitorSchoolHeadAccountsPanel({
           </table>
         </div>
       </section>
-
-      <MonitorSchoolHeadAccountManagementDialog
-        record={selectedManagedAccountRecord}
-        isSaving={isSaving}
-        isDeleteSchoolRecordLoading={isDeleteSchoolRecordLoading}
-        isMobileViewport={isMobileViewport}
-        onClose={() => setSelectedManagedAccountRecord(null)}
-        onOpenSchoolRecord={onOpenSchoolRecord}
-        onPreviewDeleteSchoolRecord={onPreviewDeleteSchoolRecord}
-        formatDateTime={formatDateTime}
-        actions={actions}
-      />
 
       {actions.pendingAccountAction && (
         <>
