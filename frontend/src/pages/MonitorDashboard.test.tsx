@@ -755,7 +755,13 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Add School" }));
 
-    expect(await screen.findByRole("heading", { name: "Add School Record" })).toBeTruthy();
+    const addSchoolSection = await waitFor(() => {
+      const section = document.getElementById("monitor-add-school");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+    expect(within(addSchoolSection).getByRole("heading", { name: "Add School" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Add School Record" })).toBeNull();
 
     await waitFor(() => {
       expect(document.activeElement).toBe(document.getElementById("monitor-school-id"));
@@ -799,7 +805,13 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Add School" })[0]!);
 
-    expect(await screen.findByRole("heading", { name: "Add School Record" })).toBeTruthy();
+    const addSchoolSection = await waitFor(() => {
+      const section = document.getElementById("monitor-add-school");
+      expect(section).not.toBeNull();
+      return section as HTMLElement;
+    });
+    expect(within(addSchoolSection).getByRole("heading", { name: "Add School" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Add School Record" })).toBeNull();
     expect(document.getElementById("monitor-school-records")).toBeNull();
   });
 

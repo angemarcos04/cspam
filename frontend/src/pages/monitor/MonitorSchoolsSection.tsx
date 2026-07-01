@@ -28,9 +28,6 @@ interface MonitorSchoolsSectionProps {
   schoolLevelFilter: SchoolLevelFilter;
   onClearSchoolCategoryFilter: () => void;
   onSelectSchoolCategoryFilter: (sector: Exclude<SchoolSectorFilter, "all">, level?: SchoolLevelFilter) => void;
-  paginatedCompactSchoolRowsCount: number;
-  compactSchoolRowsCount: number;
-  activeSchoolPresetLabel: string | null;
   messages: MonitorSchoolMessagesProps;
   schoolRecordsListProps: MonitorSchoolRecordsListProps;
   bulkImportInputRef: MutableRefObject<HTMLInputElement | null>;
@@ -62,9 +59,6 @@ export function MonitorSchoolsSection({
   schoolLevelFilter,
   onClearSchoolCategoryFilter,
   onSelectSchoolCategoryFilter,
-  paginatedCompactSchoolRowsCount,
-  compactSchoolRowsCount,
-  activeSchoolPresetLabel,
   messages,
   schoolRecordsListProps,
   bulkImportInputRef,
@@ -205,9 +199,6 @@ export function MonitorSchoolsSection({
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div>
               <h2 className="text-base font-bold text-slate-900">Schools</h2>
-              <p className="mt-1 text-xs text-slate-600">
-                Manage existing schools, School Head accounts, imports, archives, and recovery requests.
-              </p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center md:justify-end">
               <button
@@ -293,31 +284,6 @@ export function MonitorSchoolsSection({
             </div>
           </div>
           {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
-        </div>
-
-        <div className="border-b border-slate-100 px-5 py-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-600">
-              <p>
-                Showing {paginatedCompactSchoolRowsCount} visible of {compactSchoolRowsCount}
-              </p>
-              {totalSchoolsInScope !== compactSchoolRowsCount ? (
-                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
-                  In scope: {totalSchoolsInScope}
-                </p>
-              ) : null}
-              {activeSchoolPresetLabel ? (
-                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
-                  Preset: {activeSchoolPresetLabel}
-                </p>
-              ) : null}
-              {schoolRecordsListProps.hasDashboardFilters && compactSchoolRowsCount < totalSchoolsInScope ? (
-                <p className="mt-0.5 text-[10px] font-medium text-slate-500">
-                  Visible rows are limited by current filters.
-                </p>
-              ) : null}
-            </div>
-          </div>
         </div>
 
         <MonitorSchoolMessages {...messages} />

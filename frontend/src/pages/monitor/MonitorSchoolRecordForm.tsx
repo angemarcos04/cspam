@@ -1,7 +1,6 @@
 import type { FormEvent } from "react";
-import { Save, X } from "lucide-react";
+import { Save } from "lucide-react";
 import type { SchoolHeadAccountProvisioningReceipt } from "@/types";
-import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
 
 const SCHOOL_LEVEL_OPTIONS = ["Elementary", "High School"] as const;
 
@@ -54,7 +53,6 @@ export function MonitorSchoolRecordForm({
   recordFormError,
   recordFormMessage,
   recordFormProvisioning,
-  onClose,
   onSubmit,
   onFieldChange,
   onCreateSchoolHeadAccountChange,
@@ -64,27 +62,8 @@ export function MonitorSchoolRecordForm({
     return null;
   }
 
-  const submissionRequirementHint = resolveSubmissionRequirementProfile(recordForm.type).createSchoolHint;
-
   return (
     <section className="mx-5 mt-4 overflow-hidden rounded-sm border border-slate-200 bg-white">
-      <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-4 py-3">
-        <div>
-          <h3 className="text-sm font-bold text-slate-900">{editingRecordId ? "Edit School Record" : "Add School Record"}</h3>
-          <p className="mt-0.5 text-xs text-slate-500">
-            School Code must be 6 digits. School name, level, type, and address are required. Students, teachers, and
-            status are managed by School Head.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="inline-flex items-center gap-1 rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
-        >
-          <X className="h-3.5 w-3.5" />
-          Close
-        </button>
-      </div>
       <form className="grid gap-3 p-4 md:grid-cols-2 xl:grid-cols-4" onSubmit={onSubmit}>
         <div>
           <label htmlFor="monitor-school-id" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
@@ -152,7 +131,6 @@ export function MonitorSchoolRecordForm({
             <option value="public">Public</option>
             <option value="private">Private</option>
           </select>
-          <p className="mt-1 text-[11px] font-medium text-slate-500">{submissionRequirementHint}</p>
           {recordFormErrors.type && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.type}</p>}
         </div>
         <div>

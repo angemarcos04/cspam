@@ -33,15 +33,15 @@ function buildProps(overrides: Partial<MonitorSchoolRecordFormProps> = {}): Moni
 }
 
 describe("MonitorSchoolRecordForm", () => {
-  it("shows the public submission requirement hint by default", () => {
+  it("does not render the redundant form header or public submission requirement hint", () => {
     render(<MonitorSchoolRecordForm {...buildProps()} />);
 
-    expect(
-      screen.getByText("Public School Head workspace uses BMEF and SMEA as the active package requirements."),
-    ).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Add School Record" })).toBeNull();
+    expect(screen.queryByText("Public School Head workspace uses BMEF and SMEA as the active package requirements.")).toBeNull();
+    expect(screen.getByLabelText("School Code")).toBeTruthy();
   });
 
-  it("renders the private submission requirement hint for private schools", () => {
+  it("does not render the private submission requirement hint for private schools", () => {
     render(
       <MonitorSchoolRecordForm
         {...buildProps({
@@ -61,9 +61,8 @@ describe("MonitorSchoolRecordForm", () => {
       />,
     );
 
-    expect(
-      screen.getByText("Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package."),
-    ).toBeTruthy();
+    expect(screen.queryByText("Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package.")).toBeNull();
+    expect(screen.getByLabelText("Type")).toBeTruthy();
   });
 
   it("explains that temporary passwords remain visible to the monitor until the first password change", () => {

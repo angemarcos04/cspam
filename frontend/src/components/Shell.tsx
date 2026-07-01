@@ -11,9 +11,10 @@ interface ShellProps {
   subtitle: string;
   children: ReactNode;
   actions?: ReactNode;
+  showWorkspaceLabel?: boolean;
 }
 
-export function Shell({ title, subtitle, children, actions }: ShellProps) {
+export function Shell({ title, subtitle, children, actions, showWorkspaceLabel = true }: ShellProps) {
   const { role, logout, isLoggingOut } = useAuth();
   const navigate = useNavigate();
   const headerRef = useRef<HTMLElement | null>(null);
@@ -137,10 +138,12 @@ export function Shell({ title, subtitle, children, actions }: ShellProps) {
         <div className="border-t border-white/12 bg-primary-800/90">
           <div className="mx-auto flex w-full max-w-7xl flex-col gap-2 px-3 py-2.5 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
             <div className="min-w-0">
-              <p className="inline-flex items-center gap-2 border border-white/25 bg-white/12 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-100 shadow-sm">
-                <ShieldCheck className="h-3.5 w-3.5" />
-                {roleLabel} Workspace
-              </p>
+              {showWorkspaceLabel && (
+                <p className="inline-flex items-center gap-2 border border-white/25 bg-white/12 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-primary-100 shadow-sm">
+                  <ShieldCheck className="h-3.5 w-3.5" />
+                  {roleLabel} Workspace
+                </p>
+              )}
               <h1 className="mt-1 text-lg font-extrabold text-white sm:mt-2 sm:text-2xl">{title}</h1>
               <p className="mt-1 line-clamp-1 text-[11px] text-primary-100 sm:text-sm">{subtitle}</p>
             </div>

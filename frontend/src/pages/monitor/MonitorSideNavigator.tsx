@@ -98,13 +98,6 @@ export function MonitorSideNavigator({
                 )}
               </button>
             </div>
-            <p
-              className={`overflow-hidden text-[11px] font-medium uppercase tracking-wide text-primary-100 ${
-                showNavigatorHeaderText ? "mt-1 max-h-5 opacity-100" : "mt-0 max-h-0 opacity-0"
-              }`}
-            >
-              Division Monitor
-            </p>
           </div>
         </div>
 

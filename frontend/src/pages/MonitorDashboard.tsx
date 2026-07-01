@@ -1265,6 +1265,7 @@ export function MonitorDashboard() {
     <Shell
       title="Division Monitor Dashboard"
       subtitle=""
+      showWorkspaceLabel={false}
       actions={
         <MonitorDashboardShellActions
           isDashboardSyncing={isDashboardSyncing}
@@ -1393,9 +1394,6 @@ export function MonitorDashboard() {
               schoolLevelFilter={schoolLevelFilter}
               onClearSchoolCategoryFilter={handleClearSchoolCategoryFilter}
               onSelectSchoolCategoryFilter={handleSelectSchoolCategoryFilter}
-              paginatedCompactSchoolRowsCount={paginatedCompactSchoolRows.length}
-              compactSchoolRowsCount={compactSchoolRows.length}
-              activeSchoolPresetLabel={schoolsSectionApi.activeSchoolPresetLabel}
               messages={schoolsSectionApi.schoolMessagesProps}
               schoolRecordsListProps={schoolsSectionApi.schoolRecordsListProps}
               bulkImportInputRef={schoolsSectionApi.bulkImportInputRef}
