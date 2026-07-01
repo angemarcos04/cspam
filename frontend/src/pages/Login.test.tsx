@@ -38,13 +38,13 @@ describe("Login", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByLabelText("Login ID")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Enter school code or monitor email")).toBeTruthy();
+    expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
+    expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
 
-    expect(screen.getByLabelText("Login ID")).toBeTruthy();
-    expect(screen.getByPlaceholderText("Enter school code or monitor email")).toBeTruthy();
+    expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
+    expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
   });
 
   it("toggles passcode visibility and preserves forgot-password routing by role", () => {

@@ -16,15 +16,6 @@ interface PendingMfaChallenge {
   deliveryMessage?: string;
 }
 
-function formatMfaExpiry(isoTimestamp: string): string {
-  const date = new Date(isoTimestamp);
-  if (Number.isNaN(date.getTime())) {
-    return "soon";
-  }
-
-  return date.toLocaleString();
-}
-
 function normalizeMfaCodeInput(rawValue: string): string {
   const trimmed = rawValue.trim();
   const digitsOnly = trimmed.replace(/\D/g, "");
@@ -64,7 +55,6 @@ const ROLE_META: Record<
 };
 
 const LOGIN_FIELD_LABEL = "Login ID";
-const LOGIN_FIELD_HINT = "Enter school code or monitor email";
 
 function describeApiOrigin(): string {
   try {
@@ -403,7 +393,6 @@ export function Login() {
                     clearResetState();
                     clearMfaState();
                   }}
-                  placeholder={LOGIN_FIELD_HINT}
                   inputMode={activeRole === "school_head" ? "numeric" : "text"}
                   maxLength={activeRole === "school_head" ? 6 : 255}
                   pattern={activeRole === "school_head" ? "\\d{6}" : undefined}
@@ -474,8 +463,7 @@ export function Login() {
                     className={formInputClass}
                   />
                   <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                    Enter the 6-digit code sent to your monitor email, or a backup code (XXXX-XXXX). Expires at{" "}
-                    {formatMfaExpiry(pendingMfa.expiresAt)}.
+                    Enter the 6-digit code sent into your monitor email.
                   </p>
                   <div className="mt-2 flex justify-end">
                     <Link
