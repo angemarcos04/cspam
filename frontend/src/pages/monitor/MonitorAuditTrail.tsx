@@ -122,7 +122,7 @@ function auditRealtimeMatchesFilters(
 export function AuditTrailPanel({
   id,
   title = "Audit Trail",
-  description = "Permanent record of workflow and security-sensitive activity.",
+  description = "",
   schoolId = null,
   schoolCode = null,
   academicYearLabel = null,

@@ -556,6 +556,14 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: "Archive School Record" })).toBeNull();
     expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /delete/i })).toBeNull();
     expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /suspend/i })).toBeNull();
+
+    fireEvent.click(within(activeSchoolRow as HTMLElement).getByRole("button", { name: "Open" }));
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+    await waitFor(() => {
+      const drawer = screen.getByText("School Detail").closest("aside");
+      expect(drawer).toBeTruthy();
+      expect(within(drawer as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
+    });
   });
 
   it("opens Schools Accounts and More menu actions from the management hub", async () => {
@@ -1035,8 +1043,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(await within(schoolDetail).findByRole("heading", { name: "School Information" })).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "School Status" })).toBeTruthy();
     expect(within(schoolDetail).getByRole("heading", { name: "School Head Account Access" })).toBeTruthy();
-    expect(within(schoolDetail).getByText(/Manage School Head account actions from Schools -> Accounts/)).toBeTruthy();
-    expect(within(schoolDetail).getByRole("heading", { name: "Archive School Record" })).toBeTruthy();
+    expect(within(schoolDetail).queryByText("Update school profile fields for this selected school.")).toBeNull();
+    expect(within(schoolDetail).queryByText(/Manage School Head account actions/)).toBeNull();
+    expect(within(schoolDetail).queryByRole("button", { name: "Mark as Suspended" })).toBeNull();
+    expect(within(schoolDetail).queryByRole("heading", { name: "Archive School Record" })).toBeNull();
     expect(within(schoolDetail).queryByRole("button", { name: /permanent/i })).toBeNull();
   });
 
@@ -1071,59 +1081,6 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
     const payload = updateRecordMock.mock.calls[updateRecordMock.mock.calls.length - 1]?.[1] ?? {};
     expect(payload).not.toHaveProperty("schoolHeadAccount");
-  });
-
-  it("updates selected school status from the drawer without sending suspended", async () => {
-    render(<MonitorDashboard />);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
-
-    const schoolDetail = await waitFor(() => {
-      const drawer = screen.getByText("School Detail").closest("aside");
-      expect(drawer).toBeTruthy();
-      return drawer as HTMLElement;
-    });
-    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
-    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Mark as Suspended" }));
-    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Confirm status change" }));
-
-    await waitFor(() => {
-      expect(updateRecordMock).toHaveBeenCalledWith("1", expect.objectContaining({
-        status: "inactive",
-      }));
-    });
-    const payload = updateRecordMock.mock.calls[updateRecordMock.mock.calls.length - 1]?.[1] ?? {};
-    expect(JSON.stringify(payload)).not.toContain("suspended");
-    expect(within(schoolDetail).getByText("School status updated to Suspended.")).toBeTruthy();
-  });
-
-  it("archives a selected school from the drawer through preview and confirmation only", async () => {
-    render(<MonitorDashboard />);
-
-    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
-    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
-
-    const schoolDetail = await waitFor(() => {
-      const drawer = screen.getByText("School Detail").closest("aside");
-      expect(drawer).toBeTruthy();
-      return drawer as HTMLElement;
-    });
-    fireEvent.click(within(schoolDetail).getByRole("button", { name: "Management" }));
-    fireEvent.click(await within(schoolDetail).findByRole("button", { name: "Archive School Record" }));
-
-    await waitFor(() => {
-      expect(previewDeleteRecordMock).toHaveBeenCalledWith("1");
-    });
-
-    const dialog = await within(schoolDetail).findByRole("dialog", { name: "Archive this school record?" });
-    expect(within(dialog).getByText(/Santiago Elementary/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole("button", { name: "Archive School Record" }));
-
-    await waitFor(() => {
-      expect(deleteRecordMock).toHaveBeenCalledWith("1");
-    });
-    expect(permanentlyDeleteArchivedRecordMock).not.toHaveBeenCalled();
   });
 
   it("simplifies the queue list columns and removes the duplicate open school action", async () => {

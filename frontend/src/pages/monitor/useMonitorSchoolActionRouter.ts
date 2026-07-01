@@ -118,12 +118,11 @@ export function useMonitorSchoolActionRouter({
 
   const handleOpenSchool = useCallback(
     (summary: SchoolActionSummary) => {
-      setActiveTopNavigator("schools");
+      setActiveTopNavigator("reviews");
       openSchoolDrawer(summary.schoolKey);
-      scheduleFocus(focusAndScrollTo, "monitor-school-records");
       pushToast(`Opened school details for ${summary.schoolName}.`, "info");
     },
-    [focusAndScrollTo, openSchoolDrawer, pushToast, setActiveTopNavigator],
+    [openSchoolDrawer, pushToast, setActiveTopNavigator],
   );
 
   const handleSendReminder = useCallback(

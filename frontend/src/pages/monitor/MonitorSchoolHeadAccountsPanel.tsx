@@ -610,13 +610,15 @@ export function MonitorSchoolHeadAccountsPanel({
                                         closeSelectedAccountActionMenu(resolvedRecord.id);
                                         actions.handleUpdateSchoolHeadAccount(
                                           resolvedRecord,
-                                          { accountStatus: "suspended" },
-                                          "Suspend Account",
+                                          {
+                                            accountStatus: normalizedAccountStatus === "suspended" ? "active" : "suspended",
+                                          },
+                                          normalizedAccountStatus === "suspended" ? "Reactivate Account" : "Suspend Account",
                                         );
                                       }}
                                       className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                                     >
-                                      Suspend Account
+                                      {normalizedAccountStatus === "suspended" ? "Reactivate Account" : "Suspend Account"}
                                     </button>
                                     <button
                                       type="button"

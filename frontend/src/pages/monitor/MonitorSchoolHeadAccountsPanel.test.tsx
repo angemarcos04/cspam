@@ -525,6 +525,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(within(menu).queryByRole("menuitem", { name: "Regenerate temporary password" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Lock account" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Archive account" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Reactivate Account" })).toBeNull();
   });
 
   it("dispatches dropdown actions through the existing guarded flows", () => {
@@ -533,6 +534,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       schoolCode: string,
       schoolName: string,
       verifiedAt: string | null,
+      accountStatus: "active" | "suspended" = "active",
     ): SchoolRecord => ({
       id,
       schoolId: schoolCode,
@@ -553,10 +555,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         id: `account-${id}`,
         name: `${schoolName} Head`,
         email: `${id}@cspams.local`,
-        accountStatus: "active",
+        accountStatus,
         mustResetPassword: false,
-        lifecycleState: "active_ready",
-        lifecycleStateLabel: "Active",
+        lifecycleState: accountStatus === "suspended" ? "suspended" : "active_ready",
+        lifecycleStateLabel: accountStatus === "suspended" ? "Suspended" : "Active",
         recommendedAction: "none",
         emailVerifiedAt: "2026-05-01T08:00:00.000Z",
         verifiedAt,
@@ -583,6 +585,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       buildRecord("school-41", "940002", "Not Verified Middle School", null),
       buildRecord("school-42", "940003", "Approved Bottom School", "2026-05-03T08:00:00.000Z"),
       buildRecord("school-43", "940004", "Another Bottom School", null),
+      buildRecord("school-44", "940005", "Suspended Bottom School", "2026-05-04T08:00:00.000Z", "suspended"),
     ];
 
     const openPendingAccountAction = vi.fn();
@@ -653,6 +656,24 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       actionLabel: "Send Password Reset Link",
     });
     expect(screen.queryByRole("menu", { name: "Another Bottom School account actions" })).toBeNull();
+
+    const suspendedRow = screen.getAllByRole("row").find((row) => row.textContent?.includes("Suspended Bottom School"));
+    expect(suspendedRow).not.toBeUndefined();
+    fireEvent.click(within(suspendedRow!).getByRole("button", { name: "Actions" }));
+    menu = screen.getByRole("menu", { name: "Suspended Bottom School account actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Send Password Reset Link",
+      "Reactivate Account",
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Reactivate Account" }));
+    expect(handleUpdateSchoolHeadAccount).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "school-44", schoolName: "Suspended Bottom School" }),
+      { accountStatus: "active" },
+      "Reactivate Account",
+    );
+    expect(screen.queryByRole("menu", { name: "Suspended Bottom School account actions" })).toBeNull();
 
     fireEvent.click(within(bottomRow!).getByRole("button", { name: "Actions" }));
     menu = screen.getByRole("menu", { name: "Another Bottom School account actions" });

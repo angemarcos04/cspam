@@ -23,7 +23,6 @@ import type {
   IndicatorSubmission,
   IndicatorSubmissionFileType,
   SchoolRecord,
-  SchoolRecordDeletePreview,
   SchoolRecordPayload,
 } from "@/types";
 interface MonitorSchoolDrawerViewState {
@@ -71,8 +70,6 @@ interface MonitorSchoolDrawerActions {
   handleJumpToReturnedIndicators: () => void;
   toggleDrawerIndicatorLabel: (key: string) => void;
   updateRecord?: (id: string, updates: SchoolRecordPayload) => Promise<void>;
-  previewDeleteRecord?: (id: string) => Promise<SchoolRecordDeletePreview>;
-  deleteRecord?: (id: string) => Promise<void>;
   onManagementToast?: (message: string, tone?: "success" | "info" | "warning") => void;
   onReviewDataChanged?: (payload: {
     reason: "scope-review" | "file-preview-stale";
@@ -323,26 +320,11 @@ export function MonitorSchoolDrawer({
     setSelectedSchoolDrawerYear,
     closeSchoolDrawer,
     updateRecord,
-    previewDeleteRecord,
-    deleteRecord,
     onManagementToast,
     onReviewDataChanged,
   } = actions;
   const { formatDateTime } = formatting;
   const manageSchoolUpdate = updateRecord ?? (async () => undefined);
-  const previewSchoolArchive = previewDeleteRecord ?? (async () => ({
-    id: "",
-    schoolId: schoolDetail?.schoolCode ?? "",
-    schoolName: schoolDetail?.schoolName ?? "Selected school",
-    dependencies: {
-      students: 0,
-      sections: 0,
-      indicatorSubmissions: 0,
-      histories: 0,
-      linkedUsers: 0,
-    },
-  }));
-  const archiveSchoolRecord = deleteRecord ?? (async () => undefined);
   const showManagementToast = onManagementToast ?? (() => undefined);
 
   useEffect(() => {
@@ -902,9 +884,6 @@ export function MonitorSchoolDrawer({
                   record={selectedSchoolRecord ?? null}
                   isSaving={false}
                   updateRecord={manageSchoolUpdate}
-                  previewDeleteRecord={previewSchoolArchive}
-                  deleteRecord={archiveSchoolRecord}
-                  onArchived={closeSchoolDrawer}
                   onToast={showManagementToast}
                 />
               )}

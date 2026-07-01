@@ -45,8 +45,6 @@ interface BuildMonitorSchoolDrawerPropsArgs {
   toggleDrawerIndicatorLabel: MonitorSchoolDrawerActions["toggleDrawerIndicatorLabel"];
   onReviewDataChanged?: MonitorSchoolDrawerActions["onReviewDataChanged"];
   updateRecord: MonitorSchoolDrawerActions["updateRecord"];
-  previewDeleteRecord: MonitorSchoolDrawerActions["previewDeleteRecord"];
-  deleteRecord: MonitorSchoolDrawerActions["deleteRecord"];
   onManagementToast: MonitorSchoolDrawerActions["onManagementToast"];
   workflowTone: MonitorSchoolDrawerFormatting["workflowTone"];
   workflowLabel: MonitorSchoolDrawerFormatting["workflowLabel"];
@@ -90,8 +88,6 @@ export function buildMonitorSchoolDrawerProps({
   toggleDrawerIndicatorLabel,
   onReviewDataChanged,
   updateRecord,
-  previewDeleteRecord,
-  deleteRecord,
   onManagementToast,
   workflowTone,
   workflowLabel,
@@ -141,8 +137,6 @@ export function buildMonitorSchoolDrawerProps({
       toggleDrawerIndicatorLabel,
       onReviewDataChanged,
       updateRecord,
-      previewDeleteRecord,
-      deleteRecord,
       onManagementToast,
     },
     formatting: {

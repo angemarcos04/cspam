@@ -59,15 +59,16 @@ describe("MonitorSchoolManagementPanel", () => {
         record={record}
         isSaving={false}
         updateRecord={vi.fn()}
-        previewDeleteRecord={vi.fn()}
-        deleteRecord={vi.fn()}
-        onArchived={vi.fn()}
         onToast={vi.fn()}
       />,
     );
 
     expect(screen.getByText("Suspended")).toBeTruthy();
     expect(screen.queryByText("Inactive")).toBeNull();
+    expect(screen.queryByText("Update school profile fields for this selected school.")).toBeNull();
+    expect(screen.queryByText(/Manage School Head account actions/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Mark as Suspended" })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Archive School Record" })).toBeNull();
     expect(record.status).toBe("active");
   });
 });

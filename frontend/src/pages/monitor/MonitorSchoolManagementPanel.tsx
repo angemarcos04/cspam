@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { AlertTriangle, Archive, Edit3 } from "lucide-react";
+import { useEffect, useState, type FormEvent } from "react";
+import { Edit3 } from "lucide-react";
 import { messageForApiError } from "@/lib/api";
 import { monitorSchoolStatusLabel, resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
-import type { SchoolRecord, SchoolRecordDeletePreview, SchoolRecordPayload, SchoolStatus } from "@/types";
+import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 
 type ToastTone = "success" | "info" | "warning";
 
@@ -19,9 +19,6 @@ interface MonitorSchoolManagementPanelProps {
   record: SchoolRecord | null;
   isSaving: boolean;
   updateRecord: (id: string, updates: SchoolRecordPayload) => Promise<void>;
-  previewDeleteRecord: (id: string) => Promise<SchoolRecordDeletePreview>;
-  deleteRecord: (id: string) => Promise<void>;
-  onArchived: () => void;
   onToast: (message: string, tone?: ToastTone) => void;
 }
 
@@ -62,34 +59,19 @@ export function MonitorSchoolManagementPanel({
   record,
   isSaving,
   updateRecord,
-  previewDeleteRecord,
-  deleteRecord,
-  onArchived,
   onToast,
 }: MonitorSchoolManagementPanelProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [form, setForm] = useState<SchoolManagementFormState>(() => buildFormState(record));
   const [formError, setFormError] = useState("");
   const [formMessage, setFormMessage] = useState("");
-  const [pendingStatus, setPendingStatus] = useState<SchoolStatus | null>(null);
-  const [statusError, setStatusError] = useState("");
-  const [statusMessage, setStatusMessage] = useState("");
-  const [archivePreview, setArchivePreview] = useState<SchoolRecordDeletePreview | null>(null);
-  const [archiveError, setArchiveError] = useState("");
-  const [archiveMessage, setArchiveMessage] = useState("");
-  const [pendingAction, setPendingAction] = useState<"edit" | "status" | "preview-archive" | "archive" | null>(null);
+  const [pendingAction, setPendingAction] = useState<"edit" | null>(null);
 
   useEffect(() => {
     setForm(buildFormState(record));
     setIsEditing(false);
     setFormError("");
     setFormMessage("");
-    setPendingStatus(null);
-    setStatusError("");
-    setStatusMessage("");
-    setArchivePreview(null);
-    setArchiveError("");
-    setArchiveMessage("");
     setPendingAction(null);
   }, [record?.id]);
 
@@ -98,38 +80,6 @@ export function MonitorSchoolManagementPanel({
   const isBusy = isSaving || pendingAction !== null;
   const schoolHeadAccount = record?.schoolHeadAccount ?? null;
   const displayStatus = resolveMonitorSchoolDisplayStatus(record);
-
-  const statusActions = useMemo<Array<{ status: SchoolStatus; label: string; description: string }>>(() => {
-    if (!record) return [];
-    if (record.status === "active") {
-      return [{
-        status: "inactive",
-        label: "Mark as Suspended",
-        description: "This removes the school from normal active monitoring views without deleting its records.",
-      }];
-    }
-
-    if (record.status === "inactive") {
-      return [{
-        status: "active",
-        label: "Reactivate School",
-        description: "This returns the school to active monitoring.",
-      }];
-    }
-
-    return [
-      {
-        status: "active",
-        label: "Mark as Active",
-        description: "This returns the school to active monitoring.",
-      },
-      {
-        status: "inactive",
-        label: "Mark as Suspended",
-        description: "This removes the school from normal active monitoring views without deleting its records.",
-      },
-    ];
-  }, [record]);
 
   const updateFormField = (field: keyof SchoolManagementFormState, value: string) => {
     setForm((current) => ({
@@ -169,61 +119,6 @@ export function MonitorSchoolManagementPanel({
     }
   };
 
-  const confirmStatusChange = async () => {
-    if (!record || !pendingStatus || isBusy) return;
-
-    setPendingAction("status");
-    setStatusError("");
-    setStatusMessage("");
-    try {
-      await updateRecord(record.id, {
-        ...buildBasePayload(record, buildFormState(record)),
-        status: pendingStatus,
-      });
-      setStatusMessage(`School status updated to ${formatSchoolStatus(pendingStatus)}.`);
-      onToast(`School status updated to ${formatSchoolStatus(pendingStatus)}.`, "success");
-      setPendingStatus(null);
-    } catch (err) {
-      setStatusError(messageForApiError(err, "Unable to update school status."));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  const loadArchivePreview = async () => {
-    if (!record || isBusy) return;
-
-    setPendingAction("preview-archive");
-    setArchiveError("");
-    setArchiveMessage("");
-    try {
-      const preview = await previewDeleteRecord(record.id);
-      setArchivePreview(preview);
-    } catch (err) {
-      setArchiveError(messageForApiError(err, "Unable to load archive preview."));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
-  const confirmArchive = async () => {
-    if (!record || isBusy) return;
-
-    setPendingAction("archive");
-    setArchiveError("");
-    setArchiveMessage("");
-    try {
-      await deleteRecord(record.id);
-      setArchiveMessage("School record archived.");
-      onToast("School record archived.", "success");
-      onArchived();
-    } catch (err) {
-      setArchiveError(messageForApiError(err, "Unable to archive school record."));
-    } finally {
-      setPendingAction(null);
-    }
-  };
-
   if (!hasRecord || !record) {
     return (
       <section className="rounded-sm border border-slate-200 bg-white p-4">
@@ -239,7 +134,6 @@ export function MonitorSchoolManagementPanel({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h3 className="text-sm font-bold text-slate-900">School Information</h3>
-            <p className="mt-1 text-xs text-slate-600">Update school profile fields for this selected school.</p>
           </div>
           {!isEditing && (
             <button
@@ -389,54 +283,6 @@ export function MonitorSchoolManagementPanel({
         <p className="mt-1 text-xs text-slate-600">
           Current status: <span className="font-semibold text-slate-900">{formatSchoolStatus(displayStatus)}</span>
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {statusActions.map((action) => (
-            <button
-              key={action.status}
-              type="button"
-              onClick={() => {
-                setPendingStatus(action.status);
-                setStatusError("");
-                setStatusMessage("");
-              }}
-              disabled={isBusy}
-              title={action.description}
-              className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-        {pendingStatus && (
-          <div role="alert" className="mt-3 rounded-sm border border-amber-200 bg-amber-50 p-3">
-            <p className="text-sm font-semibold text-amber-800">
-              Confirm status change to {formatSchoolStatus(pendingStatus)}?
-            </p>
-            <p className="mt-1 text-xs text-amber-700">
-              This updates the selected school record using the existing school status values.
-            </p>
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setPendingStatus(null)}
-                disabled={isBusy}
-                className="rounded-sm border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmStatusChange()}
-                disabled={isBusy}
-                className="rounded-sm border border-amber-300 bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-900 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {pendingAction === "status" ? "Updating..." : "Confirm status change"}
-              </button>
-            </div>
-          </div>
-        )}
-        {statusError && <p className="mt-2 text-xs font-semibold text-rose-700">{statusError}</p>}
-        {statusMessage && <p className="mt-2 text-xs font-semibold text-emerald-700">{statusMessage}</p>}
       </section>
 
       <section className="rounded-sm border border-slate-200 bg-white p-4">
@@ -463,83 +309,6 @@ export function MonitorSchoolManagementPanel({
         ) : (
           <p className="mt-2 text-sm text-slate-600">No School Head account is linked to this school.</p>
         )}
-        <p className="mt-3 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-          Manage School Head account actions from Schools -&gt; Accounts so confirmation-code protections stay intact.
-        </p>
-      </section>
-
-      <section className="rounded-sm border border-rose-200 bg-rose-50 p-4">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-700" />
-          <div>
-            <h3 className="text-sm font-bold text-rose-900">Archive School Record</h3>
-            <p className="mt-1 text-xs text-rose-800">
-              Archive removes this school from the active list while preserving history unless it is permanently
-              deleted later from archived-record management.
-            </p>
-          </div>
-        </div>
-
-        {!archivePreview ? (
-          <button
-            type="button"
-            onClick={() => void loadArchivePreview()}
-            disabled={isBusy}
-            className="mt-3 inline-flex items-center gap-1 rounded-sm border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold text-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <Archive className="h-3.5 w-3.5" />
-            {pendingAction === "preview-archive" ? "Loading preview..." : "Archive School Record"}
-          </button>
-        ) : (
-          <div role="dialog" aria-modal="false" aria-labelledby="archive-school-record-title" className="mt-3 rounded-sm border border-rose-300 bg-white p-3">
-            <h4 id="archive-school-record-title" className="text-sm font-bold text-rose-900">
-              Archive this school record?
-            </h4>
-            <p className="mt-1 text-xs text-rose-800">
-              This will remove <span className="font-semibold">{archivePreview.schoolName}</span>{" "}
-              ({archivePreview.schoolId}) from the active school list. Existing records, submissions, audit history,
-              and linked account history remain preserved unless permanently deleted later.
-            </p>
-            <dl className="mt-3 grid gap-2 sm:grid-cols-2">
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Students</dt>
-                <dd className="text-sm font-semibold text-rose-900">{archivePreview.dependencies.students}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Indicator Submissions</dt>
-                <dd className="text-sm font-semibold text-rose-900">{archivePreview.dependencies.indicatorSubmissions}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Histories</dt>
-                <dd className="text-sm font-semibold text-rose-900">{archivePreview.dependencies.histories}</dd>
-              </div>
-              <div>
-                <dt className="text-[11px] font-semibold uppercase tracking-wide text-rose-700">Linked Users</dt>
-                <dd className="text-sm font-semibold text-rose-900">{archivePreview.dependencies.linkedUsers}</dd>
-              </div>
-            </dl>
-            <div className="mt-3 flex flex-wrap justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setArchivePreview(null)}
-                disabled={isBusy}
-                className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => void confirmArchive()}
-                disabled={isBusy}
-                className="rounded-sm border border-rose-300 bg-rose-100 px-3 py-1.5 text-xs font-semibold text-rose-900 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {pendingAction === "archive" ? "Archiving..." : "Archive School Record"}
-              </button>
-            </div>
-          </div>
-        )}
-        {archiveError && <p className="mt-2 text-xs font-semibold text-rose-800">{archiveError}</p>}
-        {archiveMessage && <p className="mt-2 text-xs font-semibold text-emerald-700">{archiveMessage}</p>}
       </section>
     </div>
   );

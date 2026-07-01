@@ -1154,8 +1154,6 @@ export function MonitorDashboard() {
       toggleDrawerIndicatorLabel,
       onReviewDataChanged: handleSchoolDrawerReviewDataChanged,
       updateRecord,
-      previewDeleteRecord,
-      deleteRecord,
       onManagementToast: pushToast,
       workflowTone,
       workflowLabel,
