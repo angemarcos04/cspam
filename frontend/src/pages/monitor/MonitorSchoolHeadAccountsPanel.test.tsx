@@ -596,11 +596,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
       };
       actions.openPendingAccountAction = (action) => {
-        setOpenAccountRowMenuSchoolId(null);
         openPendingAccountAction(action);
       };
       actions.handleUpdateSchoolHeadAccount = (record, update, actionLabel) => {
-        setOpenAccountRowMenuSchoolId(null);
         handleUpdateSchoolHeadAccount(record, update, actionLabel);
       };
 

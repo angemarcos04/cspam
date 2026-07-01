@@ -251,6 +251,13 @@ export function MonitorSchoolHeadAccountsPanel({
     actions.toggleAccountRowMenu(schoolId);
   };
 
+  const closeSelectedAccountActionMenu = (schoolId: string) => {
+    setAccountActionMenuPosition(null);
+    if (actions.openAccountRowMenuSchoolId === schoolId) {
+      actions.toggleAccountRowMenu(schoolId);
+    }
+  };
+
   return (
     <>
       <section className="mx-5 mt-4 overflow-visible rounded-sm border border-slate-200 bg-white">
@@ -583,14 +590,15 @@ export function MonitorSchoolHeadAccountsPanel({
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      onClick={() =>
+                                      onClick={() => {
+                                        closeSelectedAccountActionMenu(resolvedRecord.id);
                                         actions.openPendingAccountAction({
                                           kind: "reset_password",
                                           schoolId: resolvedRecord.id,
                                           schoolName: resolvedRecord.schoolName,
                                           actionLabel: "Send Password Reset Link",
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                                     >
                                       Send Password Reset Link
@@ -598,13 +606,14 @@ export function MonitorSchoolHeadAccountsPanel({
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      onClick={() =>
+                                      onClick={() => {
+                                        closeSelectedAccountActionMenu(resolvedRecord.id);
                                         actions.handleUpdateSchoolHeadAccount(
                                           resolvedRecord,
                                           { accountStatus: "suspended" },
                                           "Suspend Account",
-                                        )
-                                      }
+                                        );
+                                      }}
                                       className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                                     >
                                       Suspend Account
@@ -612,14 +621,15 @@ export function MonitorSchoolHeadAccountsPanel({
                                     <button
                                       type="button"
                                       role="menuitem"
-                                      onClick={() =>
+                                      onClick={() => {
+                                        closeSelectedAccountActionMenu(resolvedRecord.id);
                                         actions.openPendingAccountAction({
                                           kind: "remove",
                                           schoolId: resolvedRecord.id,
                                           schoolName: resolvedRecord.schoolName,
                                           actionLabel: "Remove Account and School",
-                                        })
-                                      }
+                                        });
+                                      }}
                                       className="block w-full px-3 py-2 text-left text-xs font-semibold text-rose-700 transition hover:bg-rose-50"
                                     >
                                       Remove Account and School
