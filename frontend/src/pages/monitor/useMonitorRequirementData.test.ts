@@ -9,7 +9,7 @@ import {
   normalizeSchoolSector,
   useMonitorRequirementData,
 } from "@/pages/monitor/useMonitorRequirementData";
-import type { SchoolRecord } from "@/types";
+import type { IndicatorSubmission, SchoolRecord } from "@/types";
 
 const REQUIREMENT_FILTER_OPTIONS = [
   { id: "all" as const, label: "All" },
@@ -20,7 +20,10 @@ const REQUIREMENT_FILTER_OPTIONS = [
   { id: "validated" as const, label: "Validated" },
 ];
 
-function buildRecord(status: "submitted" | "validated" | "returned"): SchoolRecord {
+function buildRecord(
+  status: "submitted" | "validated" | "returned",
+  overrides: Partial<SchoolRecord> = {},
+): SchoolRecord {
   return {
     id: "record-1",
     schoolId: "108323",
@@ -44,14 +47,53 @@ function buildRecord(status: "submitted" | "validated" | "returned"): SchoolReco
       createdAt: "2026-06-18T07:30:00.000Z",
       updatedAt: status === "submitted" ? "2026-06-18T08:00:00.000Z" : "2026-06-18T09:00:00.000Z",
     },
+    ...overrides,
   };
 }
 
-function renderRequirementHook(records: SchoolRecord[]) {
-  return renderHook(({ currentRecords }: { currentRecords: SchoolRecord[] }) =>
+function buildSubmission(overrides: Partial<IndicatorSubmission> = {}): IndicatorSubmission {
+  return {
+    id: "submission-1",
+    formType: "indicator",
+    status: "validated",
+    statusLabel: "Validated",
+    reportingPeriod: null,
+    version: 1,
+    schoolId: "108323",
+    schoolType: "public",
+    school: {
+      id: "108323",
+      schoolCode: "108323",
+      name: "Abra Elementary School",
+      type: "public",
+    },
+    academicYear: {
+      id: "2026",
+      name: "SY 2025-2026",
+    },
+    notes: null,
+    reviewNotes: null,
+    summary: {
+      totalIndicators: 0,
+      metIndicators: 0,
+      belowTargetIndicators: 0,
+      complianceRatePercent: 0,
+    },
+    indicators: [],
+    submittedAt: "2026-06-18T08:00:00.000Z",
+    reviewedAt: "2026-06-18T09:00:00.000Z",
+    createdAt: "2026-06-18T07:30:00.000Z",
+    updatedAt: "2026-06-18T09:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function renderRequirementHook(records: SchoolRecord[], allSubmissions: IndicatorSubmission[] = []) {
+  return renderHook(({ currentRecords, currentSubmissions }: { currentRecords: SchoolRecord[]; currentSubmissions: IndicatorSubmission[] }) =>
     useMonitorRequirementData({
       records: currentRecords,
       scopedRecords: currentRecords,
+      allSubmissions: currentSubmissions,
       scopedSchoolKeys: null,
       selectedSchoolScopeKey: ALL_SCHOOL_SCOPE,
       hasSelectedSchoolScope: false,
@@ -72,7 +114,7 @@ function renderRequirementHook(records: SchoolRecord[]) {
       allSchoolScopeKey: ALL_SCHOOL_SCOPE,
       requirementFilterOptions: REQUIREMENT_FILTER_OPTIONS,
     }),
-    { initialProps: { currentRecords: records } },
+    { initialProps: { currentRecords: records, currentSubmissions: allSubmissions } },
   );
 }
 
@@ -195,7 +237,7 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(result.current.paginatedRequirementRows[0].awaitingReviewCount).toBe(1);
     expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("submitted");
 
-    rerender({ currentRecords: [buildRecord("validated")] });
+    rerender({ currentRecords: [buildRecord("validated")], currentSubmissions: [] });
 
     expect(result.current.queueLaneCounts.for_review).toBe(0);
     expect(result.current.requirementCounts.awaitingReview).toBe(0);
@@ -204,7 +246,7 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(result.current.paginatedRequirementRows).toHaveLength(0);
     expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("validated");
 
-    rerender({ currentRecords: [buildRecord("returned")] });
+    rerender({ currentRecords: [buildRecord("returned")], currentSubmissions: [] });
 
     expect(result.current.queueLaneCounts.returned).toBe(1);
     expect(result.current.requirementCounts.returned).toBe(1);
@@ -212,6 +254,64 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(result.current.paginatedRequirementRows).toHaveLength(1);
     expect(result.current.paginatedRequirementRows[0].indicatorStatus).toBe("returned");
     expect(result.current.paginatedCompactSchoolRows[0].summary.indicatorStatus).toBe("returned");
+  });
+
+  it("builds public submission progress from the four monitor-visible units", () => {
+    const fullPublicSubmission = buildSubmission({
+      scopeProgress: {
+        requiredScopeIds: [
+          "school_achievements_learning_outcomes",
+          "key_performance_indicators",
+          "bmef",
+          "smea",
+        ],
+        submittedScopeIds: [
+          "school_achievements_learning_outcomes",
+          "key_performance_indicators",
+          "bmef",
+          "smea",
+        ],
+      },
+    });
+    const partialPublicSubmission = buildSubmission({
+      id: "submission-2",
+      updatedAt: "2026-06-18T10:00:00.000Z",
+      scopeProgress: {
+        requiredScopeIds: [
+          "school_achievements_learning_outcomes",
+          "key_performance_indicators",
+          "bmef",
+          "smea",
+        ],
+        submittedScopeIds: ["bmef", "smea"],
+      },
+    });
+
+    const fullResult = renderRequirementHook([buildRecord("validated")], [fullPublicSubmission]).result;
+    expect(fullResult.current.paginatedCompactSchoolRows[0].summary.submissionProgress?.label).toBe("Submitted 4/4");
+
+    const partialResult = renderRequirementHook([buildRecord("validated")], [partialPublicSubmission]).result;
+    expect(partialResult.current.paginatedCompactSchoolRows[0].summary.submissionProgress?.label).toBe("Submitted 2/4");
+  });
+
+  it("builds private submission progress from active FM-QAD scope counts", () => {
+    const privateSubmission = buildSubmission({
+      schoolType: "private",
+      school: {
+        id: "108323",
+        schoolCode: "108323",
+        name: "Abra Elementary School",
+        type: "private",
+      },
+      scopeProgress: {
+        requiredScopeIds: ["fm_qad_001", "fm_qad_002"],
+        submittedScopeIds: ["fm_qad_001"],
+      },
+    });
+    const privateRecord = buildRecord("validated", { type: "private" });
+    const { result } = renderRequirementHook([privateRecord], [privateSubmission]);
+
+    expect(result.current.paginatedCompactSchoolRows[0].summary.submissionProgress?.label).toBe("Submitted 1/2");
   });
 
   it("normalizes school sector and level values used by monitor school filters", () => {

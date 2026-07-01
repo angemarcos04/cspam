@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import type { MonitorSchoolRecordsListRow, MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
+import type { MonitorSchoolRecordsListRow, MonitorSchoolRequirementSummary, SubmissionProgressBadge } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type {
   MonitorTopNavigatorId,
   QueueLane,
@@ -8,8 +8,8 @@ import type {
   SchoolQuickPreset,
   SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
-import { resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
-import type { SchoolRecord, SchoolStatus } from "@/types";
+import { getSubmissionUploadedFileTypes, resolveSubmissionRequirementProfile } from "@/utils/submissionRequirements";
+import type { IndicatorSubmission, SchoolRecord, SchoolStatus } from "@/types";
 import {
   isAwaitingReview,
   isPassedToMonitor,
@@ -25,6 +25,86 @@ import {
 } from "@/pages/monitor/monitorRequirementRules";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
+
+const PUBLIC_SUBMISSION_UNIT_IDS = [
+  "school_achievements_learning_outcomes",
+  "key_performance_indicators",
+  "bmef",
+  "smea",
+] as const;
+
+function normalizeProgressUnitId(value: string | null | undefined): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function submissionTimestamp(submission: Pick<IndicatorSubmission, "updatedAt" | "submittedAt" | "createdAt">): number {
+  return Math.max(
+    new Date(submission.updatedAt ?? 0).getTime() || 0,
+    new Date(submission.submittedAt ?? 0).getTime() || 0,
+    new Date(submission.createdAt ?? 0).getTime() || 0,
+  );
+}
+
+function buildSubmissionProgressBadge(
+  schoolType: string | null | undefined,
+  submission: IndicatorSubmission | null | undefined,
+  fallbackStatus: string | null | undefined,
+): SubmissionProgressBadge {
+  const profile = resolveSubmissionRequirementProfile(schoolType);
+  const submittedScopeIds = new Set((submission?.scopeProgress?.submittedScopeIds ?? []).map(normalizeProgressUnitId));
+  const requiredScopeIds = (submission?.scopeProgress?.requiredScopeIds ?? []).map(normalizeProgressUnitId).filter(Boolean);
+  const requiredUnits = profile.schoolType === "public"
+    ? [...PUBLIC_SUBMISSION_UNIT_IDS]
+    : requiredScopeIds.length > 0
+      ? requiredScopeIds
+      : profile.requiredFileTypes;
+  const total = Math.max(1, requiredUnits.length);
+  const uploadedFileTypes = new Set(getSubmissionUploadedFileTypes(submission).map(normalizeProgressUnitId));
+
+  let submitted = 0;
+  let usedDetailedProgress = false;
+
+  const hasUnitSubmissionSignals = uploadedFileTypes.size > 0 || submittedScopeIds.size > 0;
+
+  if (hasUnitSubmissionSignals) {
+    usedDetailedProgress = true;
+    submitted = requiredUnits.reduce((count, unit) => {
+      const normalizedUnit = normalizeProgressUnitId(unit);
+      return count + (submittedScopeIds.has(normalizedUnit) || uploadedFileTypes.has(normalizedUnit) ? 1 : 0);
+    }, 0);
+  } else if (
+    typeof submission?.scopeProgress?.submittedRequiredScopeCount === "number" &&
+    typeof submission.scopeProgress.totalRequiredScopeCount === "number" &&
+    submission.scopeProgress.totalRequiredScopeCount > 0
+  ) {
+    usedDetailedProgress = true;
+    submitted = Math.min(total, Math.max(0, submission.scopeProgress.submittedRequiredScopeCount));
+  } else if (requiredScopeIds.length > 0) {
+    usedDetailedProgress = true;
+  } else if (isPassedToMonitor(normalizeMonitorPackageStatus(fallbackStatus))) {
+    // TODO: Remove this conservative fallback once school rows always receive per-unit scope/file progress.
+    submitted = Math.min(1, total);
+  }
+
+  const safeSubmitted = Math.min(total, Math.max(0, submitted));
+  const tone = safeSubmitted === 0
+    ? "border border-slate-300 bg-slate-100 text-slate-700"
+    : safeSubmitted >= total
+      ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+      : "border border-amber-200 bg-amber-50 text-amber-700";
+  const label = `Submitted ${safeSubmitted}/${total}`;
+  const title = usedDetailedProgress
+    ? `${safeSubmitted} out of ${total} requirements have been submitted.`
+    : `${safeSubmitted} out of ${total} requirements have been submitted. Detailed per-unit progress is unavailable for this row.`;
+
+  return {
+    submitted: safeSubmitted,
+    total,
+    label,
+    title,
+    tone,
+  };
+}
 
 export interface SchoolCategoryCounts {
   total: number;
@@ -192,6 +272,7 @@ export function buildMonitorRequirementSummaryState(
 interface UseMonitorRequirementDataArgs {
   records: SchoolRecord[];
   scopedRecords: SchoolRecord[];
+  allSubmissions?: IndicatorSubmission[];
   scopedSchoolKeys: Set<string> | null;
   selectedSchoolScopeKey: string;
   hasSelectedSchoolScope: boolean;
@@ -278,6 +359,7 @@ function buildRecordBySchoolKey(records: SchoolRecord[]): Map<string, SchoolReco
 export function useMonitorRequirementData({
   records,
   scopedRecords,
+  allSubmissions = [],
   scopedSchoolKeys,
   selectedSchoolScopeKey,
   hasSelectedSchoolScope,
@@ -298,6 +380,22 @@ export function useMonitorRequirementData({
   allSchoolScopeKey,
   requirementFilterOptions,
 }: UseMonitorRequirementDataArgs): UseMonitorRequirementDataResult {
+  const latestSubmissionBySchoolKey = useMemo(() => {
+    const map = new Map<string, IndicatorSubmission>();
+
+    for (const submission of allSubmissions) {
+      const key = normalizeSchoolKey(submission.school?.schoolCode ?? submission.schoolId ?? null, submission.school?.name ?? null);
+      if (key === "unknown") continue;
+
+      const existing = map.get(key);
+      if (!existing || submissionTimestamp(submission) >= submissionTimestamp(existing)) {
+        map.set(key, submission);
+      }
+    }
+
+    return map;
+  }, [allSubmissions]);
+
   const schoolRequirementRows = useMemo<SchoolRequirementSummary[]>(() => {
     const rows = new Map<string, SchoolRequirementSummary>();
 
@@ -334,6 +432,7 @@ export function useMonitorRequirementData({
           isComplete: false,
           awaitingReviewCount: 0,
           missingCount: 2,
+          submissionProgress: buildSubmissionProgressBadge("public", null, null),
           lastActivityAt: null,
           lastActivityTime: 0,
           hasReminderRecipient: false,
@@ -385,6 +484,7 @@ export function useMonitorRequirementData({
       setLastActivity(row, record.lastUpdated);
 
       const indicatorLatest = record.indicatorLatest ?? null;
+      const latestSubmission = latestSubmissionBySchoolKey.get(row.schoolKey) ?? null;
       const summaryState = buildMonitorRequirementSummaryState(record, true);
       row.packageSchoolType = summaryState.packageSchoolType;
       row.requirementModeLabel = summaryState.requirementModeLabel;
@@ -395,8 +495,12 @@ export function useMonitorRequirementData({
       row.missingCount = summaryState.missingCount;
       row.hasAnySubmitted = summaryState.hasAnySubmitted;
       row.isComplete = summaryState.isComplete;
+      row.submissionProgress = buildSubmissionProgressBadge(record.type, latestSubmission, indicatorLatest?.status ?? null);
       if (indicatorLatest) {
         setLastActivity(row, indicatorLatest.updatedAt, indicatorLatest.submittedAt, indicatorLatest.createdAt);
+      }
+      if (latestSubmission) {
+        setLastActivity(row, latestSubmission.updatedAt, latestSubmission.submittedAt, latestSubmission.createdAt);
       }
     }
 
@@ -412,6 +516,7 @@ export function useMonitorRequirementData({
           isComplete: row.isComplete,
           awaitingReviewCount: row.awaitingReviewCount,
           missingCount: row.missingCount,
+          submissionProgress: row.submissionProgress,
         };
 
         return {
@@ -420,7 +525,7 @@ export function useMonitorRequirementData({
         };
       })
       .sort((a, b) => a.schoolName.localeCompare(b.schoolName));
-  }, [records]);
+  }, [latestSubmissionBySchoolKey, records]);
 
   const scopedRequirementRows = useMemo(() => {
     if (!scopedSchoolKeys) {

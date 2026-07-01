@@ -919,13 +919,14 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
   });
 
-  it("labels the Schools card status pill as school status to avoid account-state ambiguity", async () => {
+  it("labels the Schools card status pill with only the operational status", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
 
-    const schoolStatusPills = await screen.findAllByRole("button", { name: "School Active" });
+    const schoolStatusPills = await screen.findAllByRole("button", { name: "Active" });
     expect(schoolStatusPills.length).toBeGreaterThan(0);
+    expect(screen.queryByRole("button", { name: "School Active" })).toBeNull();
   });
 
   it("creates a school from Add School without automatically returning to Schools", async () => {

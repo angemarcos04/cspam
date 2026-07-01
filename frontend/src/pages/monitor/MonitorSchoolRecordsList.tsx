@@ -3,6 +3,14 @@ import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardCon
 import type { SchoolQuickPreset, RequirementFilter } from "@/pages/monitor/monitorFilters";
 import type { SchoolRecord, SchoolReminderSummary, SchoolStatus } from "@/types";
 
+export interface SubmissionProgressBadge {
+  submitted: number;
+  total: number;
+  label: string;
+  title: string;
+  tone: string;
+}
+
 export interface MonitorSchoolRequirementSummary {
   schoolKey: string;
   schoolCode: string;
@@ -21,6 +29,7 @@ export interface MonitorSchoolRequirementSummary {
   isComplete: boolean;
   awaitingReviewCount: number;
   missingCount: number;
+  submissionProgress?: SubmissionProgressBadge;
   lastActivityAt: string | null;
   lastActivityTime: number;
   hasReminderRecipient?: boolean;
@@ -157,18 +166,17 @@ export function MonitorSchoolRecordsList({
           const rowTone = isUrgentRequirement(summary) ? urgencyRowTone(summary) : "bg-white";
           const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
           const statusPillPressed = statusFilter === rowStatus;
-          const schoolStatusLabel = `School ${statusLabel(rowStatus)}`;
+          const schoolStatusLabel = rowStatus === "inactive" ? "Suspended" : statusLabel(rowStatus);
+          const submissionProgress = summary.submissionProgress ?? {
+            submitted: summary.hasAnySubmitted ? 1 : 0,
+            total: Math.max(1, summary.missingCount + (summary.hasAnySubmitted ? 1 : 0)),
+            label: `Submitted ${summary.hasAnySubmitted ? 1 : 0}/${Math.max(1, summary.missingCount + (summary.hasAnySubmitted ? 1 : 0))}`,
+            title: "Submission progress is based on available row summary data.",
+            tone: summary.hasAnySubmitted
+              ? "border border-amber-200 bg-amber-50 text-amber-700"
+              : "border border-slate-300 bg-slate-100 text-slate-700",
+          };
           const queuePill = (() => {
-            if (!summary.hasComplianceRecord && !summary.hasAnySubmitted) {
-              return {
-                label: "Not submitted",
-                title: "Click to filter preset: Not submitted",
-                pressed: schoolQuickPreset === "no_submission",
-                onClick: () => onToggleSchoolQuickPreset("no_submission"),
-                className: "border border-slate-300 bg-slate-100 text-slate-700",
-              };
-            }
-
             if (summary.indicatorStatus === "returned") {
               return {
                 label: "Returned",
@@ -181,7 +189,7 @@ export function MonitorSchoolRecordsList({
 
             if (summary.awaitingReviewCount > 0) {
               return {
-                label: `For review ${summary.awaitingReviewCount}`,
+                label: "For Review",
                 title: "Click to filter queue: For review",
                 pressed: requirementFilter === "waiting",
                 onClick: () => onToggleRequirementFilter("waiting"),
@@ -189,22 +197,21 @@ export function MonitorSchoolRecordsList({
               };
             }
 
-            if (summary.missingCount > 0) {
+            if (!summary.hasComplianceRecord && !summary.hasAnySubmitted) {
               return {
-                label: `Incomplete ${summary.missingCount}`,
-                title: "Click to filter queue: Not submitted",
-                pressed: requirementFilter === "missing",
-                onClick: () => onToggleRequirementFilter("missing"),
-                className: "border border-rose-200 bg-rose-50 text-rose-700",
+                ...submissionProgress,
+                title: `${submissionProgress.title} Click to filter preset: Not submitted`,
+                pressed: schoolQuickPreset === "no_submission",
+                onClick: () => onToggleSchoolQuickPreset("no_submission"),
+                className: submissionProgress.tone,
               };
             }
 
             return {
-              label: "OK",
-              title: "No missing/returned/for-review items.",
+              ...submissionProgress,
               pressed: false,
               onClick: null as (() => void) | null,
-              className: "border border-emerald-200 bg-emerald-50 text-emerald-700",
+              className: submissionProgress.tone,
             };
           })();
 
@@ -240,33 +247,32 @@ export function MonitorSchoolRecordsList({
                     >
                       {schoolStatusLabel}
                     </button>
-                    {queuePill.label !== "OK" &&
-                      (queuePill.onClick ? (
-                        <button
-                          type="button"
-                          title={`${queuePill.title} (Shift+click to open in Inbox)`}
-                          aria-pressed={queuePill.pressed}
-                          onClick={(event) => {
-                            if (event.shiftKey) {
-                              onReviewSchool(summary);
-                              return;
-                            }
-                            queuePill.onClick?.();
-                          }}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
-                            queuePill.pressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
-                          } ${queuePill.className}`}
-                        >
-                          {queuePill.label}
-                        </button>
-                      ) : (
-                        <span
-                          title={queuePill.title}
-                          className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePill.className}`}
-                        >
-                          {queuePill.label}
-                        </span>
-                      ))}
+                    {queuePill.onClick ? (
+                      <button
+                        type="button"
+                        title={`${queuePill.title} (Shift+click to open in Inbox)`}
+                        aria-pressed={queuePill.pressed}
+                        onClick={(event) => {
+                          if (event.shiftKey) {
+                            onReviewSchool(summary);
+                            return;
+                          }
+                          queuePill.onClick?.();
+                        }}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold transition hover:opacity-95 ${
+                          queuePill.pressed ? "ring-2 ring-primary-200 ring-offset-1" : ""
+                        } ${queuePill.className}`}
+                      >
+                        {queuePill.label}
+                      </button>
+                    ) : (
+                      <span
+                        title={queuePill.title}
+                        className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${queuePill.className}`}
+                      >
+                        {queuePill.label}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 sm:shrink-0 sm:self-start">

@@ -478,6 +478,7 @@ export function MonitorDashboard() {
   } = useMonitorRequirementData({
     records: recordsWithReviewStatusOverrides,
     scopedRecords,
+    allSubmissions,
     scopedSchoolKeys,
     selectedSchoolScopeKey,
     hasSelectedSchoolScope: Boolean(selectedSchoolScope),
