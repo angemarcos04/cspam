@@ -41,7 +41,7 @@ return [
         'submissions' => [
             'driver' => 'local',
             'root' => env('CSPAMS_SUBMISSION_STORAGE_PATH', storage_path('app/private')),
-            'throw' => false,
+            'throw' => true,
             'report' => false,
         ],
 

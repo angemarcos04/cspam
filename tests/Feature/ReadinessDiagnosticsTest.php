@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class ReadinessDiagnosticsTest extends TestCase
@@ -38,6 +39,8 @@ class ReadinessDiagnosticsTest extends TestCase
         config()->set('mail.default', 'resend');
         config()->set('mail.from.address', 'monitor@example.test');
         config()->set('services.resend.key', 'secret-resend-key');
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
 
         $response = $this->getJson('/api/ops/readiness?token=diagnostic-token')
             ->assertOk()
@@ -77,7 +80,11 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.mail.resendKeyConfigured', true)
             ->assertJsonPath('checks.monitorMfa.enabled', true)
             ->assertJsonPath('checks.monitorMfa.deliveryMode', 'queued')
-            ->assertJsonPath('checks.schoolReminders.deliveryMode', 'queued');
+            ->assertJsonPath('checks.schoolReminders.deliveryMode', 'queued')
+            ->assertJsonPath('checks.submissionStorage.status', 'ok')
+            ->assertJsonPath('checks.submissionStorage.diskConfigured', true)
+            ->assertJsonPath('checks.submissionStorage.diskName', 'submissions')
+            ->assertJsonPath('checks.submissionStorage.canWriteReadDelete', true);
 
         $this->assertIsBool($response->json('checks.tables.accountSetupTokens.exists'));
         $this->assertIsBool($response->json('checks.tables.notifications.exists'));
@@ -101,6 +108,7 @@ class ReadinessDiagnosticsTest extends TestCase
         $this->assertStringNotContainsString('secret-resend-key', $content);
         $this->assertStringNotContainsString('monitor@example.test', $content);
         $this->assertStringNotContainsString('diagnostic-token', $content);
+        $this->assertStringNotContainsString((string) storage_path(), $content);
         $this->assertStringNotContainsString('password', strtolower($content));
         $this->assertStringNotContainsString('token_hash', $content);
     }

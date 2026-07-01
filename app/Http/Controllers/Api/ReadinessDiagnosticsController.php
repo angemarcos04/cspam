@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Support\Domain\StudentRiskLevel;
 use App\Support\Domain\StudentStatus;
+use App\Support\Indicators\SubmissionFileStorage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Routing\Controller;
@@ -45,6 +46,7 @@ class ReadinessDiagnosticsController extends Controller
             'mail' => $this->mailSummary(),
             'monitorMfa' => $this->monitorMfaSummary(),
             'schoolReminders' => $this->schoolReminderSummary(),
+            'submissionStorage' => app(SubmissionFileStorage::class)->diagnostics(),
         ];
 
         return response()->json([

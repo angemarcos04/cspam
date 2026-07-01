@@ -45,6 +45,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -615,51 +616,87 @@ class IndicatorSubmissionController extends Controller
         }
 
         $existingPath = $this->filePathForType($submission, $fileType);
-        if ($this->submissionFilePathExists($existingPath)) {
-            $this->submissionFileDisk()->delete($existingPath);
-        }
 
         $extension = strtolower((string) $file->getClientOriginalExtension());
         $timestamp = now()->format('YmdHis');
         $filename = sprintf(
-            '%d_%d_%s_%s.%s',
+            '%d_%d_%s_%s_%s.%s',
             (int) $submission->school_id,
             (int) $submission->academic_year_id,
             $fileType,
             $timestamp,
+            Str::lower(Str::random(8)),
             $extension !== '' ? $extension : 'bin',
         );
-        $path = $file->storeAs('submissions', $filename, $this->submissionFileDiskName());
-        $sizeBytes = max(0, (int) $file->getSize());
-        $originalFilename = trim((string) $file->getClientOriginalName());
-
-        if ($fileType === 'bmef') {
-            $submission->forceFill([
-                'bmef_file_path' => $path,
-                'bmef_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
-                'bmef_uploaded_at' => now(),
-                'bmef_file_size' => $sizeBytes,
-            ])->save();
-        } elseif ($fileType === 'smea') {
-            $submission->forceFill([
-                'smea_file_path' => $path,
-                'smea_original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
-                'smea_uploaded_at' => now(),
-                'smea_file_size' => $sizeBytes,
-            ])->save();
-        } else {
-            $submission->submissionFiles()->updateOrCreate(
-                ['type' => $fileType],
-                [
-                    'path' => $path,
-                    'original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
-                    'size_bytes' => $sizeBytes,
-                    'uploaded_at' => now(),
-                ],
-            );
+        try {
+            $path = $file->storeAs('submissions', $filename, $this->submissionFileDiskName());
+        } catch (\Throwable) {
+            throw ValidationException::withMessages([
+                'file' => 'The uploaded file could not be persisted. Please try again or contact the administrator.',
+            ]);
         }
 
-        $this->removeSubmittedScopes($submission, [$fileType]);
+        if (! is_string($path) || trim($path) === '' || ! $this->submissionFilePathExists($path)) {
+            if (is_string($path) && trim($path) !== '' && $this->submissionFilePathExists($path)) {
+                $this->submissionFileDisk()->delete($path);
+            }
+
+            throw ValidationException::withMessages([
+                'file' => 'The uploaded file could not be persisted. Please try again or contact the administrator.',
+            ]);
+        }
+
+        $sizeBytes = max(0, (int) $file->getSize());
+        $originalFilename = trim((string) $file->getClientOriginalName());
+        $storedFilename = $originalFilename !== '' ? $originalFilename : $filename;
+        $uploadedAt = now();
+
+        try {
+            DB::transaction(function () use ($submission, $fileType, $path, $storedFilename, $sizeBytes, $uploadedAt): void {
+                if ($fileType === 'bmef') {
+                    $submission->forceFill([
+                        'bmef_file_path' => $path,
+                        'bmef_original_filename' => $storedFilename,
+                        'bmef_uploaded_at' => $uploadedAt,
+                        'bmef_file_size' => $sizeBytes,
+                    ])->save();
+                } elseif ($fileType === 'smea') {
+                    $submission->forceFill([
+                        'smea_file_path' => $path,
+                        'smea_original_filename' => $storedFilename,
+                        'smea_uploaded_at' => $uploadedAt,
+                        'smea_file_size' => $sizeBytes,
+                    ])->save();
+                } else {
+                    $submission->submissionFiles()->updateOrCreate(
+                        ['type' => $fileType],
+                        [
+                            'path' => $path,
+                            'original_filename' => $storedFilename,
+                            'size_bytes' => $sizeBytes,
+                            'uploaded_at' => $uploadedAt,
+                        ],
+                    );
+                }
+
+                $this->removeSubmittedScopes($submission, [$fileType]);
+            });
+        } catch (\Throwable $error) {
+            if ($this->submissionFilePathExists($path)) {
+                $this->submissionFileDisk()->delete($path);
+            }
+
+            throw $error;
+        }
+
+        if (
+            is_string($existingPath)
+            && trim($existingPath) !== ''
+            && $existingPath !== $path
+            && $this->submissionFilePathExists($existingPath)
+        ) {
+            $this->submissionFileDisk()->delete($existingPath);
+        }
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -674,7 +711,7 @@ class IndicatorSubmissionController extends Controller
             metadata: [
                 'type' => $fileType,
                 'path' => $path,
-                'filename' => $originalFilename !== '' ? $originalFilename : $filename,
+                'filename' => $storedFilename,
                 'size_bytes' => $sizeBytes,
                 'touchedScopes' => [$fileType],
             ],
@@ -686,7 +723,7 @@ class IndicatorSubmissionController extends Controller
             'scope_id' => $fileType,
             'scope_type' => 'file',
             'file_type' => $fileType,
-            'original_filename' => $originalFilename !== '' ? $originalFilename : $filename,
+            'original_filename' => $storedFilename,
             'file_size_bytes' => $sizeBytes,
         ]);
 

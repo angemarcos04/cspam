@@ -124,13 +124,25 @@ CSPAMS_SUBMISSION_FILE_DISK=submissions
 CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions
 ```
 
-Do not hardcode the path in code. The `submissions` disk reads this mount from the environment. After changing either setting, restart or redeploy the backend and run:
+Do not hardcode the path in code. The `submissions` disk reads this mount from the environment. The path must match the actual Render persistent disk mount. If the persistent disk is not mounted at `/var/data/cspams-submissions`, uploaded files cannot survive backend restarts.
+
+After changing either setting, restart or redeploy the backend and run:
 
 ```bash
 php artisan optimize:clear
+php artisan config:clear
+php artisan cache:clear
 ```
 
-If CSPAMS shows uploaded file metadata but preview/download is disabled with a storage-missing message, the database metadata is present but the physical file is missing from the configured disk. Check the Render persistent disk mount, `CSPAMS_SUBMISSION_STORAGE_PATH`, and whether files were removed outside CSPAMS.
+With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.status: ok`, `diskName: submissions`, and `canWriteReadDelete: true`:
+
+```bash
+curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+```
+
+Smoke-test persistence after deploy: upload a report file, preview/download it, restart or redeploy the backend, then preview/download the same file again. If CSPAMS shows uploaded file metadata but preview/download is disabled with a storage-missing message, the database metadata is present but the physical file is missing from the configured disk. Check the Render persistent disk mount, `CSPAMS_SUBMISSION_STORAGE_PATH`, and whether files were removed outside CSPAMS.
+
+Files already lost from ephemeral storage cannot be reconstructed from database metadata alone. Re-upload the file through the School Head workflow or restore the physical file from backup after persistent storage is fixed.
 
 ## Notification Center Runtime Check
 
