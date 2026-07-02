@@ -1387,6 +1387,9 @@ export function MonitorDashboard() {
               laneFilteredQueueRows={effectiveLaneFilteredQueueRows}
               schoolDrawerKey={schoolDrawerKey}
               remindingSchoolKey={remindingSchoolKey}
+              search={search}
+              onSearchChange={setSearch}
+              globalSearchInputRef={globalSearchInputRef}
               resetQueueFilters={resetQueueFilters}
               clearAllFilters={clearAllFilters}
               handleReviewSchool={handleReviewSchool}

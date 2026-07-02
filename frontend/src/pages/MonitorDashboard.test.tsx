@@ -1104,6 +1104,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByLabelText("Auto-open next school after review")).toBeNull();
 
     const globalSearch = screen.getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
+    expect(document.getElementById("monitor-requirements-table")?.contains(globalSearch)).toBe(true);
+    expect(globalSearch.closest(".dashboard-shell-visible")).toBeNull();
     fireEvent.change(globalSearch, { target: { value: "Santiago" } });
     expect(globalSearch.value).toBe("Santiago");
 

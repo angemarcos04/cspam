@@ -1,8 +1,9 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type Ref, type SetStateAction } from "react";
 import {
   AlertCircle,
   BellRing,
   Eye,
+  Search,
 } from "lucide-react";
 import type { SchoolReminderSummary, SchoolStatus } from "@/types";
 import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
@@ -36,6 +37,9 @@ interface MonitorReviewsSectionProps {
   laneFilteredQueueRows: ReviewQueueRow[];
   schoolDrawerKey: string | null;
   remindingSchoolKey: string | null;
+  search: string;
+  onSearchChange: (value: string) => void;
+  globalSearchInputRef: Ref<HTMLInputElement>;
   resetQueueFilters: () => void;
   clearAllFilters: () => void;
   handleReviewSchool: (row: ReviewQueueRow) => void;
@@ -102,6 +106,9 @@ export function MonitorReviewsSection({
   laneFilteredQueueRows,
   schoolDrawerKey,
   remindingSchoolKey,
+  search,
+  onSearchChange,
+  globalSearchInputRef,
   resetQueueFilters,
   clearAllFilters,
   handleReviewSchool,
@@ -157,6 +164,20 @@ export function MonitorReviewsSection({
               <h2 className="text-base font-bold text-slate-900">Review Inbox</h2>
             </div>
           </div>
+        </div>
+
+        <div className="border-b border-slate-200 bg-white px-5 py-3">
+          <label className="relative block w-full lg:max-w-lg">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={globalSearchInputRef}
+              type="text"
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search school code, school name, or school head"
+              className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            />
+          </label>
         </div>
 
         {paginatedRequirementRows.length === 0 ? (
