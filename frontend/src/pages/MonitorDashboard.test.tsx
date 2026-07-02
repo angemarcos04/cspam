@@ -548,6 +548,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(schoolsSection).getByRole("button", { name: "Accounts" })).toBeTruthy();
     expect(within(schoolsSection).getByRole("button", { name: "More" })).toBeTruthy();
     expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
     const schoolsSearch = within(schoolsSection).getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
     expect(schoolsSection.contains(schoolsSearch)).toBe(true);
     expect(schoolsSearch.closest(".dashboard-shell-visible")).toBeNull();
@@ -1107,7 +1110,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(document.getElementById("monitor-action-queue")).toBeNull();
     expect(screen.queryByText("Needs Action")).toBeNull();
-    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Queue List" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Review Workspace" })).toBeNull();
     expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
@@ -1202,8 +1207,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const auditTrailSection = auditEvent.closest("#monitor-audit-trail") as HTMLElement;
     expect(auditTrailSection).toBeTruthy();
     expect(screen.queryByPlaceholderText("Search school code, school name, or school head")).toBeNull();
-    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
-    expect(within(auditTrailSection).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
     expect(within(auditTrailSection).getByLabelText("Action")).toBeTruthy();
     expect(within(auditTrailSection).getByRole("option", { name: "All actions" })).toBeTruthy();
     expect(within(auditTrailSection).getByLabelText("From")).toBeTruthy();

@@ -61,7 +61,7 @@ describe("MonitorAuditTrail", () => {
     const { container } = render(<MonitorAuditTrail title="Audit Trail" description="" />);
 
     expect(screen.getByText("Audit Trail")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     expect(container.querySelector("p.mt-1.text-xs.text-slate-600")).toBeNull();
     await waitFor(() => {
       expect(apiRequest).toHaveBeenCalledWith(

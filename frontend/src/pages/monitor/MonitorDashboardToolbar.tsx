@@ -37,8 +37,8 @@ export function MonitorDashboardToolbar({
   const isAddSchoolScreen = activeTopNavigator === "add_school";
   const isReviewsScreen = activeTopNavigator === "reviews";
   const isAuditScreen = activeTopNavigator === "audit";
-  const showPrimaryAction = !isSchoolsScreen && !isAddSchoolScreen && !isReviewsScreen;
-  const showFilterToggle = !isAddSchoolScreen;
+  const showPrimaryAction = !isSchoolsScreen && !isAddSchoolScreen && !isReviewsScreen && !isAuditScreen;
+  const showFilterToggle = !isSchoolsScreen && !isAddSchoolScreen && !isReviewsScreen && !isAuditScreen;
   const showToolbarMetaPanel = activeTopNavigator !== "schools" && !isAddSchoolScreen && !isReviewsScreen && !isAuditScreen;
 
   return (

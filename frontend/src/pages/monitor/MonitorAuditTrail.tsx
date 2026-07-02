@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import { apiRequest, COOKIE_SESSION_TOKEN, messageForApiError } from "@/lib/api";
 import type { CspamsRealtimePayload } from "@/lib/realtime";
@@ -251,15 +250,6 @@ export function AuditTrailPanel({
             <p className="mt-1 text-[11px] text-slate-500">Loaded {formatDateTime(lastLoadedAt)}</p>
           )}
         </div>
-        <button
-          type="button"
-          onClick={() => void loadAuditTrail()}
-          disabled={isLoading}
-          className="inline-flex items-center gap-2 rounded-sm border border-primary-200 bg-white px-3 py-2 text-xs font-semibold text-primary-700 transition hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
-          Refresh
-        </button>
       </div>
 
       {!compact && (
