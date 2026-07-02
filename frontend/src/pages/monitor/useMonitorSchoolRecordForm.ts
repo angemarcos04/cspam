@@ -5,13 +5,13 @@ import type {
   MonitorSchoolRecordFormProps,
   MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
-import { coverageTokensToStoredLevel, parseSchoolCoverage } from "@/pages/monitor/schoolLevelLabels";
+import { normalizeSchoolCoverageForSubmit } from "@/pages/monitor/schoolLevelLabels";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
 
 const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
   schoolId: "",
   schoolName: "",
-  level: "Elementary",
+  level: "",
   type: "public",
   district: "",
   region: "",
@@ -47,7 +47,7 @@ function extractApiValidationErrors(payload: unknown): Record<string, string> {
 }
 
 function normalizeSchoolLevel(value: string): string {
-  return coverageTokensToStoredLevel(parseSchoolCoverage(value).tokens);
+  return normalizeSchoolCoverageForSubmit(value) ?? "";
 }
 
 interface UseMonitorSchoolRecordFormOptions {

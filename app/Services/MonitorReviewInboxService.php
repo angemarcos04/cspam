@@ -485,15 +485,16 @@ class MonitorReviewInboxService
             $counts['total']++;
             $sector = $this->normalizeSchoolType($row['schoolType'] ?? null);
             $coverage = SchoolCoverage::parse($row['schoolLevel'] ?? null);
+            $hasValidExplicitCoverage = $coverage['unknownLabel'] === null && ! $coverage['legacyHighSchool'];
             if ($sector === 'public') {
                 $counts['public']++;
-                if (in_array('elementary', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('elementary', $coverage['tokens'], true)) {
                     $counts['publicElementary']++;
                 }
-                if (in_array('junior_high', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('junior_high', $coverage['tokens'], true)) {
                     $counts['publicJuniorHigh']++;
                 }
-                if (in_array('senior_high', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('senior_high', $coverage['tokens'], true)) {
                     $counts['publicSeniorHigh']++;
                 }
                 if ($coverage['legacyHighSchool'] && $coverage['tokens'] === []) {
@@ -502,13 +503,13 @@ class MonitorReviewInboxService
             }
             if ($sector === 'private') {
                 $counts['private']++;
-                if (in_array('elementary', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('elementary', $coverage['tokens'], true)) {
                     $counts['privateElementary']++;
                 }
-                if (in_array('junior_high', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('junior_high', $coverage['tokens'], true)) {
                     $counts['privateJuniorHigh']++;
                 }
-                if (in_array('senior_high', $coverage['tokens'], true)) {
+                if ($hasValidExplicitCoverage && in_array('senior_high', $coverage['tokens'], true)) {
                     $counts['privateSeniorHigh']++;
                 }
                 if ($coverage['legacyHighSchool'] && $coverage['tokens'] === []) {

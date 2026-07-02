@@ -62,10 +62,16 @@ final class SchoolCoverage
     public static function normalize(mixed $value): ?string
     {
         $parsed = self::parse($value);
+        if ($parsed['unknownLabel'] !== null) {
+            return null;
+        }
+        if ($parsed['legacyHighSchool'] && $parsed['tokens'] !== []) {
+            return null;
+        }
         if ($parsed['tokens'] !== []) {
             return self::tokensToStoredLevel($parsed['tokens']);
         }
-        if ($parsed['legacyHighSchool'] && $parsed['unknownLabel'] === null) {
+        if ($parsed['legacyHighSchool']) {
             return 'High School';
         }
 
@@ -91,6 +97,9 @@ final class SchoolCoverage
     public static function hasToken(mixed $value, string $token): bool
     {
         $parsed = self::parse($value);
+        if ($parsed['unknownLabel'] !== null || $parsed['legacyHighSchool']) {
+            return false;
+        }
 
         return in_array($token, $parsed['tokens'], true);
     }

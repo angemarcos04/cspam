@@ -944,6 +944,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.change(await screen.findByLabelText("School Code"), { target: { value: "955570" } });
     fireEvent.change(screen.getByLabelText("School Name"), { target: { value: "Imported No Account School" } });
+    fireEvent.click(screen.getByLabelText("Elementary"));
     fireEvent.change(screen.getByLabelText("Address"), { target: { value: "Main Road, Santiago City" } });
     fireEvent.change(screen.getByLabelText("Account Name"), { target: { value: "New School Head" } });
     fireEvent.change(screen.getByLabelText("Account Email"), { target: { value: "head@example.com" } });
@@ -953,6 +954,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(addRecordMock).toHaveBeenCalledWith(expect.objectContaining({
         schoolId: "955570",
         schoolName: "Imported No Account School",
+        level: "Elementary",
         address: "Main Road, Santiago City",
         schoolHeadAccount: {
           name: "New School Head",

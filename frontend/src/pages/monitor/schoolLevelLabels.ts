@@ -109,6 +109,9 @@ export function formatSchoolCoverageLabel(value: string | null | undefined): str
   if (!raw) return "N/A";
 
   const parsed = parseSchoolCoverage(raw);
+  if (parsed.unknownLabel || (parsed.legacyHighSchool && parsed.tokens.length > 0)) {
+    return titleCaseLabel(normalizeSchoolCoverageText(raw));
+  }
   if (parsed.tokens.length > 0) {
     return coverageTokensToStoredLevel(parsed.tokens);
   }
@@ -128,11 +131,32 @@ export function isLegacyHighSchoolCoverage(value: string | null | undefined): bo
 }
 
 export function hasSchoolCoverageToken(value: string | null | undefined, token: SchoolCoverageToken): boolean {
-  return parseSchoolCoverage(value).tokens.includes(token);
+  const parsed = parseSchoolCoverage(value);
+  if (parsed.unknownLabel || parsed.legacyHighSchool) {
+    return false;
+  }
+
+  return parsed.tokens.includes(token);
+}
+
+export function normalizeSchoolCoverageForSubmit(value: string | null | undefined): string | null {
+  const parsed = parseSchoolCoverage(value);
+  if (parsed.unknownLabel || (parsed.legacyHighSchool && parsed.tokens.length > 0)) {
+    return null;
+  }
+  if (parsed.tokens.length > 0) {
+    return coverageTokensToStoredLevel(parsed.tokens);
+  }
+  if (parsed.legacyHighSchool) {
+    return "High School";
+  }
+
+  return null;
 }
 
 export function normalizeSchoolLevelToken(value: string | null | undefined): SchoolLevelToken {
   const parsed = parseSchoolCoverage(value);
+  if (parsed.unknownLabel || (parsed.legacyHighSchool && parsed.tokens.length > 0)) return "unknown";
   if (parsed.tokens.length === 1) return parsed.tokens[0];
   if (parsed.legacyHighSchool) return "high_school";
   return "unknown";

@@ -6,6 +6,7 @@ import {
   formatSchoolLevelLabel,
   hasSchoolCoverageToken,
   isLegacyHighSchoolCoverage,
+  normalizeSchoolCoverageForSubmit,
   normalizeSchoolLevelToken,
   parseSchoolCoverage,
 } from "@/pages/monitor/schoolLevelLabels";
@@ -32,6 +33,7 @@ describe("schoolLevelLabels", () => {
 
   it("formats and stores coverage using canonical labels", () => {
     expect(coverageTokensToStoredLevel(["senior_high", "elementary"])).toBe("Elementary / Senior High");
+    expect(coverageTokensToStoredLevel(["junior_high", "senior_high"])).toBe("Junior High / Senior High");
     expect(formatSchoolCoverageLabel("Elementary / Junior High / SHS")).toBe("Elementary / Junior High / Senior High");
     expect(formatSchoolCoverageLabel(null)).toBe("N/A");
     expect(formatSchoolLevelLabel("Junior High")).toBe("Junior High");
@@ -50,7 +52,21 @@ describe("schoolLevelLabels", () => {
   it("flags empty and unknown coverage safely", () => {
     expect(parseSchoolCoverage("").tokens).toEqual([]);
     expect(parseSchoolCoverage("integrated").unknownLabel).toBe("integrated");
+    expect(parseSchoolCoverage("Elementary / Integrated").unknownLabel).toBe("Integrated");
     expect(formatSchoolCoverageLabel("integrated school")).toBe("Integrated School");
     expect(normalizeSchoolLevelToken("integrated")).toBe("unknown");
+  });
+
+  it("rejects submit normalization for unknown mixed coverage and mixed legacy coverage", () => {
+    expect(normalizeSchoolCoverageForSubmit("Elementary / Integrated")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Junior High / Unknown")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("High School / Junior High")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Secondary / Senior High")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Unknown")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Senior High / Elementary")).toBe("Elementary / Senior High");
+    expect(normalizeSchoolCoverageForSubmit("High School")).toBe("High School");
+    expect(parseSchoolCoverage("High School / Junior High").legacyHighSchool).toBe(true);
+    expect(hasSchoolCoverageToken("High School / Junior High", "junior_high")).toBe(false);
+    expect(normalizeSchoolLevelToken("High School / Junior High")).toBe("unknown");
   });
 });

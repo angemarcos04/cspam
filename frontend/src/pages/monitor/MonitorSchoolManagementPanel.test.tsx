@@ -171,4 +171,24 @@ describe("MonitorSchoolManagementPanel", () => {
       );
     });
   });
+
+  it("rejects empty coverage when editing a non-legacy record", async () => {
+    const updateRecord = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MonitorSchoolManagementPanel
+        record={{ ...buildRecord("active"), level: "Elementary" }}
+        isSaving={false}
+        updateRecord={updateRecord}
+        onToast={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit School Details" }));
+    fireEvent.click(screen.getByLabelText("Elementary"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    expect(await screen.findByText("School coverage is required.")).toBeTruthy();
+    expect(updateRecord).not.toHaveBeenCalled();
+  });
 });

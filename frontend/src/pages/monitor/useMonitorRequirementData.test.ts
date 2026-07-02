@@ -388,6 +388,8 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(normalizeSchoolLevel("High School")).toBe("high_school");
     expect(normalizeSchoolLevel("secondary")).toBe("high_school");
     expect(normalizeSchoolLevel("Junior High / Senior High")).toBeNull();
+    expect(normalizeSchoolLevel("Elementary / Integrated")).toBeNull();
+    expect(normalizeSchoolLevel("High School / Junior High")).toBeNull();
     expect(normalizeSchoolLevel("integrated")).toBeNull();
   });
 
@@ -397,14 +399,16 @@ describe("buildMonitorRequirementSummaryState", () => {
       { type: "public", level: "Junior High / Senior High" },
       { type: "Private", level: "Secondary" },
       { type: "private", level: "Elementary / Senior High" },
+      { type: "public", level: "Elementary / Integrated" },
+      { type: "private", level: "High School / Junior High" },
       { type: "private", level: null },
       { type: null, level: "Elementary" },
     ]);
 
     expect(counts).toEqual({
-      total: 6,
-      public: 2,
-      private: 3,
+      total: 8,
+      public: 3,
+      private: 4,
       publicElementary: 1,
       publicJuniorHigh: 1,
       publicSeniorHigh: 1,
@@ -420,6 +424,8 @@ describe("buildMonitorRequirementSummaryState", () => {
     const publicElementary = { type: "public", level: "Elementary" };
     const privateSecondary = { type: "Private", level: "Junior High / Senior High" };
     const legacyHighSchool = { type: "Private", level: "Secondary" };
+    const unknownMixed = { type: "public", level: "Elementary / Integrated" };
+    const legacyMixed = { type: "private", level: "High School / Junior High" };
     const unknown = { type: null, level: null };
 
     expect(matchesSchoolCategoryFilter(publicElementary, "public", "elementary")).toBe(true);
@@ -428,6 +434,9 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(matchesSchoolCategoryFilter(privateSecondary, "private", "senior_high")).toBe(true);
     expect(matchesSchoolCategoryFilter(privateSecondary, "public", "all")).toBe(false);
     expect(matchesSchoolCategoryFilter(legacyHighSchool, "private", "legacy_high_school")).toBe(true);
+    expect(matchesSchoolCategoryFilter(unknownMixed, "public", "elementary")).toBe(false);
+    expect(matchesSchoolCategoryFilter(legacyMixed, "private", "junior_high")).toBe(false);
+    expect(matchesSchoolCategoryFilter(legacyMixed, "private", "legacy_high_school")).toBe(false);
     expect(matchesSchoolCategoryFilter(unknown, "all", "all")).toBe(true);
     expect(matchesSchoolCategoryFilter(unknown, "public", "all")).toBe(false);
   });

@@ -158,6 +158,10 @@ export function normalizeSchoolSector(value: string | null | undefined): Exclude
 export function normalizeSchoolLevel(value: string | null | undefined): Exclude<SchoolLevelFilter, "all"> | null {
   const parsed = parseSchoolCoverage(value);
 
+  if (parsed.unknownLabel || (parsed.legacyHighSchool && parsed.tokens.length > 0)) {
+    return null;
+  }
+
   if (parsed.tokens.length === 1) {
     return parsed.tokens[0];
   }
@@ -207,20 +211,21 @@ export function buildSchoolCategoryCounts(records: Iterable<Pick<SchoolRecord, "
 
     const sector = normalizeSchoolSector(record.type);
     const parsed = parseSchoolCoverage(record.level);
+    const hasValidExplicitCoverage = !parsed.unknownLabel && !parsed.legacyHighSchool;
 
     if (sector === "public") {
       counts.public += 1;
-      if (parsed.tokens.includes("elementary")) counts.publicElementary += 1;
-      if (parsed.tokens.includes("junior_high")) counts.publicJuniorHigh += 1;
-      if (parsed.tokens.includes("senior_high")) counts.publicSeniorHigh += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("elementary")) counts.publicElementary += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("junior_high")) counts.publicJuniorHigh += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("senior_high")) counts.publicSeniorHigh += 1;
       if (parsed.legacyHighSchool && parsed.tokens.length === 0) counts.publicLegacyHighSchool += 1;
     }
 
     if (sector === "private") {
       counts.private += 1;
-      if (parsed.tokens.includes("elementary")) counts.privateElementary += 1;
-      if (parsed.tokens.includes("junior_high")) counts.privateJuniorHigh += 1;
-      if (parsed.tokens.includes("senior_high")) counts.privateSeniorHigh += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("elementary")) counts.privateElementary += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("junior_high")) counts.privateJuniorHigh += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("senior_high")) counts.privateSeniorHigh += 1;
       if (parsed.legacyHighSchool && parsed.tokens.length === 0) counts.privateLegacyHighSchool += 1;
     }
   }

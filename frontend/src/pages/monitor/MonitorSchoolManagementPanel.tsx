@@ -7,7 +7,7 @@ import {
   formatSchoolCoverageLabel,
   hasSchoolCoverageToken,
   isLegacyHighSchoolCoverage,
-  parseSchoolCoverage,
+  normalizeSchoolCoverageForSubmit,
   SCHOOL_COVERAGE_OPTIONS,
   type SchoolCoverageToken,
 } from "@/pages/monitor/schoolLevelLabels";
@@ -69,12 +69,12 @@ function buildFormState(record: SchoolRecord | null): SchoolManagementFormState 
 
 function buildBasePayload(record: SchoolRecord, form: SchoolManagementFormState, coverageTouched: boolean): SchoolRecordPayload {
   const originalLegacyLevel = isLegacyHighSchoolCoverage(record.level);
-  const normalizedCoverage = coverageTokensToStoredLevel(parseSchoolCoverage(form.level).tokens);
+  const normalizedCoverage = normalizeSchoolCoverageForSubmit(form.level);
 
   return {
     schoolId: record.schoolCode ?? record.schoolId ?? "",
     schoolName: form.schoolName.trim(),
-    level: originalLegacyLevel && !coverageTouched ? "High School" : normalizedCoverage,
+    level: originalLegacyLevel && !coverageTouched ? "High School" : (normalizedCoverage ?? ""),
     type: form.type,
     address: form.address.trim(),
     district: form.district.trim() || null,
@@ -152,7 +152,7 @@ export function MonitorSchoolManagementPanel({
     }
 
     const shouldPreserveLegacyCoverage = isLegacyHighSchoolCoverage(record.level) && !coverageTouched;
-    if (!shouldPreserveLegacyCoverage && parseSchoolCoverage(form.level).tokens.length === 0) {
+    if (!shouldPreserveLegacyCoverage && !normalizeSchoolCoverageForSubmit(form.level)) {
       setFormError("School coverage is required.");
       return;
     }

@@ -148,6 +148,46 @@ class SchoolRecordBulkImportTest extends TestCase
         $this->assertSame('Elementary / Junior High', School::query()->where('school_code', '955565')->firstOrFail()->level);
     }
 
+    public function test_bulk_import_rejects_invalid_mixed_school_coverage_values(): void
+    {
+        $this->seed();
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955566',
+                    'schoolName' => 'Invalid Unknown Coverage',
+                    'level' => 'Elementary / Integrated',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955567',
+                    'schoolName' => 'Invalid Unknown Junior Coverage',
+                    'level' => 'Junior High / Unknown',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955568',
+                    'schoolName' => 'Invalid Legacy Junior Coverage',
+                    'level' => 'High School / Junior High',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955569',
+                    'schoolName' => 'Invalid Legacy Senior Coverage',
+                    'level' => 'Secondary / Senior High',
+                ]),
+            ],
+        ]);
+
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonValidationErrors([
+                'rows.0.level',
+                'rows.1.level',
+                'rows.2.level',
+                'rows.3.level',
+            ]);
+    }
+
     public function test_bulk_import_updates_existing_school_without_overwriting_counts(): void
     {
         $this->seed();

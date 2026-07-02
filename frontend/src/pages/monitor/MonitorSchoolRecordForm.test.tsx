@@ -14,7 +14,7 @@ function buildProps(overrides: Partial<MonitorSchoolRecordFormProps> = {}): Moni
     recordForm: {
       schoolId: "",
       schoolName: "",
-      level: "Elementary",
+      level: "",
       type: "public",
       district: "",
       region: "",
@@ -52,7 +52,7 @@ describe("MonitorSchoolRecordForm", () => {
           recordForm: {
             schoolId: "",
             schoolName: "",
-            level: "Elementary",
+            level: "",
             type: "private",
             district: "",
             region: "",
@@ -84,9 +84,9 @@ describe("MonitorSchoolRecordForm", () => {
 
     expect(screen.getByText("School Coverage")).toBeTruthy();
     expect(screen.queryByLabelText("Level")).toBeNull();
-    expect(screen.getByLabelText("Elementary")).toBeTruthy();
-    expect(screen.getByLabelText("Junior High")).toBeTruthy();
-    expect(screen.getByLabelText("Senior High")).toBeTruthy();
+    expect((screen.getByLabelText("Elementary") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText("Junior High") as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText("Senior High") as HTMLInputElement).checked).toBe(false);
   });
 
   it("updates the level field with canonical school coverage values", () => {
@@ -115,5 +115,27 @@ describe("MonitorSchoolRecordForm", () => {
     fireEvent.click(screen.getByLabelText("Senior High"));
 
     expect(onFieldChange).toHaveBeenCalledWith("level", "Junior High / Senior High");
+  });
+
+  it("selects junior high and senior high from an empty coverage state", () => {
+    const onFieldChange = vi.fn();
+    const props = buildProps({ onFieldChange });
+    const { rerender } = render(<MonitorSchoolRecordForm {...props} />);
+
+    fireEvent.click(screen.getByLabelText("Junior High"));
+    expect(onFieldChange).toHaveBeenLastCalledWith("level", "Junior High");
+
+    rerender(
+      <MonitorSchoolRecordForm
+        {...props}
+        recordForm={{
+          ...props.recordForm,
+          level: "Junior High",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByLabelText("Senior High"));
+    expect(onFieldChange).toHaveBeenLastCalledWith("level", "Junior High / Senior High");
   });
 });
