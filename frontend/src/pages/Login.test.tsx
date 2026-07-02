@@ -198,6 +198,68 @@ describe("Login", () => {
     });
   });
 
+  it("resends monitor MFA codes with the existing login API and replaces the challenge", async () => {
+    authState.login
+      .mockResolvedValueOnce({
+        status: "mfa_required",
+        challengeId: "11111111-1111-4111-8111-111111111111",
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+        login: "cspamsmonitor@gmail.com",
+        delivery: "sent",
+        deliveryMessage: "A verification code was sent to your email.",
+      })
+      .mockResolvedValueOnce({
+        status: "mfa_required",
+        challengeId: "33333333-3333-4333-8333-333333333333",
+        expiresAt: new Date(Date.now() + 600000).toISOString(),
+        login: "cspamsmonitor@gmail.com",
+        delivery: "sent",
+        deliveryMessage: "A new verification code was sent to your email.",
+      });
+    authState.verifyMfa.mockResolvedValueOnce(undefined);
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    const codeInput = await screen.findByLabelText("Verification Code");
+    fireEvent.change(codeInput, { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "Resend code" }));
+
+    await waitFor(() => {
+      expect(authState.login).toHaveBeenCalledTimes(2);
+    });
+    expect(authState.login).toHaveBeenLastCalledWith({
+      role: "monitor",
+      login: "cspamsmonitor@gmail.com",
+      password: "Demo@123456",
+    });
+    expect((codeInput as HTMLInputElement).value).toBe("");
+    expect(await screen.findByText("New verification code sent.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Resend code in 60s" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText(/Can't complete MFA/i)).toBeNull();
+    expect(screen.queryByRole("link", { name: /request recovery/i })).toBeNull();
+
+    fireEvent.change(codeInput, { target: { value: "654321" } });
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    await waitFor(() => {
+      expect(authState.verifyMfa).toHaveBeenCalledWith({
+        role: "monitor",
+        login: "cspamsmonitor@gmail.com",
+        challengeId: "33333333-3333-4333-8333-333333333333",
+        code: "654321",
+      });
+    });
+  });
+
   it("formats alphanumeric MFA backup codes as XXXX-XXXX", async () => {
     authState.login.mockResolvedValueOnce({
       status: "mfa_required",

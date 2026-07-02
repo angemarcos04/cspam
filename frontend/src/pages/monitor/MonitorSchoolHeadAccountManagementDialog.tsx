@@ -32,16 +32,18 @@ function accountStatusLabel(
     return "Temp Password Active";
   }
 
-  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
-  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (!status) return "No Account";
   const normalized = status.toLowerCase();
+  const normalizedLifecycleState = String(lifecycleState ?? "").toLowerCase();
+  if (normalized === "pending_verification" || normalizedLifecycleState === "pending_verification") return "Activation Needed";
+  if (normalized === "locked" || normalized === "archived" || normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") {
+    return "Suspended";
+  }
+  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
+  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (normalized === "active") return "Active";
   if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "pending_verification") return "Pending Verification";
   if (normalized === "suspended") return "Suspended";
-  if (normalized === "locked") return "Locked";
-  if (normalized === "archived") return "Archived";
   return status;
 }
 
@@ -58,7 +60,7 @@ function temporaryPasswordSummary(account: SchoolRecord["schoolHeadAccount"]): s
 
 function shouldShowResetLinkAction(status: string | null | undefined): boolean {
   const normalized = String(status ?? "").toLowerCase();
-  return normalized === "active" || normalized === "locked";
+  return normalized === "active";
 }
 
 function ManagementSection({ title, children }: { title: string; children: ReactNode }): ReactElement {

@@ -42,9 +42,8 @@ function formatAccountStatus(status: string | null | undefined): string {
   if (normalized === "active") return "Active";
   if (normalized === "suspended") return "Suspended";
   if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "pending_verification") return "Pending Verification";
-  if (normalized === "locked") return "Locked";
-  if (normalized === "archived") return "Archived";
+  if (normalized === "pending_verification") return "Activation Needed";
+  if (normalized === "locked" || normalized === "archived") return "Suspended";
   if (normalized === "temporary_password_active") return "Temporary Password Active";
   if (normalized === "temporary_password_expired") return "Temporary Password Expired";
 

@@ -95,7 +95,7 @@ export interface SchoolHeadAccountSummary {
 }
 
 export interface SchoolHeadAccountStatusUpdatePayload {
-  accountStatus?: "active" | "suspended" | "locked" | "archived";
+  accountStatus?: "active" | "suspended";
   flagged?: boolean;
   deleteRecordFlagged?: boolean;
   reason: string;

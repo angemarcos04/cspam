@@ -87,9 +87,12 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.getByRole("heading", { name: "School Head Account Management" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Active/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Activation Needed/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Suspended/i })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Needs account/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Temporary password active/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Locked/i })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Archived/i })).toBeNull();
     expect(screen.queryByText(/Showing \d+ of \d+ schools/i)).toBeNull();
     expect(screen.queryByRole("button", { name: "Open batch delete flagged schools" })).toBeNull();
   });
@@ -453,6 +456,8 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(pendingRow).not.toBeUndefined();
     expect(activeRow).not.toBeUndefined();
     expect(lockedRow).not.toBeUndefined();
+    expect(within(lockedRow!).getByText("Suspended")).not.toBeNull();
+    expect(within(lockedRow!).queryByText("Locked")).toBeNull();
     expect(within(pendingRow!).getByText("Setup link")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Manage Account" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
@@ -954,7 +959,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(within(row!).queryByText(/Approved/i)).toBeNull();
   });
 
-  it("separates no-account rows from pending-setup rows in the status filter", () => {
+  it("filters activation-needed and suspended account rows with legacy suspended fallbacks", () => {
     const noAccountRecord: SchoolRecord = {
       id: "school-10",
       schoolId: "901010",
@@ -975,21 +980,21 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       indicatorLatest: null,
     };
 
-    const pendingSetupRecord: SchoolRecord = {
+    const activationNeededRecord: SchoolRecord = {
       ...noAccountRecord,
       id: "school-11",
       schoolId: "901011",
       schoolCode: "901011",
-      schoolName: "Pending Setup School",
+      schoolName: "Activation Needed School",
       schoolHeadAccount: {
         id: "account-11",
-        name: "Pending User",
-        email: "pending@cspams.local",
-        accountStatus: "pending_setup",
+        name: "Activation User",
+        email: "activation@cspams.local",
+        accountStatus: "pending_verification",
         mustResetPassword: false,
-        lifecycleState: "pending_setup",
-        lifecycleStateLabel: "Pending setup",
-        recommendedAction: "send_setup_link",
+        lifecycleState: "pending_verification",
+        lifecycleStateLabel: "Pending Verification",
+        recommendedAction: "activate_account",
         emailVerifiedAt: null,
         verifiedAt: null,
         verifiedByUserId: null,
@@ -1006,6 +1011,40 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         deleteRecordFlagged: false,
         deleteRecordFlaggedAt: null,
         deleteRecordReason: null,
+      },
+    };
+
+    const suspendedRecord: SchoolRecord = {
+      ...activationNeededRecord,
+      id: "school-12",
+      schoolId: "901012",
+      schoolCode: "901012",
+      schoolName: "Suspended School",
+      schoolHeadAccount: {
+        ...activationNeededRecord.schoolHeadAccount!,
+        id: "account-12",
+        email: "suspended@cspams.local",
+        accountStatus: "suspended",
+        lifecycleState: "suspended",
+        lifecycleStateLabel: "Suspended",
+        recommendedAction: "none",
+      },
+    };
+
+    const legacyLockedRecord: SchoolRecord = {
+      ...activationNeededRecord,
+      id: "school-13",
+      schoolId: "901013",
+      schoolCode: "901013",
+      schoolName: "Legacy Locked School",
+      schoolHeadAccount: {
+        ...activationNeededRecord.schoolHeadAccount!,
+        id: "account-13",
+        email: "locked@cspams.local",
+        accountStatus: "locked",
+        lifecycleState: "locked",
+        lifecycleStateLabel: "Locked",
+        recommendedAction: "none",
       },
     };
 
@@ -1036,7 +1075,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         summary: {
           schoolKey: "school-11",
           schoolCode: "901011",
-          schoolName: "Pending Setup School",
+          schoolName: "Activation Needed School",
           region: "Region II",
           schoolStatus: "active",
           packageSchoolType: "public",
@@ -1052,13 +1091,59 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           lastActivityAt: null,
           lastActivityTime: 0,
         },
-        record: pendingSetupRecord,
+        record: activationNeededRecord,
+      },
+      {
+        summary: {
+          schoolKey: "school-12",
+          schoolCode: "901012",
+          schoolName: "Suspended School",
+          region: "Region II",
+          schoolStatus: "active",
+          packageSchoolType: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasActivePackageSubmission: false,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 1,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: suspendedRecord,
+      },
+      {
+        summary: {
+          schoolKey: "school-13",
+          schoolCode: "901013",
+          schoolName: "Legacy Locked School",
+          region: "Region II",
+          schoolStatus: "active",
+          packageSchoolType: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasActivePackageSubmission: false,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 1,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: legacyLockedRecord,
       },
     ];
 
     const recordBySchoolKey = new Map<string, SchoolRecord>([
       ["school-10", noAccountRecord],
-      ["school-11", pendingSetupRecord],
+      ["school-11", activationNeededRecord],
+      ["school-12", suspendedRecord],
+      ["school-13", legacyLockedRecord],
     ]);
 
     const { result } = renderHook(() =>
@@ -1089,14 +1174,17 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(panelProps).not.toBeNull();
 
     act(() => {
-      panelProps!.onStatusFilterChange("no_account");
+      panelProps!.onStatusFilterChange("pending_verification");
     });
-    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["No Account School"]);
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Activation Needed School"]);
 
     act(() => {
-      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("pending_setup");
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("suspended");
     });
-    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Pending Setup School"]);
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Legacy Locked School",
+      "Suspended School",
+    ]);
   });
 
   it("uses all school records for account management instead of the filtered compact rows", () => {
@@ -1198,18 +1286,15 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     );
 
     act(() => {
-      result.current.openSchoolHeadAccountsPanelWithStatus("no_account");
+      result.current.openSchoolHeadAccountsPanelWithStatus("active");
     });
 
     expect(result.current.schoolHeadAccountsPanelProps?.totalCount).toBe(2);
-    expect(result.current.schoolHeadAccountsPanelProps?.statusFilter).toBe("all");
-    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
-      "Filtered Out No Account School",
-      "Visible Account School",
-    ]);
+    expect(result.current.schoolHeadAccountsPanelProps?.statusFilter).toBe("active");
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Visible Account School"]);
   });
 
-  it("prioritizes blocked active lifecycle states ahead of active-ready accounts and filters them directly", () => {
+  it("prioritizes blocked active lifecycle states ahead of active-ready accounts", () => {
     const expiredTempRecord: SchoolRecord = {
       id: "school-20",
       schoolId: "902020",
@@ -1349,20 +1434,6 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       "Expired Temp Password School",
       "Password Reset School",
       "Active Ready School",
-    ]);
-
-    act(() => {
-      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("temporary_password_expired");
-    });
-    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
-      "Expired Temp Password School",
-    ]);
-
-    act(() => {
-      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("password_reset_required");
-    });
-    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
-      "Password Reset School",
     ]);
   });
 

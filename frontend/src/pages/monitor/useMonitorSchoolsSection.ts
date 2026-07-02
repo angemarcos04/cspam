@@ -89,7 +89,7 @@ interface UseMonitorSchoolsSectionOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password",
+    targetStatus: "suspended" | "deleted" | "password_reset" | "email_change" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
@@ -260,7 +260,7 @@ export function useMonitorSchoolsSection({
 
   const reviewMissingSchoolHeadAccounts = useCallback(() => {
     closeActionsMenu();
-    schoolHeadAccountsApi.openSchoolHeadAccountsPanelWithStatus("no_account");
+    schoolHeadAccountsApi.openSchoolHeadAccountsPanelWithStatus();
   }, [closeActionsMenu, schoolHeadAccountsApi]);
 
   const bulkImportApi = useMonitorSchoolBulkImport({

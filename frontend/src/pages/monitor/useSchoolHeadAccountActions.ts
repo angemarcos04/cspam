@@ -71,7 +71,7 @@ interface UseSchoolHeadAccountActionsOptions {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password",
+    targetStatus: "suspended" | "deleted" | "password_reset" | "email_change" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
@@ -146,9 +146,9 @@ function normalizeActionVerificationCode(value: string): string {
   return value.replace(/\D/g, "").slice(0, 6);
 }
 
-function isDeactivationStatus(value: unknown): value is "suspended" | "locked" | "archived" {
+function isDeactivationStatus(value: unknown): value is "suspended" {
   const normalized = String(value ?? "").toLowerCase();
-  return normalized === "suspended" || normalized === "locked" || normalized === "archived";
+  return normalized === "suspended";
 }
 
 function requiresReason(action: PendingAccountAction | null): boolean {
@@ -181,13 +181,13 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
 
 function verificationTargetForAction(
   action: PendingAccountAction | null,
-): "suspended" | "locked" | "archived" | "deleted" | "password_reset" | "email_change" | "temporary_password" | null {
+): "suspended" | "deleted" | "password_reset" | "email_change" | "temporary_password" | null {
   if (!action) {
     return null;
   }
 
   if (action.kind === "status" && isDeactivationStatus(action.update.accountStatus)) {
-    return String(action.update.accountStatus).toLowerCase() as "suspended" | "locked" | "archived";
+    return "suspended";
   }
 
   if (action.kind === "reset_password") {

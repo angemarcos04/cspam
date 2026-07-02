@@ -92,6 +92,9 @@ export function Login() {
   const [showPasscode, setShowPasscode] = useState(false);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isResendingMfa, setIsResendingMfa] = useState(false);
+  const [resendCooldownSeconds, setResendCooldownSeconds] = useState(0);
+  const [resendMessage, setResendMessage] = useState("");
   const isMfaChallengeActive = pendingMfa !== null;
 
   const roleMeta = ROLE_META[activeRole];
@@ -114,6 +117,9 @@ export function Login() {
   const clearMfaState = () => {
     setPendingMfa(null);
     setMfaCode("");
+    setIsResendingMfa(false);
+    setResendCooldownSeconds(0);
+    setResendMessage("");
   };
 
   useEffect(() => {
@@ -141,6 +147,62 @@ export function Login() {
 
     setError(authError);
   }, [accountStatus, authError, authErrorCode]);
+
+  useEffect(() => {
+    if (!pendingMfa || resendCooldownSeconds <= 0) {
+      return;
+    }
+
+    const timerId = window.setTimeout(() => {
+      setResendCooldownSeconds((current) => Math.max(0, current - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timerId);
+  }, [pendingMfa, resendCooldownSeconds]);
+
+  const handleResendMfaCode = async () => {
+    if (!pendingMfa || isResendingMfa || resendCooldownSeconds > 0) {
+      return;
+    }
+
+    setIsResendingMfa(true);
+    setResendMessage("");
+    setError("");
+    clearAuthError();
+
+    try {
+      const result = await login({
+        role: "monitor",
+        login: pendingMfa.login,
+        password,
+      });
+
+      if (result.status === "mfa_required") {
+        setPendingMfa({
+          challengeId: result.challengeId,
+          expiresAt: result.expiresAt,
+          login: pendingMfa.login,
+          delivery: result.delivery,
+          deliveryMessage: result.deliveryMessage,
+        });
+        setMfaCode("");
+        setResendMessage("New verification code sent.");
+        setResendCooldownSeconds(60);
+      }
+    } catch (err) {
+      if (isApiError(err)) {
+        if (err.status === 0) {
+          setError(`Unable to reach the CSPAMS API at ${describeApiOrigin()}. Check the deployed API URL and network access.`);
+        } else {
+          setError(messageForApiError(err, "Unable to send verification code. Please try again."));
+        }
+      } else {
+        setError("Unable to send verification code. Please try again.");
+      }
+    } finally {
+      setIsResendingMfa(false);
+    }
+  };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -468,6 +530,22 @@ export function Login() {
                     pendingMfa.deliveryMessage.trim().length > 0 && (
                       <p className="mt-2 text-xs font-semibold text-amber-700">{pendingMfa.deliveryMessage}</p>
                     )}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-slate-600">
+                    <span>Didn't get the code?</span>
+                    <button
+                      type="button"
+                      onClick={handleResendMfaCode}
+                      disabled={isBusy || isResendingMfa || resendCooldownSeconds > 0}
+                      className="font-semibold text-primary-700 transition hover:text-primary-800 disabled:cursor-not-allowed disabled:text-slate-500"
+                    >
+                      {isResendingMfa
+                        ? "Sending..."
+                        : resendCooldownSeconds > 0
+                          ? `Resend code in ${resendCooldownSeconds}s`
+                          : "Resend code"}
+                    </button>
+                  </div>
+                  {resendMessage && <p className="mt-2 text-xs font-semibold text-emerald-700">{resendMessage}</p>}
                 </div>
               )}
 

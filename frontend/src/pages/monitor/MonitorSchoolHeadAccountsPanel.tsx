@@ -15,16 +15,9 @@ import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions"
 
 export type SchoolHeadAccountsStatusFilter =
   | "all"
-  | "no_account"
-  | "temporary_password_active"
-  | "password_reset_required"
-  | "pending_setup"
   | "pending_verification"
-  | "temporary_password_expired"
   | "active"
-  | "suspended"
-  | "locked"
-  | "archived";
+  | "suspended";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -64,16 +57,18 @@ function accountStatusLabel(
     return "Temp Password Active";
   }
 
-  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
-  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (!status) return "No Account";
   const normalized = status.toLowerCase();
+  const normalizedLifecycleState = String(lifecycleState ?? "").toLowerCase();
+  if (normalized === "pending_verification" || normalizedLifecycleState === "pending_verification") return "Activation Needed";
+  if (normalized === "locked" || normalized === "archived" || normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") {
+    return "Suspended";
+  }
+  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
+  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (normalized === "active") return "Active";
   if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "pending_verification") return "Pending Verification";
   if (normalized === "suspended") return "Suspended";
-  if (normalized === "locked") return "Locked";
-  if (normalized === "archived") return "Archived";
   return status;
 }
 
@@ -85,9 +80,8 @@ function accountStatusTone(status: string | null | undefined, lifecycleState: st
   const normalized = (status ?? "").toLowerCase();
   if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "pending_verification") return "bg-sky-50 text-sky-700 ring-1 ring-sky-200";
-  if (normalized === "suspended" || normalized === "locked") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if (normalized === "archived") return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
+  if (normalized === "pending_verification") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
+  if (normalized === "suspended" || normalized === "locked" || normalized === "archived") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
@@ -148,6 +142,7 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
 const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "active", label: "Active" },
+  { id: "pending_verification", label: "Activation Needed" },
   { id: "suspended", label: "Suspended" },
 ];
 const ACCOUNT_ACTION_MENU_WIDTH = 224;
@@ -373,6 +368,10 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
                   const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+                  const isSuspendedLikeAccount =
+                    normalizedAccountStatus === "suspended" ||
+                    normalizedAccountStatus === "locked" ||
+                    normalizedAccountStatus === "archived";
                   const verificationLabel = normalizedAccountStatus === "pending_setup"
                     ? ""
                     : normalizedAccountStatus === "pending_verification"
@@ -583,14 +582,14 @@ export function MonitorSchoolHeadAccountsPanel({
                                         actions.handleUpdateSchoolHeadAccount(
                                           resolvedRecord,
                                           {
-                                            accountStatus: normalizedAccountStatus === "suspended" ? "active" : "suspended",
+                                            accountStatus: isSuspendedLikeAccount ? "active" : "suspended",
                                           },
-                                          normalizedAccountStatus === "suspended" ? "Reactivate Account" : "Suspend Account",
+                                          isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account",
                                         );
                                       }}
                                       className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
                                     >
-                                      {normalizedAccountStatus === "suspended" ? "Reactivate Account" : "Suspend Account"}
+                                      {isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account"}
                                     </button>
                                     <button
                                       type="button"
