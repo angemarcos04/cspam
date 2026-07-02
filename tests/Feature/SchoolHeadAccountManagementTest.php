@@ -28,6 +28,54 @@ class SchoolHeadAccountManagementTest extends TestCase
     use InteractsWithSeededCredentials;
     use RefreshDatabase;
 
+    public function test_monitor_school_upsert_accepts_and_normalizes_school_coverage(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+            'schoolId' => '911110',
+            'schoolName' => 'Coverage Upsert School',
+            'level' => 'Senior High + Elementary',
+            'type' => 'public',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'address' => 'District Test, Region Test',
+            'studentCount' => 0,
+            'teacherCount' => 0,
+            'status' => 'active',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.level', 'Elementary / Senior High');
+
+        $school = School::query()->where('school_code', '911110')->firstOrFail();
+        $this->assertSame('Elementary / Senior High', $school->level);
+
+        $update = $this->withToken($monitorToken)->putJson("/api/dashboard/records/{$school->id}", [
+            'schoolId' => '911110',
+            'schoolName' => 'Coverage Upsert School',
+            'level' => 'jhs / shs',
+            'type' => 'public',
+            'address' => 'District Test, Region Test',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'status' => 'active',
+        ]);
+
+        $update->assertOk()
+            ->assertJsonPath('data.level', 'Junior High / Senior High');
+
+        $this->assertSame('Junior High / Senior High', $school->refresh()->level);
+    }
+
     public function test_monitor_can_create_school_head_with_temporary_password_and_required_first_login_reset(): void
     {
         $this->seed();

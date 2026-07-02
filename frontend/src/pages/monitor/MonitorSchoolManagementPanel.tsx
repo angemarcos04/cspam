@@ -3,9 +3,13 @@ import { Edit3 } from "lucide-react";
 import { messageForApiError } from "@/lib/api";
 import { monitorSchoolStatusLabel, resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
 import {
-  BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS,
-  coerceBackendSupportedSchoolLevel,
-  formatSchoolLevelLabel,
+  coverageTokensToStoredLevel,
+  formatSchoolCoverageLabel,
+  hasSchoolCoverageToken,
+  isLegacyHighSchoolCoverage,
+  parseSchoolCoverage,
+  SCHOOL_COVERAGE_OPTIONS,
+  type SchoolCoverageToken,
 } from "@/pages/monitor/schoolLevelLabels";
 import type { SchoolRecord, SchoolRecordPayload, SchoolStatus } from "@/types";
 
@@ -56,7 +60,7 @@ function formatSchoolType(type: string | null | undefined): "public" | "private"
 function buildFormState(record: SchoolRecord | null): SchoolManagementFormState {
   return {
     schoolName: record?.schoolName ?? "",
-    level: coerceBackendSupportedSchoolLevel(record?.level),
+    level: record?.level ?? "",
     type: formatSchoolType(record?.type),
     address: record?.address ?? "",
     district: record?.district ?? "",
@@ -64,11 +68,14 @@ function buildFormState(record: SchoolRecord | null): SchoolManagementFormState 
   };
 }
 
-function buildBasePayload(record: SchoolRecord, form: SchoolManagementFormState): SchoolRecordPayload {
+function buildBasePayload(record: SchoolRecord, form: SchoolManagementFormState, coverageTouched: boolean): SchoolRecordPayload {
+  const originalLegacyLevel = isLegacyHighSchoolCoverage(record.level);
+  const normalizedCoverage = coverageTokensToStoredLevel(parseSchoolCoverage(form.level).tokens);
+
   return {
     schoolId: record.schoolCode ?? record.schoolId ?? "",
     schoolName: form.schoolName.trim(),
-    level: coerceBackendSupportedSchoolLevel(form.level),
+    level: originalLegacyLevel && !coverageTouched ? "High School" : normalizedCoverage,
     type: form.type,
     address: form.address.trim(),
     district: form.district.trim() || null,
@@ -88,6 +95,7 @@ export function MonitorSchoolManagementPanel({
   const [formError, setFormError] = useState("");
   const [formMessage, setFormMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<"edit" | null>(null);
+  const [coverageTouched, setCoverageTouched] = useState(false);
 
   useEffect(() => {
     setForm(buildFormState(record));
@@ -95,6 +103,7 @@ export function MonitorSchoolManagementPanel({
     setFormError("");
     setFormMessage("");
     setPendingAction(null);
+    setCoverageTouched(false);
   }, [record?.id]);
 
   const schoolCode = String(record?.schoolCode ?? record?.schoolId ?? "").trim();
@@ -102,12 +111,29 @@ export function MonitorSchoolManagementPanel({
   const isBusy = isSaving || pendingAction !== null;
   const schoolHeadAccount = record?.schoolHeadAccount ?? null;
   const displayStatus = resolveMonitorSchoolDisplayStatus(record);
+  const isLegacyHighSchool = isLegacyHighSchoolCoverage(record?.level);
 
   const updateFormField = (field: keyof SchoolManagementFormState, value: string) => {
     setForm((current) => ({
       ...current,
       [field]: field === "type" ? formatSchoolType(value) : value,
     }));
+    setFormError("");
+    setFormMessage("");
+  };
+
+  const updateCoverageToken = (token: SchoolCoverageToken, checked: boolean) => {
+    setCoverageTouched(true);
+    setForm((current) => {
+      const nextTokens = SCHOOL_COVERAGE_OPTIONS
+        .map((option) => option.token)
+        .filter((currentToken) => (currentToken === token ? checked : hasSchoolCoverageToken(current.level, currentToken)));
+
+      return {
+        ...current,
+        level: coverageTokensToStoredLevel(nextTokens),
+      };
+    });
     setFormError("");
     setFormMessage("");
   };
@@ -126,11 +152,17 @@ export function MonitorSchoolManagementPanel({
       return;
     }
 
+    const shouldPreserveLegacyCoverage = isLegacyHighSchoolCoverage(record.level) && !coverageTouched;
+    if (!shouldPreserveLegacyCoverage && parseSchoolCoverage(form.level).tokens.length === 0) {
+      setFormError("School coverage is required.");
+      return;
+    }
+
     setPendingAction("edit");
     setFormError("");
     setFormMessage("");
     try {
-      await updateRecord(record.id, buildBasePayload(record, form));
+      await updateRecord(record.id, buildBasePayload(record, form, coverageTouched));
       setFormMessage("School details updated.");
       setIsEditing(false);
       onToast("School details updated.", "success");
@@ -164,6 +196,7 @@ export function MonitorSchoolManagementPanel({
                 setForm(buildFormState(record));
                 setFormError("");
                 setFormMessage("");
+                setCoverageTouched(false);
                 setIsEditing(true);
               }}
               disabled={isBusy}
@@ -186,8 +219,8 @@ export function MonitorSchoolManagementPanel({
               <dd className="text-sm font-semibold text-slate-900">{record.schoolName}</dd>
             </div>
             <div>
-              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Level</dt>
-              <dd className="text-sm text-slate-700">{formatSchoolLevelLabel(record.level)}</dd>
+              <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">School Coverage</dt>
+              <dd className="text-sm text-slate-700">{formatSchoolCoverageLabel(record.level)}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Type</dt>
@@ -226,21 +259,29 @@ export function MonitorSchoolManagementPanel({
                   className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-900"
                 />
               </label>
-              <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
-                Level
-                <select
-                  value={form.level}
-                  onChange={(event) => updateFormField("level", event.target.value)}
-                  className="mt-1 w-full rounded-sm border border-slate-300 px-3 py-2 text-sm text-slate-900"
-                >
-                  {/* Junior/Senior High options require backend validation support before they can be submitted. */}
-                  {BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
-                    <option key={levelOption} value={levelOption}>
-                      {levelOption}
-                    </option>
+              <fieldset className="rounded-sm border border-slate-300 px-3 py-2">
+                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+                  School Coverage
+                </legend>
+                <div className="mt-1 space-y-1.5">
+                  {SCHOOL_COVERAGE_OPTIONS.map((option) => (
+                    <label key={option.token} className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={hasSchoolCoverageToken(form.level, option.token)}
+                        onChange={(event) => updateCoverageToken(option.token, event.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
+                      />
+                      {option.label}
+                    </label>
                   ))}
-                </select>
-              </label>
+                </div>
+                {isLegacyHighSchool && !coverageTouched ? (
+                  <p className="mt-2 text-xs font-semibold text-amber-700">
+                    This record uses the old High School label. Select the actual coverage before saving changes.
+                  </p>
+                ) : null}
+              </fieldset>
               <label className="text-xs font-semibold uppercase tracking-wide text-slate-600">
                 Type
                 <select
@@ -286,6 +327,7 @@ export function MonitorSchoolManagementPanel({
                   setIsEditing(false);
                   setForm(buildFormState(record));
                   setFormError("");
+                  setCoverageTouched(false);
                 }}
                 disabled={isBusy}
                 className="rounded-sm border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"

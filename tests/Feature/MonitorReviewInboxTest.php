@@ -87,6 +87,22 @@ class MonitorReviewInboxTest extends TestCase
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.schoolName', 'Review Inbox API Waiting');
 
+        $coverageSchool = $this->createSchool($monitor, '955814', 'Review Inbox API Coverage', 'private', 'Junior High / Senior High', now());
+
+        $juniorHigh = $this->actingAs($monitor, 'sanctum')
+            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API%20Coverage&sector=private&level=junior_high');
+
+        $juniorHigh->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.schoolName', 'Review Inbox API Coverage');
+
+        $seniorHigh = $this->actingAs($monitor, 'sanctum')
+            ->getJson('/api/dashboard/review-inbox?school_id=' . $coverageSchool->id . '&level=senior_high');
+
+        $seniorHigh->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.schoolName', 'Review Inbox API Coverage');
+
         $schoolScoped = $this->actingAs($monitor, 'sanctum')
             ->getJson('/api/dashboard/review-inbox?school_id=' . $schools['missing']->id);
 
@@ -105,14 +121,14 @@ class MonitorReviewInboxTest extends TestCase
             ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id=' . $wrongYear->id);
 
         $yearScoped->assertOk()
-            ->assertJsonPath('meta.total', 4)
+            ->assertJsonPath('meta.total', 5)
             ->assertJsonPath('data.0.indicatorStatus', null);
 
         $currentYearScoped = $this->actingAs($monitor, 'sanctum')
             ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id=' . $academicYear->id);
 
         $currentYearScoped->assertOk()
-            ->assertJsonPath('meta.total', 4)
+            ->assertJsonPath('meta.total', 5)
             ->assertJsonPath('data.0.indicatorStatus', FormSubmissionStatus::RETURNED->value);
     }
 

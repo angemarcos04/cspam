@@ -7,6 +7,7 @@ import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError
 import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import { MonitorSchoolManagementPanel } from "@/pages/monitor/MonitorSchoolManagementPanel";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
+import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 import type {
   MonitorDrawerHistorySummary,
   MonitorDrawerPackageRow,
@@ -605,7 +606,7 @@ export function MonitorSchoolDrawer({
                   </div>
                 </div>
                 <p className="mt-2 text-[11px] text-slate-600">
-                  {schoolDetail.schoolCode} | {schoolDetail.level} | {schoolDetail.type}
+                  {schoolDetail.schoolCode} | {formatSchoolCoverageLabel(schoolDetail.level)} | {schoolDetail.type}
                 </p>
               </article>
 

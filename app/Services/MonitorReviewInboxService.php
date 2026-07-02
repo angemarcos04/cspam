@@ -6,6 +6,7 @@ use App\Models\IndicatorSubmission;
 use App\Models\School;
 use App\Models\User;
 use App\Support\Domain\FormSubmissionStatus;
+use App\Support\Schools\SchoolCoverage;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -307,7 +308,16 @@ class MonitorReviewInboxService
 
     private function matchesLevel(array $row, string $level): bool
     {
-        return $level === 'all' || $this->normalizeSchoolLevel($row['schoolLevel'] ?? null) === $level;
+        if ($level === 'all') {
+            return true;
+        }
+
+        $schoolLevel = $row['schoolLevel'] ?? null;
+        if ($level === 'legacy_high_school' || $level === 'high_school') {
+            return SchoolCoverage::isLegacyHighSchool($schoolLevel);
+        }
+
+        return SchoolCoverage::hasToken($schoolLevel, $level);
     }
 
     /**
@@ -462,31 +472,47 @@ class MonitorReviewInboxService
             'public' => 0,
             'private' => 0,
             'publicElementary' => 0,
-            'publicHighSchool' => 0,
+            'publicJuniorHigh' => 0,
+            'publicSeniorHigh' => 0,
+            'publicLegacyHighSchool' => 0,
             'privateElementary' => 0,
-            'privateHighSchool' => 0,
+            'privateJuniorHigh' => 0,
+            'privateSeniorHigh' => 0,
+            'privateLegacyHighSchool' => 0,
         ];
 
         foreach ($rows as $row) {
             $counts['total']++;
             $sector = $this->normalizeSchoolType($row['schoolType'] ?? null);
-            $level = $this->normalizeSchoolLevel($row['schoolLevel'] ?? null);
+            $coverage = SchoolCoverage::parse($row['schoolLevel'] ?? null);
             if ($sector === 'public') {
                 $counts['public']++;
-                if ($level === 'elementary') {
+                if (in_array('elementary', $coverage['tokens'], true)) {
                     $counts['publicElementary']++;
                 }
-                if ($level === 'high_school') {
-                    $counts['publicHighSchool']++;
+                if (in_array('junior_high', $coverage['tokens'], true)) {
+                    $counts['publicJuniorHigh']++;
+                }
+                if (in_array('senior_high', $coverage['tokens'], true)) {
+                    $counts['publicSeniorHigh']++;
+                }
+                if ($coverage['legacyHighSchool'] && $coverage['tokens'] === []) {
+                    $counts['publicLegacyHighSchool']++;
                 }
             }
             if ($sector === 'private') {
                 $counts['private']++;
-                if ($level === 'elementary') {
+                if (in_array('elementary', $coverage['tokens'], true)) {
                     $counts['privateElementary']++;
                 }
-                if ($level === 'high_school') {
-                    $counts['privateHighSchool']++;
+                if (in_array('junior_high', $coverage['tokens'], true)) {
+                    $counts['privateJuniorHigh']++;
+                }
+                if (in_array('senior_high', $coverage['tokens'], true)) {
+                    $counts['privateSeniorHigh']++;
+                }
+                if ($coverage['legacyHighSchool'] && $coverage['tokens'] === []) {
+                    $counts['privateLegacyHighSchool']++;
                 }
             }
         }
@@ -561,17 +587,6 @@ class MonitorReviewInboxService
         $normalized = strtolower(trim((string) $value));
 
         return $normalized === 'private' ? 'private' : 'public';
-    }
-
-    private function normalizeSchoolLevel(mixed $value): ?string
-    {
-        $normalized = preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', strtolower(trim((string) $value))));
-
-        return match ($normalized) {
-            'elementary' => 'elementary',
-            'high school', 'secondary' => 'high_school',
-            default => null,
-        };
     }
 
     private function latestTimestamp(?string ...$values): ?string

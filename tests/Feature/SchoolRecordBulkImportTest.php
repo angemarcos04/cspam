@@ -113,6 +113,41 @@ class SchoolRecordBulkImportTest extends TestCase
         $this->assertArrayNotHasKey('rows', $audit->metadata ?? []);
     }
 
+    public function test_bulk_import_accepts_canonical_and_alias_school_coverage_values(): void
+    {
+        $this->seed();
+
+        $token = $this->loginToken('monitor', 'cspamsmonitor@gmail.com');
+
+        $response = $this->withToken($token)->postJson('/api/dashboard/records/bulk-import', [
+            'rows' => [
+                $this->schoolRow([
+                    'schoolId' => '955563',
+                    'schoolName' => 'CSV Coverage Canonical',
+                    'level' => 'Senior High / Elementary',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955564',
+                    'schoolName' => 'CSV Coverage Alias',
+                    'level' => 'jhs + shs',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955565',
+                    'schoolName' => 'CSV Coverage Alternate Column',
+                    'level' => null,
+                    'schoolCoverage' => 'elem | junior high school',
+                ]),
+            ],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.created', 3);
+
+        $this->assertSame('Elementary / Senior High', School::query()->where('school_code', '955563')->firstOrFail()->level);
+        $this->assertSame('Junior High / Senior High', School::query()->where('school_code', '955564')->firstOrFail()->level);
+        $this->assertSame('Elementary / Junior High', School::query()->where('school_code', '955565')->firstOrFail()->level);
+    }
+
     public function test_bulk_import_updates_existing_school_without_overwriting_counts(): void
     {
         $this->seed();

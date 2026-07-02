@@ -5,6 +5,7 @@ namespace App\Http\Requests\Api;
 use App\Models\School;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\SchoolStatus;
+use App\Support\Schools\SchoolCoverage;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -34,18 +35,8 @@ class UpsertSchoolRecordRequest extends FormRequest
         }
 
         if ($this->has('level')) {
-            $normalizedLevel = $normalize($this->input('level'));
-            $normalizedLevelToken = $normalizedLevel !== null
-                ? strtolower(str_replace(['_', '-'], ' ', $normalizedLevel))
-                : null;
-
-            if ($normalizedLevelToken === 'elementary') {
-                $payload['level'] = 'Elementary';
-            } elseif (in_array($normalizedLevelToken, ['high school', 'secondary'], true)) {
-                $payload['level'] = 'High School';
-            } else {
-                $payload['level'] = $normalizedLevel;
-            }
+            $normalizedLevel = SchoolCoverage::normalize($this->input('level'));
+            $payload['level'] = $normalizedLevel ?? $normalize($this->input('level'));
         }
 
         if ($this->has('district')) {
@@ -109,7 +100,7 @@ class UpsertSchoolRecordRequest extends FormRequest
                 $schoolIdRule,
             ],
             'schoolName' => [$isMonitorStore ? 'required' : 'sometimes', 'string', 'max:255'],
-            'level' => [$isMonitorStore ? 'required' : 'sometimes', 'string', Rule::in(['Elementary', 'High School'])],
+            'level' => [$isMonitorStore ? 'required' : 'sometimes', 'string', Rule::in(SchoolCoverage::CANONICAL_VALUES)],
             'studentCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
             'teacherCount' => [$requiresOperationalFields ? 'required' : 'sometimes', 'integer', 'min:0'],
             'region' => ['sometimes', 'nullable', 'string', 'max:255'],

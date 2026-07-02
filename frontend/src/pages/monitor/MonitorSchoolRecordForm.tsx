@@ -1,7 +1,12 @@
 import type { FormEvent } from "react";
 import { Save } from "lucide-react";
 import type { SchoolHeadAccountProvisioningReceipt } from "@/types";
-import { BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS } from "@/pages/monitor/schoolLevelLabels";
+import {
+  coverageTokensToStoredLevel,
+  hasSchoolCoverageToken,
+  SCHOOL_COVERAGE_OPTIONS,
+  type SchoolCoverageToken,
+} from "@/pages/monitor/schoolLevelLabels";
 
 export interface MonitorSchoolRecordFormState {
   schoolId: string;
@@ -41,6 +46,14 @@ export interface MonitorSchoolRecordFormProps {
   onFieldChange: (field: MonitorSchoolRecordFormField, value: string) => void;
   onCreateSchoolHeadAccountChange: (checked: boolean) => void;
   onCopyTemporaryPassword: () => void | Promise<void>;
+}
+
+function toggleCoverageToken(currentLevel: string, token: SchoolCoverageToken, checked: boolean): string {
+  const nextTokens = SCHOOL_COVERAGE_OPTIONS
+    .map((option) => option.token)
+    .filter((currentToken) => (currentToken === token ? checked : hasSchoolCoverageToken(currentLevel, currentToken)));
+
+  return coverageTokensToStoredLevel(nextTokens);
 }
 
 export function MonitorSchoolRecordForm({
@@ -96,24 +109,28 @@ export function MonitorSchoolRecordForm({
           {recordFormErrors.schoolName && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.schoolName}</p>}
         </div>
         <div>
-          <label htmlFor="monitor-level" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-600">
-            Level
-          </label>
-          <select
-            id="monitor-level"
-            value={recordForm.level}
-            onChange={(event) => onFieldChange("level", event.target.value)}
-            className={`w-full rounded-sm border bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100 ${
+          <fieldset
+            className={`rounded-sm border bg-white px-3 py-2 ${
               recordFormErrors.level ? "border-primary-300" : "border-slate-200"
             }`}
           >
-            {/* Junior/Senior High options require backend validation support before they can be submitted. */}
-            {BACKEND_SUPPORTED_SCHOOL_LEVEL_OPTIONS.map((levelOption) => (
-              <option key={levelOption} value={levelOption}>
-                {levelOption}
-              </option>
-            ))}
-          </select>
+            <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-slate-600">
+              School Coverage
+            </legend>
+            <div className="mt-1 space-y-1.5">
+              {SCHOOL_COVERAGE_OPTIONS.map((option) => (
+                <label key={option.token} className="flex items-center gap-2 text-sm font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={hasSchoolCoverageToken(recordForm.level, option.token)}
+                    onChange={(event) => onFieldChange("level", toggleCoverageToken(recordForm.level, option.token, event.target.checked))}
+                    className="h-3.5 w-3.5 rounded border-slate-300 text-primary focus:ring-primary-100"
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
           {recordFormErrors.level && <p className="mt-1 text-[11px] font-medium text-primary-700">{recordFormErrors.level}</p>}
         </div>
         <div>

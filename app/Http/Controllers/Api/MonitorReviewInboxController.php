@@ -38,7 +38,7 @@ class MonitorReviewInboxController extends Controller
             'lane' => ['sometimes', 'nullable', 'string', Rule::in(['all', 'urgent', 'returned', 'for_review', 'waiting_data'])],
             'preset' => ['sometimes', 'nullable', 'string', Rule::in(['all', 'pending', 'missing', 'returned', 'no_submission'])],
             'sector' => ['sometimes', 'nullable', 'string', Rule::in(['all', 'public', 'private'])],
-            'level' => ['sometimes', 'nullable', 'string', Rule::in(['all', 'elementary', 'high_school'])],
+            'level' => ['sometimes', 'nullable', 'string', Rule::in(['all', 'elementary', 'junior_high', 'senior_high', 'legacy_high_school', 'high_school'])],
             'school_id' => ['sometimes', 'nullable', 'integer', 'min:1'],
             'date_from' => ['sometimes', 'nullable', 'date'],
             'date_to' => ['sometimes', 'nullable', 'date'],

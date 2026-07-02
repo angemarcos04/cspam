@@ -935,10 +935,12 @@ describe("resolveSchoolAdminHeaderContext", () => {
         schoolName: "Private Academy",
         schoolCode: "900123",
         address: "Santiago City, Isabela",
+        level: "Elementary / Junior High",
       },
       {
         schoolName: "Different Name",
         schoolCode: "111111",
+        schoolCoverage: "Senior High",
       } as never,
     );
 
@@ -946,6 +948,7 @@ describe("resolveSchoolAdminHeaderContext", () => {
       schoolName: "Private Academy",
       schoolCode: "900123",
       schoolAddress: "Santiago City, Isabela",
+      schoolCoverage: "Elementary / Junior High",
     });
   });
 
@@ -955,6 +958,7 @@ describe("resolveSchoolAdminHeaderContext", () => {
         schoolName: "Private Academy",
         schoolCode: "900123",
         address: null,
+        level: null,
       } as never,
       {
         schoolName: "Private Academy",
@@ -963,6 +967,7 @@ describe("resolveSchoolAdminHeaderContext", () => {
     );
 
     expect(result.schoolAddress).toBe("N/A");
+    expect(result.schoolCoverage).toBe("N/A");
   });
 
   it("uses the authenticated assigned-school address as a safe fallback when records are not ready yet", () => {
@@ -972,10 +977,12 @@ describe("resolveSchoolAdminHeaderContext", () => {
         schoolName: "Private Academy",
         schoolCode: "900123",
         schoolAddress: "Santiago City, Isabela",
+        schoolCoverage: "Junior High / Senior High",
       } as never,
     );
 
     expect(result.schoolAddress).toBe("Santiago City, Isabela");
+    expect(result.schoolCoverage).toBe("Junior High / Senior High");
   });
 });
 

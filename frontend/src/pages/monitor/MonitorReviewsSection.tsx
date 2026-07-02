@@ -5,7 +5,7 @@ import {
   Eye,
 } from "lucide-react";
 import type { SchoolReminderSummary, SchoolStatus } from "@/types";
-import { formatSchoolLevelLabel } from "@/pages/monitor/schoolLevelLabels";
+import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 
 interface ReviewQueueRow {
   schoolKey: string;
@@ -207,7 +207,7 @@ export function MonitorReviewsSection({
                   </div>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
                     <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
-                      Level: {formatSchoolLevelLabel(row.schoolLevel)}
+                      Coverage: {formatSchoolCoverageLabel(row.schoolLevel)}
                     </span>
                     <span className="inline-flex rounded-full bg-slate-100 px-2 py-0.5 font-semibold text-slate-700">
                       Type: {formatSchoolType(row)}
@@ -247,7 +247,7 @@ export function MonitorReviewsSection({
                   <tr className="border-b border-slate-200 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
                     <th className="px-2 py-2 text-left">School</th>
                     <th className="px-2 py-2 text-left">Location</th>
-                    <th className="px-2 py-2 text-left">Level</th>
+                    <th className="px-2 py-2 text-left">Coverage</th>
                     <th className="px-2 py-2 text-left">Type</th>
                     <th className="px-2 py-2 text-center">Status</th>
                     <th className="px-2 py-2 text-left">Last Activity</th>
@@ -275,7 +275,7 @@ export function MonitorReviewsSection({
                         )}
                       </td>
                       <td className="px-2 py-2 text-sm text-slate-700">{row.region}</td>
-                      <td className="px-2 py-2 text-sm text-slate-700">{formatSchoolLevelLabel(row.schoolLevel)}</td>
+                      <td className="px-2 py-2 text-sm text-slate-700">{formatSchoolCoverageLabel(row.schoolLevel)}</td>
                       <td className="px-2 py-2 text-sm text-slate-700">{formatSchoolType(row)}</td>
                       <td className="px-2 py-2 text-center">
                         <div className="flex flex-col items-center gap-1">

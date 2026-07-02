@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Api;
 
+use App\Support\Schools\SchoolCoverage;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -31,16 +32,8 @@ class BulkImportSchoolRecordsRequest extends FormRequest
                     return $row;
                 }
 
-                $normalizedLevel = $normalize($row['level'] ?? null);
-                $normalizedLevelToken = $normalizedLevel !== null
-                    ? strtolower(str_replace(['_', '-'], ' ', $normalizedLevel))
-                    : null;
-
-                if ($normalizedLevelToken === 'elementary') {
-                    $normalizedLevel = 'Elementary';
-                } elseif (in_array($normalizedLevelToken, ['high school', 'secondary'], true)) {
-                    $normalizedLevel = 'High School';
-                }
+                $rawLevel = $row['schoolCoverage'] ?? $row['school_coverage'] ?? $row['level'] ?? null;
+                $normalizedLevel = SchoolCoverage::normalize($rawLevel) ?? $normalize($rawLevel);
 
                 return [
                     'schoolId' => strtoupper((string) $normalize($row['schoolId'] ?? null)),
@@ -76,7 +69,7 @@ class BulkImportSchoolRecordsRequest extends FormRequest
             'rows' => ['required', 'array', 'min:1', 'max:500'],
             'rows.*.schoolId' => ['required', 'string', 'size:6', 'regex:/^\d{6}$/', 'distinct:strict'],
             'rows.*.schoolName' => ['required', 'string', 'max:255'],
-            'rows.*.level' => ['required', 'string', Rule::in(['Elementary', 'High School'])],
+            'rows.*.level' => ['required', 'string', Rule::in(SchoolCoverage::CANONICAL_VALUES)],
             'rows.*.type' => ['required', 'string', Rule::in(['public', 'private'])],
             'rows.*.address' => ['required', 'string', 'max:255'],
             'rows.*.district' => ['sometimes', 'nullable', 'string', 'max:255'],

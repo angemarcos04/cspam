@@ -16,7 +16,7 @@ import { MonitorQuickJumpChips, type MonitorQuickJumpBindings } from "@/pages/mo
 import type { SchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirementData";
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import type { SchoolLevelFilter, SchoolSectorFilter } from "@/pages/monitor/monitorFilters";
-import { formatSchoolLevelLabel } from "@/pages/monitor/schoolLevelLabels";
+import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;
@@ -143,14 +143,16 @@ export function MonitorSchoolsSection({
               </div>
             </button>
             <select
-              aria-label="Filter public schools by level"
+              aria-label="Filter public schools by coverage"
               value={currentPublicLevel}
               onChange={(event) => onSelectSchoolCategoryFilter("public", event.target.value as SchoolLevelFilter)}
               className={selectClass}
             >
-              <option value="all">All public levels</option>
-              <option value="elementary">{formatSchoolLevelLabel("elementary")} ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
-              <option value="high_school">{formatSchoolLevelLabel("high_school")} ({schoolCategoryCounts.publicHighSchool.toLocaleString()})</option>
+              <option value="all">All public coverage</option>
+              <option value="elementary">{formatSchoolCoverageLabel("elementary")} ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
+              <option value="junior_high">{formatSchoolCoverageLabel("junior_high")} ({schoolCategoryCounts.publicJuniorHigh.toLocaleString()})</option>
+              <option value="senior_high">{formatSchoolCoverageLabel("senior_high")} ({schoolCategoryCounts.publicSeniorHigh.toLocaleString()})</option>
+              <option value="legacy_high_school">Legacy High School ({schoolCategoryCounts.publicLegacyHighSchool.toLocaleString()})</option>
             </select>
           </article>
 
@@ -172,14 +174,16 @@ export function MonitorSchoolsSection({
               </div>
             </button>
             <select
-              aria-label="Filter private schools by level"
+              aria-label="Filter private schools by coverage"
               value={currentPrivateLevel}
               onChange={(event) => onSelectSchoolCategoryFilter("private", event.target.value as SchoolLevelFilter)}
               className={selectClass}
             >
-              <option value="all">All private levels</option>
-              <option value="elementary">{formatSchoolLevelLabel("elementary")} ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
-              <option value="high_school">{formatSchoolLevelLabel("high_school")} ({schoolCategoryCounts.privateHighSchool.toLocaleString()})</option>
+              <option value="all">All private coverage</option>
+              <option value="elementary">{formatSchoolCoverageLabel("elementary")} ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
+              <option value="junior_high">{formatSchoolCoverageLabel("junior_high")} ({schoolCategoryCounts.privateJuniorHigh.toLocaleString()})</option>
+              <option value="senior_high">{formatSchoolCoverageLabel("senior_high")} ({schoolCategoryCounts.privateSeniorHigh.toLocaleString()})</option>
+              <option value="legacy_high_school">Legacy High School ({schoolCategoryCounts.privateLegacyHighSchool.toLocaleString()})</option>
             </select>
           </article>
         </div>

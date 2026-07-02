@@ -2064,7 +2064,7 @@ class AuthController extends Controller
                     'last_login_ip',
                     'last_login_user_agent',
                 ])
-                ->with(['school:id,school_code,name'])
+                ->with(['school:id,school_code,name,address,district,type,level'])
                 ->orderByDesc('id');
 
             $baseQuery->whereIn(
@@ -2110,7 +2110,7 @@ class AuthController extends Controller
                 'last_login_ip',
                 'last_login_user_agent',
             ])
-            ->with(['school:id,school_code,name'])
+            ->with(['school:id,school_code,name,address,district,type,level'])
             ->where('email_normalized', $normalizedEmail)
             ->whereHas('roles', function ($builder) use ($roleAliases): void {
                 $builder->whereIn('name', $roleAliases);
@@ -2136,6 +2136,7 @@ class AuthController extends Controller
             'schoolName' => $user->school?->name,
             'schoolAddress' => $user->school?->address ?? $user->school?->district,
             'schoolType' => $user->school?->type,
+            'schoolCoverage' => $user->school?->level,
             'mustResetPassword' => (bool) $user->must_reset_password,
             'accountStatus' => $status->value,
             'lastLoginAt' => $user->last_login_at?->toISOString(),

@@ -68,7 +68,7 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
   const columnIndex = {
     schoolId: resolveCsvColumnIndex(headerIndexes, ["school_id", "school_code", "schoolid", "code"]),
     schoolName: resolveCsvColumnIndex(headerIndexes, ["school_name", "school", "name"]),
-    level: resolveCsvColumnIndex(headerIndexes, ["level"]),
+    level: resolveCsvColumnIndex(headerIndexes, ["level", "school_coverage", "coverage"]),
     type: resolveCsvColumnIndex(headerIndexes, ["type"]),
     address: resolveCsvColumnIndex(headerIndexes, ["address"]),
     district: resolveCsvColumnIndex(headerIndexes, ["district"]),
@@ -81,7 +81,7 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
   const missingRequiredColumns = [
     { key: "schoolId", label: "school_id" },
     { key: "schoolName", label: "school_name" },
-    { key: "level", label: "level" },
+    { key: "level", label: "level or school_coverage" },
     { key: "type", label: "type" },
     { key: "address", label: "address" },
   ].filter((entry) => columnIndex[entry.key as keyof typeof columnIndex] === null);
@@ -130,7 +130,7 @@ export function parseSchoolBulkImportCsv(content: string): { rows: SchoolBulkImp
     }
 
     if (!level) {
-      errors.push(`Row ${rowIndex + 1}: Level is required.`);
+      errors.push(`Row ${rowIndex + 1}: School coverage is required.`);
       continue;
     }
 

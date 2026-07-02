@@ -24,7 +24,12 @@ import {
   resolveWorkflowStatus,
 } from "@/pages/monitor/monitorRequirementRules";
 import { resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
-import { normalizeSchoolLevelToken } from "@/pages/monitor/schoolLevelLabels";
+import {
+  hasSchoolCoverageToken,
+  isLegacyHighSchoolCoverage,
+  parseSchoolCoverage,
+  type SchoolCoverageToken,
+} from "@/pages/monitor/schoolLevelLabels";
 
 type SchoolRequirementSummary = MonitorSchoolRequirementSummary;
 
@@ -113,9 +118,13 @@ export interface SchoolCategoryCounts {
   public: number;
   private: number;
   publicElementary: number;
-  publicHighSchool: number;
+  publicJuniorHigh: number;
+  publicSeniorHigh: number;
+  publicLegacyHighSchool: number;
   privateElementary: number;
-  privateHighSchool: number;
+  privateJuniorHigh: number;
+  privateSeniorHigh: number;
+  privateLegacyHighSchool: number;
 }
 
 const EMPTY_SCHOOL_CATEGORY_COUNTS: SchoolCategoryCounts = {
@@ -123,9 +132,13 @@ const EMPTY_SCHOOL_CATEGORY_COUNTS: SchoolCategoryCounts = {
   public: 0,
   private: 0,
   publicElementary: 0,
-  publicHighSchool: 0,
+  publicJuniorHigh: 0,
+  publicSeniorHigh: 0,
+  publicLegacyHighSchool: 0,
   privateElementary: 0,
-  privateHighSchool: 0,
+  privateJuniorHigh: 0,
+  privateSeniorHigh: 0,
+  privateLegacyHighSchool: 0,
 };
 
 export function normalizeSchoolSector(value: string | null | undefined): Exclude<SchoolSectorFilter, "all"> | null {
@@ -143,13 +156,13 @@ export function normalizeSchoolSector(value: string | null | undefined): Exclude
 }
 
 export function normalizeSchoolLevel(value: string | null | undefined): Exclude<SchoolLevelFilter, "all"> | null {
-  const token = normalizeSchoolLevelToken(value);
+  const parsed = parseSchoolCoverage(value);
 
-  if (token === "elementary") {
-    return "elementary";
+  if (parsed.tokens.length === 1) {
+    return parsed.tokens[0];
   }
 
-  if (token === "high_school") {
+  if (parsed.legacyHighSchool && parsed.tokens.length === 0) {
     return "high_school";
   }
 
@@ -166,13 +179,20 @@ export function matchesSchoolCategoryFilter(
   }
 
   const sector = normalizeSchoolSector(record?.type);
-  const level = normalizeSchoolLevel(record?.level);
+  const levelValue = record?.level;
 
   if (schoolSectorFilter !== "all" && sector !== schoolSectorFilter) {
     return false;
   }
 
-  if (schoolLevelFilter !== "all" && level !== schoolLevelFilter) {
+  if (
+    schoolLevelFilter !== "all" &&
+    !(
+      (schoolLevelFilter === "legacy_high_school" || schoolLevelFilter === "high_school")
+        ? isLegacyHighSchoolCoverage(levelValue)
+        : hasSchoolCoverageToken(levelValue, schoolLevelFilter as SchoolCoverageToken)
+    )
+  ) {
     return false;
   }
 
@@ -186,18 +206,22 @@ export function buildSchoolCategoryCounts(records: Iterable<Pick<SchoolRecord, "
     counts.total += 1;
 
     const sector = normalizeSchoolSector(record.type);
-    const level = normalizeSchoolLevel(record.level);
+    const parsed = parseSchoolCoverage(record.level);
 
     if (sector === "public") {
       counts.public += 1;
-      if (level === "elementary") counts.publicElementary += 1;
-      if (level === "high_school") counts.publicHighSchool += 1;
+      if (parsed.tokens.includes("elementary")) counts.publicElementary += 1;
+      if (parsed.tokens.includes("junior_high")) counts.publicJuniorHigh += 1;
+      if (parsed.tokens.includes("senior_high")) counts.publicSeniorHigh += 1;
+      if (parsed.legacyHighSchool && parsed.tokens.length === 0) counts.publicLegacyHighSchool += 1;
     }
 
     if (sector === "private") {
       counts.private += 1;
-      if (level === "elementary") counts.privateElementary += 1;
-      if (level === "high_school") counts.privateHighSchool += 1;
+      if (parsed.tokens.includes("elementary")) counts.privateElementary += 1;
+      if (parsed.tokens.includes("junior_high")) counts.privateJuniorHigh += 1;
+      if (parsed.tokens.includes("senior_high")) counts.privateSeniorHigh += 1;
+      if (parsed.legacyHighSchool && parsed.tokens.length === 0) counts.privateLegacyHighSchool += 1;
     }
   }
 

@@ -53,6 +53,7 @@ import {
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
 } from "@/utils/submissionRequirements";
+import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 import type {
   IndicatorSubmission,
   IndicatorSubmissionFileEntry,
@@ -154,17 +155,19 @@ export function resolveInitialSchoolHeadReportAcademicYearId(
 }
 
 export function resolveSchoolAdminHeaderContext(
-  assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address"> | null,
-  user: Pick<SessionUser, "schoolName" | "schoolCode" | "schoolAddress"> | null,
+  assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address" | "level"> | null,
+  user: Pick<SessionUser, "schoolName" | "schoolCode" | "schoolAddress" | "schoolCoverage" | "schoolLevel"> | null,
 ): {
   schoolName: string;
   schoolCode: string;
   schoolAddress: string;
+  schoolCoverage: string;
 } {
   return {
     schoolName: assignedRecord?.schoolName || user?.schoolName || "Unassigned School",
     schoolCode: assignedRecord?.schoolCode || user?.schoolCode || "N/A",
     schoolAddress: assignedRecord?.address || user?.schoolAddress || "N/A",
+    schoolCoverage: formatSchoolCoverageLabel(assignedRecord?.level || user?.schoolCoverage || user?.schoolLevel || null),
   };
 }
 
@@ -1074,7 +1077,7 @@ export function SchoolAdminDashboard() {
     () => records.find((record) => String(record.schoolId ?? record.id ?? "").trim() === selectedSchoolId) ?? null,
     [records, selectedSchoolId],
   );
-  const { schoolName, schoolCode, schoolAddress } = useMemo(
+  const { schoolName, schoolCode, schoolAddress, schoolCoverage } = useMemo(
     () => resolveSchoolAdminHeaderContext(assignedRecord, user),
     [assignedRecord, user],
   );
@@ -1975,7 +1978,7 @@ export function SchoolAdminDashboard() {
 
 
       {/* ── School Info ── */}
-      <section id="school-info" className={`mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-4 ${focusCls("school-info")}`}>
+      <section id="school-info" className={`mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5 ${focusCls("school-info")}`}>
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Assigned School</p>
           <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolName}</p>
@@ -1987,6 +1990,10 @@ export function SchoolAdminDashboard() {
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Address</p>
           <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolAddress}</p>
+        </article>
+        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">School Coverage</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolCoverage}</p>
         </article>
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Academic Year</p>

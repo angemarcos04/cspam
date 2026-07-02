@@ -992,7 +992,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
     });
 
-    expect(screen.getByText(/The Review Inbox shows School, Location, Level, Type, Status, Last Activity, and Actions/i)).toBeTruthy();
+    expect(screen.getByText(/The Review Inbox shows School, Location, Coverage, Type, Status, Last Activity, and Actions/i)).toBeTruthy();
     expect(screen.getByText(/Use Unverify when a verified requirement must be reopened for review/i)).toBeTruthy();
     expect(screen.getAllByText(/Schools -> Accounts/).length).toBeGreaterThan(0);
     expect(screen.getByText(/Schools -> More -> MFA Recovery Requests/)).toBeTruthy();
@@ -1105,7 +1105,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Location" })).toBeTruthy();
-    expect(screen.getByRole("columnheader", { name: "Level" })).toBeTruthy();
+    expect(screen.getByRole("columnheader", { name: "Coverage" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Type" })).toBeTruthy();
     expect(screen.getByRole("columnheader", { name: "Status" })).toBeTruthy();
     expect(screen.queryByRole("columnheader", { name: "School Data" })).toBeNull();
@@ -1139,7 +1139,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(mobileCard).toBeTruthy();
 
     const card = within(mobileCard as HTMLElement);
-    expect(card.getByText("Level: Elementary")).toBeTruthy();
+    expect(card.getByText("Coverage: Elementary")).toBeTruthy();
     expect(card.getByText("Type: Public")).toBeTruthy();
     expect(card.getByText("Not Submitted")).toBeTruthy();
     expect(card.queryByText(/Missing:/)).toBeNull();

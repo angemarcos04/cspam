@@ -202,6 +202,8 @@ export interface SessionUser {
   schoolName: string | null;
   schoolAddress?: string | null;
   schoolType?: "public" | "private" | string | null;
+  schoolCoverage?: string | null;
+  schoolLevel?: string | null;
 }
 
 export type ActiveSessionType = "api_token" | "web_session";

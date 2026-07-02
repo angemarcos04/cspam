@@ -51,8 +51,8 @@ const MONITOR_MANUAL_SECTIONS: ManualSection[] = [
     title: "Add School",
     purpose: "Use Add School to create a new school record only.",
     actions: [
-      "Enter the required school information: School Code, School Name, Level, Type, and Address.",
-      "Choose the correct Level: Elementary or High School.",
+      "Enter the required school information: School Code, School Name, School Coverage, Type, and Address.",
+      "Choose one or more coverage options: Elementary, Junior High, and Senior High.",
       "Choose the correct Type: Public or Private.",
       "You may create a School Head account during school creation. Enter the School Head name and email if that option is enabled.",
       "After saving, stay on Add School to confirm the result. Use View Schools only if you need to return to the school list.",
@@ -64,7 +64,7 @@ const MONITOR_MANUAL_SECTIONS: ManualSection[] = [
     title: "Reviews",
     purpose: "Use Reviews to check schools that need monitoring action.",
     actions: [
-      "The Review Inbox shows School, Location, Level, Type, Status, Last Activity, and Actions.",
+      "The Review Inbox shows School, Location, Coverage, Type, Status, Last Activity, and Actions.",
       "Click Review to open the School Detail drawer.",
       "Click Reminder when the school needs follow-up about missing or pending requirements.",
       "Review urgent or returned schools first, then continue with routine checks.",

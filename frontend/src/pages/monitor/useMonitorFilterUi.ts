@@ -14,7 +14,7 @@ import {
 } from "@/pages/monitor/monitorDashboardConfig";
 import { queueLaneLabel, requirementFilterLabel } from "@/pages/monitor/monitorDashboardUiUtils";
 import { monitorSchoolStatusLabel } from "@/pages/monitor/monitorSchoolStatus";
-import { formatSchoolLevelLabel } from "@/pages/monitor/schoolLevelLabels";
+import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 import type { ScopeDropdownId } from "@/pages/monitor/useMonitorLookups";
 import type { SchoolStatus } from "@/types";
 
@@ -168,7 +168,12 @@ export function useMonitorFilterUi({
     if (schoolSectorFilter !== "all" || schoolLevelFilter !== "all") {
       const sectorLabel =
         schoolSectorFilter === "public" ? "Public" : schoolSectorFilter === "private" ? "Private" : "All sectors";
-      const levelLabel = schoolLevelFilter === "all" ? "All levels" : formatSchoolLevelLabel(schoolLevelFilter);
+      const levelLabel =
+        schoolLevelFilter === "all"
+          ? "All coverage"
+          : schoolLevelFilter === "legacy_high_school" || schoolLevelFilter === "high_school"
+            ? "Legacy High School"
+            : formatSchoolCoverageLabel(schoolLevelFilter);
       chips.push({ id: "category", label: `Schools: ${sectorLabel} / ${levelLabel}` });
     }
     if (filterDateFrom || filterDateTo) {

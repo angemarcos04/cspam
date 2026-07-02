@@ -1164,7 +1164,7 @@ export function MonitorDashboard() {
       [
         "school_id",
         "school_name",
-        "level",
+        "school_coverage",
         "type",
         "address",
         "district",

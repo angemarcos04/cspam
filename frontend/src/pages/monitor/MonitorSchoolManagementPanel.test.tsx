@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MonitorSchoolManagementPanel } from "@/pages/monitor/MonitorSchoolManagementPanel";
 import type { SchoolHeadAccountSummary, SchoolRecord } from "@/types";
@@ -92,25 +92,83 @@ describe("MonitorSchoolManagementPanel", () => {
     expect(screen.queryByText("pending setup")).toBeNull();
   });
 
-  it("formats school levels for display while keeping edit options backend-supported", () => {
+  it("formats school coverage for display and edits canonical checkbox coverage", async () => {
+    const updateRecord = vi.fn().mockResolvedValue(undefined);
+
     render(
       <MonitorSchoolManagementPanel
-        record={{ ...buildRecord("active"), level: "Senior High" }}
+        record={{ ...buildRecord("active"), level: "Junior High / Senior High" }}
         isSaving={false}
-        updateRecord={vi.fn()}
+        updateRecord={updateRecord}
         onToast={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("Senior High")).toBeTruthy();
+    expect(screen.getByText("School Coverage")).toBeTruthy();
+    expect(screen.getByText("Junior High / Senior High")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Edit School Details" }));
 
-    const levelSelect = screen.getByLabelText("Level") as HTMLSelectElement;
-    const options = Array.from(levelSelect.options).map((option) => option.value);
+    expect(screen.queryByLabelText("Level")).toBeNull();
+    fireEvent.click(screen.getByLabelText("Elementary"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
 
-    expect(options).toEqual(["Elementary", "High School"]);
-    expect(options).not.toContain("Junior High");
-    expect(options).not.toContain("Senior High");
+    await waitFor(() => {
+      expect(updateRecord).toHaveBeenCalledWith(
+        "school-1",
+        expect.objectContaining({ level: "Elementary / Junior High / Senior High" }),
+      );
+    });
+  });
+
+  it("preserves untouched legacy High School coverage and warns before saving", async () => {
+    const updateRecord = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MonitorSchoolManagementPanel
+        record={{ ...buildRecord("active"), level: "High School" }}
+        isSaving={false}
+        updateRecord={updateRecord}
+        onToast={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit School Details" }));
+
+    expect(screen.getByText("This record uses the old High School label. Select the actual coverage before saving changes.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("School Name"), { target: { value: "Updated Legacy School" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(updateRecord).toHaveBeenCalledWith(
+        "school-1",
+        expect.objectContaining({ schoolName: "Updated Legacy School", level: "High School" }),
+      );
+    });
+  });
+
+  it("submits canonical coverage when a legacy record coverage is changed", async () => {
+    const updateRecord = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <MonitorSchoolManagementPanel
+        record={{ ...buildRecord("active"), level: "High School" }}
+        isSaving={false}
+        updateRecord={updateRecord}
+        onToast={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit School Details" }));
+    fireEvent.click(screen.getByLabelText("Junior High"));
+    fireEvent.click(screen.getByLabelText("Senior High"));
+    fireEvent.click(screen.getByRole("button", { name: "Save Changes" }));
+
+    await waitFor(() => {
+      expect(updateRecord).toHaveBeenCalledWith(
+        "school-1",
+        expect.objectContaining({ level: "Junior High / Senior High" }),
+      );
+    });
   });
 });

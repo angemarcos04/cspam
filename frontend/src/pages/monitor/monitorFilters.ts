@@ -4,7 +4,7 @@ export type RequirementFilter = "all" | "missing" | "waiting" | "returned" | "su
 export type QueueLane = "all" | "urgent" | "returned" | "for_review" | "waiting_data";
 export type SchoolQuickPreset = "all" | "pending" | "missing" | "returned" | "no_submission";
 export type SchoolSectorFilter = "all" | "public" | "private";
-export type SchoolLevelFilter = "all" | "elementary" | "high_school";
+export type SchoolLevelFilter = "all" | "elementary" | "junior_high" | "senior_high" | "legacy_high_school" | "high_school";
 export type MonitorTopNavigatorId = "schools" | "add_school" | "reviews" | "audit";
 
 export interface PersistedMonitorFilters {
@@ -70,7 +70,14 @@ export function isValidSchoolSectorFilter(value: string | null | undefined): val
 }
 
 export function isValidSchoolLevelFilter(value: string | null | undefined): value is SchoolLevelFilter {
-  return value === "all" || value === "elementary" || value === "high_school";
+  return (
+    value === "all" ||
+    value === "elementary" ||
+    value === "junior_high" ||
+    value === "senior_high" ||
+    value === "legacy_high_school" ||
+    value === "high_school"
+  );
 }
 
 export function isValidSchoolStatusFilter(value: string | null | undefined): value is SchoolStatus | "all" {

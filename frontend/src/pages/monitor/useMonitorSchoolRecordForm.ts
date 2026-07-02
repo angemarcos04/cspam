@@ -5,7 +5,7 @@ import type {
   MonitorSchoolRecordFormProps,
   MonitorSchoolRecordFormState,
 } from "@/pages/monitor/MonitorSchoolRecordForm";
-import { coerceBackendSupportedSchoolLevel } from "@/pages/monitor/schoolLevelLabels";
+import { coverageTokensToStoredLevel, parseSchoolCoverage } from "@/pages/monitor/schoolLevelLabels";
 import type { SchoolHeadAccountProvisioningReceipt, SchoolRecordPayload } from "@/types";
 
 const EMPTY_MONITOR_RECORD_FORM: MonitorSchoolRecordFormState = {
@@ -47,7 +47,7 @@ function extractApiValidationErrors(payload: unknown): Record<string, string> {
 }
 
 function normalizeSchoolLevel(value: string): string {
-  return coerceBackendSupportedSchoolLevel(value);
+  return coverageTokensToStoredLevel(parseSchoolCoverage(value).tokens);
 }
 
 interface UseMonitorSchoolRecordFormOptions {
@@ -120,7 +120,7 @@ export function useMonitorSchoolRecordForm({
     }
 
     if (!schoolName) formErrors.schoolName = "School name is required.";
-    if (!level) formErrors.level = "Level is required.";
+    if (!level) formErrors.level = "School coverage is required.";
     if (!address) formErrors.address = "Address is required.";
     if (!recordForm.type) formErrors.type = "Type is required.";
 

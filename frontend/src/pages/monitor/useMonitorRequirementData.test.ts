@@ -377,23 +377,26 @@ describe("buildMonitorRequirementSummaryState", () => {
     ]);
   });
 
-  it("normalizes school sector and level values used by monitor school filters", () => {
+  it("normalizes school sector and coverage values used by monitor school filters", () => {
     expect(normalizeSchoolSector("Public")).toBe("public");
     expect(normalizeSchoolSector(" private ")).toBe("private");
     expect(normalizeSchoolSector("charter")).toBeNull();
 
     expect(normalizeSchoolLevel("Elementary")).toBe("elementary");
+    expect(normalizeSchoolLevel("Junior High")).toBe("junior_high");
+    expect(normalizeSchoolLevel("Senior High")).toBe("senior_high");
     expect(normalizeSchoolLevel("High School")).toBe("high_school");
     expect(normalizeSchoolLevel("secondary")).toBe("high_school");
+    expect(normalizeSchoolLevel("Junior High / Senior High")).toBeNull();
     expect(normalizeSchoolLevel("integrated")).toBeNull();
   });
 
-  it("counts public and private schools by normalized level", () => {
+  it("counts public and private schools by normalized coverage", () => {
     const counts = buildSchoolCategoryCounts([
       { type: "Public", level: "Elementary" },
-      { type: "public", level: "High School" },
+      { type: "public", level: "Junior High / Senior High" },
       { type: "Private", level: "Secondary" },
-      { type: "private", level: "Elementary" },
+      { type: "private", level: "Elementary / Senior High" },
       { type: "private", level: null },
       { type: null, level: "Elementary" },
     ]);
@@ -403,21 +406,28 @@ describe("buildMonitorRequirementSummaryState", () => {
       public: 2,
       private: 3,
       publicElementary: 1,
-      publicHighSchool: 1,
+      publicJuniorHigh: 1,
+      publicSeniorHigh: 1,
+      publicLegacyHighSchool: 0,
       privateElementary: 1,
-      privateHighSchool: 1,
+      privateJuniorHigh: 0,
+      privateSeniorHigh: 1,
+      privateLegacyHighSchool: 1,
     });
   });
 
   it("matches school category filters without matching unknown values", () => {
     const publicElementary = { type: "public", level: "Elementary" };
-    const privateHighSchool = { type: "Private", level: "Secondary" };
+    const privateSecondary = { type: "Private", level: "Junior High / Senior High" };
+    const legacyHighSchool = { type: "Private", level: "Secondary" };
     const unknown = { type: null, level: null };
 
     expect(matchesSchoolCategoryFilter(publicElementary, "public", "elementary")).toBe(true);
-    expect(matchesSchoolCategoryFilter(publicElementary, "public", "high_school")).toBe(false);
-    expect(matchesSchoolCategoryFilter(privateHighSchool, "private", "high_school")).toBe(true);
-    expect(matchesSchoolCategoryFilter(privateHighSchool, "public", "all")).toBe(false);
+    expect(matchesSchoolCategoryFilter(publicElementary, "public", "junior_high")).toBe(false);
+    expect(matchesSchoolCategoryFilter(privateSecondary, "private", "junior_high")).toBe(true);
+    expect(matchesSchoolCategoryFilter(privateSecondary, "private", "senior_high")).toBe(true);
+    expect(matchesSchoolCategoryFilter(privateSecondary, "public", "all")).toBe(false);
+    expect(matchesSchoolCategoryFilter(legacyHighSchool, "private", "legacy_high_school")).toBe(true);
     expect(matchesSchoolCategoryFilter(unknown, "all", "all")).toBe(true);
     expect(matchesSchoolCategoryFilter(unknown, "public", "all")).toBe(false);
   });
