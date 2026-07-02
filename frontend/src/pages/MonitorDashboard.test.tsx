@@ -629,9 +629,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const menu = await screen.findByRole("menu", { name: "Santiago Elementary account actions" });
     expect(schoolsSection.contains(menu)).toBe(false);
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Send Setup Link",
+      "Activate Account",
       "Remove Account and School",
     ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send Setup Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Open school record" })).toBeNull();

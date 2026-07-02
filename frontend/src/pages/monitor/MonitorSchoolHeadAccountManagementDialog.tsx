@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import type { SchoolRecord } from "@/types";
+import { resolveSchoolHeadAccountUiStatus, schoolHeadAccountStatusLabel } from "./schoolHeadAccountStatus";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 interface MonitorSchoolHeadAccountManagementDialogProps {
@@ -21,30 +22,6 @@ interface MonitorSchoolHeadAccountManagementDialogProps {
   onPreviewDeleteSchoolRecord: (record: SchoolRecord) => void | Promise<void>;
   formatDateTime: (value: string | null) => string;
   actions: SchoolHeadAccountActionsApi;
-}
-
-function accountStatusLabel(
-  status: string | null | undefined,
-  lifecycleStateLabel: string | null | undefined,
-  lifecycleState: string | null | undefined,
-): string {
-  if (String(lifecycleState ?? "").toLowerCase() === "temporary_password_active") {
-    return "Temp Password Active";
-  }
-
-  if (!status) return "No Account";
-  const normalized = status.toLowerCase();
-  const normalizedLifecycleState = String(lifecycleState ?? "").toLowerCase();
-  if (normalized === "pending_verification" || normalizedLifecycleState === "pending_verification") return "Activation Needed";
-  if (normalized === "locked" || normalized === "archived" || normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") {
-    return "Suspended";
-  }
-  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
-  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
-  if (normalized === "active") return "Active";
-  if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "suspended") return "Suspended";
-  return status;
 }
 
 function temporaryPasswordSummary(account: SchoolRecord["schoolHeadAccount"]): string {
@@ -103,7 +80,10 @@ export function MonitorSchoolHeadAccountManagementDialog({
   if (!record) return null;
 
   const account = record.schoolHeadAccount;
-  const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+  const accountUiStatus = resolveSchoolHeadAccountUiStatus(account ?? null);
+  const isActivationNeededAccount = accountUiStatus === "activation_needed";
+  const isActiveAccount = accountUiStatus === "active";
+  const isSuspendedAccount = accountUiStatus === "suspended";
   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${record.id}:`));
   const isActionDisabled = isSaving || isRowSaving;
   const dialogTitleId = "school-head-account-management-title";
@@ -166,7 +146,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
               <div>
                 <dt className="font-semibold text-slate-500">Account Status</dt>
                 <dd className="mt-0.5 text-slate-900">
-                  {accountStatusLabel(account?.accountStatus, account?.lifecycleStateLabel, account?.lifecycleState)}
+                  {schoolHeadAccountStatusLabel(accountUiStatus)}
                 </dd>
               </div>
               <div>
@@ -207,18 +187,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
           <ManagementSection title="Account Access">
             {account ? (
               <>
-                {normalizedAccountStatus === "pending_setup" && (
-                  <button
-                    type="button"
-                    onClick={() => void actions.handleIssueSchoolHeadSetupLink(record)}
-                    disabled={isActionDisabled}
-                    className={actionButtonClass()}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5 text-primary-600" />
-                    Send setup link
-                  </button>
-                )}
-                {shouldShowResetLinkAction(account.accountStatus) && (
+                {isActiveAccount && shouldShowResetLinkAction(account.accountStatus) && (
                   <button
                     type="button"
                     onClick={() => void actions.handleIssueSchoolHeadSetupLink(record)}
@@ -229,11 +198,9 @@ export function MonitorSchoolHeadAccountManagementDialog({
                     Send password reset link
                   </button>
                 )}
-                {normalizedAccountStatus !== "pending_setup" &&
-                  !shouldShowResetLinkAction(account.accountStatus) &&
-                  normalizedAccountStatus !== "active" && (
-                    <p className="text-xs text-slate-600">No account-access action is available for this status.</p>
-                  )}
+                {!isActiveAccount && (
+                  <p className="text-xs text-slate-600">No account-access action is available for this status.</p>
+                )}
               </>
             ) : (
               <p className="text-xs text-slate-600">Create a School Head account before sending setup or reset links.</p>
@@ -243,7 +210,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
           <ManagementSection title="Account Status">
             {account ? (
               <>
-                {normalizedAccountStatus === "pending_verification" && (
+                {isActivationNeededAccount && (
                   <button
                     type="button"
                     onClick={() =>
@@ -261,22 +228,20 @@ export function MonitorSchoolHeadAccountManagementDialog({
                     Activate account
                   </button>
                 )}
-                {normalizedAccountStatus !== "active" &&
-                  normalizedAccountStatus !== "pending_setup" &&
-                  normalizedAccountStatus !== "pending_verification" && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "active" }, "Reactivate account")
-                      }
-                      disabled={isActionDisabled}
-                      className={actionButtonClass()}
-                    >
-                      <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
-                      Reactivate account
-                    </button>
-                  )}
-                {normalizedAccountStatus === "active" && (
+                {isSuspendedAccount && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      actions.handleUpdateSchoolHeadAccount(record, { accountStatus: "active" }, "Reactivate account")
+                    }
+                    disabled={isActionDisabled}
+                    className={actionButtonClass()}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary-600" />
+                    Reactivate account
+                  </button>
+                )}
+                {isActiveAccount && (
                   <button
                     type="button"
                     onClick={() =>
@@ -288,9 +253,6 @@ export function MonitorSchoolHeadAccountManagementDialog({
                     <AlertCircle className="h-3.5 w-3.5 text-amber-600" />
                     Suspend account
                   </button>
-                )}
-                {normalizedAccountStatus === "pending_setup" && (
-                  <p className="text-xs text-slate-600">Setup must be completed before status changes are available.</p>
                 )}
               </>
             ) : (

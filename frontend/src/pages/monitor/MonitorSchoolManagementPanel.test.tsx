@@ -16,8 +16,8 @@ function buildAccount(accountStatus: string): SchoolHeadAccountSummary {
     lastLoginAt: null,
     accountStatus,
     mustResetPassword: false,
-    lifecycleState: accountStatus === "suspended" ? "suspended" : "active_ready",
-    lifecycleStateLabel: accountStatus === "suspended" ? "Suspended" : "Active",
+    lifecycleState: accountStatus === "suspended" || accountStatus === "pending_setup" ? accountStatus : "active_ready",
+    lifecycleStateLabel: accountStatus === "suspended" ? "Suspended" : accountStatus === "pending_setup" ? "Pending setup" : "Active",
     recommendedAction: "none",
     verifiedAt: "2026-05-01T08:00:00.000Z",
     verifiedByUserId: "1",
@@ -88,7 +88,8 @@ describe("MonitorSchoolManagementPanel", () => {
       />,
     );
 
-    expect(screen.getByText("Pending Setup")).toBeTruthy();
+    expect(screen.getByText("Activation Needed")).toBeTruthy();
+    expect(screen.queryByText("Pending Setup")).toBeNull();
     expect(screen.queryByText("pending setup")).toBeNull();
   });
 

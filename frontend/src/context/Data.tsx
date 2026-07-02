@@ -14,6 +14,7 @@ import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type {
   SessionUser,
+  SchoolHeadAccountSummary,
   SchoolHeadAccountActivationResult,
   SchoolHeadAccountActionVerificationCodeResult,
   SchoolHeadAccountBatchRemovalResult,
@@ -279,6 +280,7 @@ interface AccountStatusOverride {
   schoolId: string;
   schoolCode?: string | null;
   accountStatus: string;
+  account: SchoolHeadAccountSummary;
   appliedAt: string;
 }
 
@@ -365,16 +367,9 @@ function applyAccountStatusOverrides(records: SchoolRecord[], overrides: Account
       return record;
     }
 
-    if (String(record.schoolHeadAccount.accountStatus ?? "") === String(override.accountStatus ?? "")) {
-      return record;
-    }
-
     return {
       ...record,
-      schoolHeadAccount: {
-        ...record.schoolHeadAccount,
-        accountStatus: override.accountStatus,
-      },
+      schoolHeadAccount: override.account,
     };
   });
 }
@@ -438,11 +433,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
     setRecords(applyAccountStatusOverrides(nextRecords, prunedOverrides));
   }, []);
 
-  const rememberAccountStatusOverride = useCallback((schoolId: string, record: SchoolRecord | undefined, accountStatus: string) => {
+  const rememberAccountStatusOverride = useCallback((schoolId: string, record: SchoolRecord | undefined, account: SchoolHeadAccountSummary) => {
     const override: AccountStatusOverride = {
       schoolId,
       schoolCode: record?.schoolCode ?? record?.schoolId ?? null,
-      accountStatus,
+      accountStatus: String(account.accountStatus ?? "").toLowerCase(),
+      account,
       appliedAt: new Date().toISOString(),
     };
     const matcher = {
@@ -1041,13 +1037,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
-        rememberAccountStatusOverride(schoolId, existingRecord, result.account.accountStatus);
+        rememberAccountStatusOverride(schoolId, existingRecord, result.account);
         setRecords((current) =>
           current.map((record) => {
             const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
               schoolId,
               schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
-              accountStatus: result.account.accountStatus,
+              accountStatus: String(result.account.accountStatus ?? "").toLowerCase(),
+              account: result.account,
               appliedAt: new Date().toISOString(),
             }) : record.id === schoolId;
 
@@ -1139,13 +1136,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
 
         const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
-        rememberAccountStatusOverride(schoolId, existingRecord, result.account.accountStatus);
+        rememberAccountStatusOverride(schoolId, existingRecord, result.account);
         setRecords((current) =>
           current.map((record) => {
             const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
               schoolId,
               schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
-              accountStatus: result.account.accountStatus,
+              accountStatus: String(result.account.accountStatus ?? "").toLowerCase(),
+              account: result.account,
               appliedAt: new Date().toISOString(),
             }) : record.id === schoolId;
 

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Edit3 } from "lucide-react";
 import { messageForApiError } from "@/lib/api";
 import { monitorSchoolStatusLabel, resolveMonitorSchoolDisplayStatus } from "@/pages/monitor/monitorSchoolStatus";
+import { resolveSchoolHeadAccountUiStatus, schoolHeadAccountStatusLabel } from "@/pages/monitor/schoolHeadAccountStatus";
 import {
   coverageTokensToStoredLevel,
   formatSchoolCoverageLabel,
@@ -36,20 +37,8 @@ function formatSchoolStatus(status: SchoolStatus | string | null | undefined): s
   return "Unknown";
 }
 
-function formatAccountStatus(status: string | null | undefined): string {
-  const normalized = String(status ?? "").trim().toLowerCase();
-
-  if (normalized === "active") return "Active";
-  if (normalized === "suspended") return "Suspended";
-  if (normalized === "pending_setup") return "Pending Setup";
-  if (normalized === "pending_verification") return "Activation Needed";
-  if (normalized === "locked" || normalized === "archived") return "Suspended";
-  if (normalized === "temporary_password_active") return "Temporary Password Active";
-  if (normalized === "temporary_password_expired") return "Temporary Password Expired";
-
-  return normalized
-    ? normalized.replace(/[_-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase())
-    : "No Account";
+function formatAccountStatus(account: SchoolRecord["schoolHeadAccount"]): string {
+  return schoolHeadAccountStatusLabel(resolveSchoolHeadAccountUiStatus(account ?? null));
 }
 
 function formatSchoolType(type: string | null | undefined): "public" | "private" {
@@ -366,7 +355,7 @@ export function MonitorSchoolManagementPanel({
             </div>
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Account Status</dt>
-              <dd className="text-sm text-slate-700">{formatAccountStatus(schoolHeadAccount.accountStatus)}</dd>
+              <dd className="text-sm text-slate-700">{formatAccountStatus(schoolHeadAccount)}</dd>
             </div>
             <div>
               <dt className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Recommended Action</dt>

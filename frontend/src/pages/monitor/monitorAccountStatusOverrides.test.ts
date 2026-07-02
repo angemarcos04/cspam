@@ -6,7 +6,7 @@ import {
 } from "@/pages/monitor/monitorAccountStatusOverrides";
 import type { SchoolHeadAccountSummary, SchoolRecord } from "@/types";
 
-function buildAccount(accountStatus: string): SchoolHeadAccountSummary {
+function buildAccount(accountStatus: string, overrides: Partial<SchoolHeadAccountSummary> = {}): SchoolHeadAccountSummary {
   return {
     id: "account-1",
     name: "School Head",
@@ -29,6 +29,7 @@ function buildAccount(accountStatus: string): SchoolHeadAccountSummary {
     deleteRecordFlaggedAt: null,
     deleteRecordReason: null,
     setupLinkExpiresAt: null,
+    ...overrides,
   };
 }
 
@@ -56,11 +57,25 @@ function buildRecord(accountStatus = "active"): SchoolRecord {
 describe("monitor account status overrides", () => {
   it("overlays confirmed account status without mutating the school record status", () => {
     const record = buildRecord("active");
-    const override = buildMonitorAccountStatusOverride("school-1", record, buildAccount("suspended"), 1000);
+    const override = buildMonitorAccountStatusOverride(
+      "school-1",
+      record,
+      buildAccount("suspended", {
+        lifecycleState: "locked",
+        lifecycleStateLabel: "Locked by monitor",
+        flagged: true,
+        flagReason: "Needs follow-up",
+      }),
+      1000,
+    );
     const [nextRecord] = applyMonitorAccountStatusOverrides([record], { "school-1": override });
 
     expect(nextRecord.status).toBe("active");
     expect(nextRecord.schoolHeadAccount?.accountStatus).toBe("suspended");
+    expect(nextRecord.schoolHeadAccount?.lifecycleState).toBe("locked");
+    expect(nextRecord.schoolHeadAccount?.lifecycleStateLabel).toBe("Locked by monitor");
+    expect(nextRecord.schoolHeadAccount?.flagged).toBe(true);
+    expect(nextRecord.schoolHeadAccount?.flagReason).toBe("Needs follow-up");
     expect(record.status).toBe("active");
     expect(record.schoolHeadAccount?.accountStatus).toBe("active");
   });

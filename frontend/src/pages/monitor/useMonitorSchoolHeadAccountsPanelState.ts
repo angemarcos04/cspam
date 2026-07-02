@@ -2,8 +2,12 @@ import { useCallback, useMemo, useState } from "react";
 import type {
   MonitorSchoolHeadAccountRow,
   MonitorSchoolHeadAccountsPanelProps,
-  SchoolHeadAccountsStatusFilter,
 } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
+import {
+  resolveSchoolHeadAccountUiStatus,
+  schoolHeadAccountMatchesStatusFilter,
+  type SchoolHeadAccountsStatusFilter,
+} from "@/pages/monitor/schoolHeadAccountStatus";
 import type { MonitorSchoolRecordsListRow } from "@/pages/monitor/MonitorSchoolRecordsList";
 import { useSchoolHeadAccountActions } from "@/pages/monitor/useSchoolHeadAccountActions";
 import type {
@@ -128,8 +132,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
   const openSchoolHeadAccountsPanelWithStatus = useCallback((status: SchoolHeadAccountsStatusFilter = "all") => {
     const visibleStatus =
       status === "active" ||
-      status === "pending_setup" ||
-      status === "pending_verification" ||
+      status === "activation_needed" ||
       status === "suspended"
         ? status
         : "all";
@@ -150,53 +153,23 @@ export function useMonitorSchoolHeadAccountsPanelState({
       .filter((record): record is SchoolRecord => Boolean(record));
   }, [compactSchoolRows, recordBySchoolKey, records]);
 
-  const accountMatchesStatusFilter = useCallback(
-    (record: SchoolRecord, statusFilter: SchoolHeadAccountsStatusFilter): boolean => {
-      const account = record.schoolHeadAccount ?? null;
-      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
-
-      if (statusFilter === "all") return true;
-      if (statusFilter === "pending_verification") {
-        return normalizedAccountStatus === "pending_verification" || lifecycleState === "pending_verification";
-      }
-      if (statusFilter === "pending_setup") {
-        return normalizedAccountStatus === "pending_setup" || lifecycleState === "pending_setup";
-      }
-      if (statusFilter === "suspended") {
-        return (
-          normalizedAccountStatus === "suspended" ||
-          normalizedAccountStatus === "locked" ||
-          normalizedAccountStatus === "archived" ||
-          lifecycleState === "locked" ||
-          lifecycleState === "archived"
-        );
-      }
-
-      return normalizedAccountStatus === statusFilter;
-    },
-    [],
-  );
-
   const accountStatusCounts = useMemo<Record<SchoolHeadAccountsStatusFilter, number>>(() => {
     const counts: Record<SchoolHeadAccountsStatusFilter, number> = {
       all: accountManagementRecords.length,
       active: 0,
-      pending_setup: 0,
-      pending_verification: 0,
+      activation_needed: 0,
       suspended: 0,
     };
 
     accountManagementRecords.forEach((record) => {
-      (Object.keys(counts) as SchoolHeadAccountsStatusFilter[]).forEach((statusFilter) => {
-        if (statusFilter !== "all" && accountMatchesStatusFilter(record, statusFilter)) {
-          counts[statusFilter] += 1;
-        }
-      });
+      const status = resolveSchoolHeadAccountUiStatus(record.schoolHeadAccount ?? null);
+      if (status !== "no_account") {
+        counts[status] += 1;
+      }
     });
 
     return counts;
-  }, [accountManagementRecords, accountMatchesStatusFilter]);
+  }, [accountManagementRecords]);
 
   const filteredSchoolHeadAccountRecords = useMemo(() => {
     const query = schoolHeadAccountsQuery.trim().toLowerCase();
@@ -205,7 +178,7 @@ export function useMonitorSchoolHeadAccountsPanelState({
     const rows = accountManagementRecords.filter((record) => {
       const account = record.schoolHeadAccount ?? null;
 
-      if (!accountMatchesStatusFilter(record, statusFilter)) {
+      if (!schoolHeadAccountMatchesStatusFilter(record.schoolHeadAccount ?? null, statusFilter)) {
         return false;
       }
 
@@ -235,25 +208,14 @@ export function useMonitorSchoolHeadAccountsPanelState({
 
     const priorityFor = (record: SchoolRecord) => {
       const account = record.schoolHeadAccount ?? null;
-      const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-      const lifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
+      const uiStatus = resolveSchoolHeadAccountUiStatus(account);
 
       if (account?.deleteRecordFlagged) return 0;
       if (!account) return 1;
-      if (lifecycleState === "pending_setup") return 2;
-      if (lifecycleState === "pending_verification") return 3;
-      if (account.flagged) return 4;
-      if (lifecycleState === "temporary_password_expired") return 5;
-      if (lifecycleState === "password_reset_required") return 6;
-      if (lifecycleState === "temporary_password_active") return 7;
-      if (normalizedAccountStatus === "active") return 8;
-      if (
-        normalizedAccountStatus === "suspended" ||
-        normalizedAccountStatus === "locked" ||
-        normalizedAccountStatus === "archived" ||
-        lifecycleState === "locked" ||
-        lifecycleState === "archived"
-      ) return 9;
+      if (uiStatus === "activation_needed") return 2;
+      if (account.flagged) return 3;
+      if (uiStatus === "suspended") return 4;
+      if (uiStatus === "active") return 5;
       return 99;
     };
 
@@ -266,7 +228,6 @@ export function useMonitorSchoolHeadAccountsPanelState({
     return rows;
   }, [
     accountManagementRecords,
-    accountMatchesStatusFilter,
     schoolHeadAccountsOnlyDeleteFlagged,
     schoolHeadAccountsOnlyFlagged,
     schoolHeadAccountsQuery,

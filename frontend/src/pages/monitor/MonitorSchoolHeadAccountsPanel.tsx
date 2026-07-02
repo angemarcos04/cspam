@@ -11,14 +11,16 @@ import {
 import { useState, type ReactElement } from "react";
 import { createPortal } from "react-dom";
 import type { SchoolRecord } from "@/types";
+import {
+  resolveSchoolHeadAccountUiStatus,
+  schoolHeadAccountStatusLabel,
+  schoolHeadAccountStatusTone,
+  SCHOOL_HEAD_ACCOUNT_STATUS_FILTER_OPTIONS,
+  type SchoolHeadAccountsStatusFilter,
+} from "./schoolHeadAccountStatus";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
-export type SchoolHeadAccountsStatusFilter =
-  | "all"
-  | "pending_setup"
-  | "pending_verification"
-  | "active"
-  | "suspended";
+export type { SchoolHeadAccountsStatusFilter } from "./schoolHeadAccountStatus";
 
 export interface MonitorSchoolHeadAccountRow {
   schoolKey: string;
@@ -47,44 +49,6 @@ export interface MonitorSchoolHeadAccountsPanelProps {
   onOpenSchoolRecord: (record: SchoolRecord) => void;
   formatDateTime: (value: string | null) => string;
   actions: SchoolHeadAccountActionsApi;
-}
-
-function accountStatusLabel(
-  status: string | null | undefined,
-  lifecycleStateLabel: string | null | undefined,
-  lifecycleState: string | null | undefined,
-): string {
-  if (String(lifecycleState ?? "").toLowerCase() === "temporary_password_active") {
-    return "Temp Password Active";
-  }
-
-  if (!status) return "No Account";
-  const normalized = status.toLowerCase();
-  const normalizedLifecycleState = String(lifecycleState ?? "").toLowerCase();
-  if (normalized === "pending_setup" || normalizedLifecycleState === "pending_setup") return "Setup Needed";
-  if (normalized === "pending_verification" || normalizedLifecycleState === "pending_verification") return "Activation Needed";
-  if (normalized === "locked" || normalized === "archived" || normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") {
-    return "Suspended";
-  }
-  const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
-  if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
-  if (normalized === "active") return "Active";
-  if (normalized === "suspended") return "Suspended";
-  return status;
-}
-
-function accountStatusTone(status: string | null | undefined, lifecycleState: string | null | undefined): string {
-  const normalizedLifecycleState = (lifecycleState ?? "").toLowerCase();
-  if (normalizedLifecycleState === "password_reset_required") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalizedLifecycleState === "temporary_password_expired") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  if (normalizedLifecycleState === "temporary_password_active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  const normalized = (status ?? "").toLowerCase();
-  if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
-  if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "pending_verification") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
-  if (normalized === "suspended" || normalized === "locked" || normalized === "archived") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
-  return "bg-slate-200 text-slate-700 ring-1 ring-slate-300";
 }
 
 function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
@@ -141,13 +105,7 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
   };
 }
 
-const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "active", label: "Active" },
-  { id: "pending_setup", label: "Setup Needed" },
-  { id: "pending_verification", label: "Activation Needed" },
-  { id: "suspended", label: "Suspended" },
-];
+const ACCOUNT_FILTER_OPTIONS = SCHOOL_HEAD_ACCOUNT_STATUS_FILTER_OPTIONS;
 const ACCOUNT_ACTION_MENU_WIDTH = 224;
 const ACCOUNT_ACTION_MENU_ESTIMATED_HEIGHT = 126;
 
@@ -234,9 +192,6 @@ export function MonitorSchoolHeadAccountsPanel({
         <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100 px-4 py-3 md:flex-row md:items-start md:justify-between">
           <div>
             <h3 className="text-sm font-extrabold text-slate-900">School Head Account Management</h3>
-            <p className="mt-1 text-xs font-medium text-slate-600">
-              Manage linked School Head accounts without leaving the Schools view.
-            </p>
           </div>
           <button
             type="button"
@@ -374,20 +329,10 @@ export function MonitorSchoolHeadAccountsPanel({
                   const account = resolvedRecord.schoolHeadAccount ?? null;
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
-                  const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
-                  const normalizedLifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
-                  const isActivationNeededAccount =
-                    normalizedAccountStatus === "pending_verification" ||
-                    normalizedLifecycleState === "pending_verification";
-                  const isSetupNeededAccount =
-                    normalizedAccountStatus === "pending_setup" ||
-                    normalizedLifecycleState === "pending_setup";
-                  const isSuspendedLikeAccount =
-                    normalizedAccountStatus === "suspended" ||
-                    normalizedAccountStatus === "locked" ||
-                    normalizedAccountStatus === "archived" ||
-                    normalizedLifecycleState === "locked" ||
-                    normalizedLifecycleState === "archived";
+                  const uiStatus = resolveSchoolHeadAccountUiStatus(account);
+                  const isActivationNeededAccount = uiStatus === "activation_needed";
+                  const isActiveAccount = uiStatus === "active";
+                  const isSuspendedLikeAccount = uiStatus === "suspended";
                   const tempPassword = temporaryPasswordState(account);
 
                   return (
@@ -454,14 +399,11 @@ export function MonitorSchoolHeadAccountsPanel({
                         {account ? (
                           <div className="flex flex-col gap-0.5">
                             <span
-                              className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${accountStatusTone(
-                                account.accountStatus,
-                                account.lifecycleState,
-                              )}`}
+                              className={`inline-flex items-center gap-1 self-start rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${schoolHeadAccountStatusTone(uiStatus)}`}
                             >
                               {account.deleteRecordFlagged ? <Database className="h-3.5 w-3.5 text-rose-700" /> : null}
                               {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
-                              {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel, account.lifecycleState)}
+                              {schoolHeadAccountStatusLabel(uiStatus)}
                             </span>
                           </div>
                         ) : (
@@ -564,20 +506,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                     }}
                                     className="fixed z-[95] overflow-hidden rounded-sm border border-slate-200 bg-white py-1 text-left shadow-2xl"
                                   >
-                                    {isSetupNeededAccount ? (
-                                      <button
-                                        type="button"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          closeSelectedAccountActionMenu(resolvedRecord.id);
-                                          void actions.handleIssueSchoolHeadSetupLink(resolvedRecord);
-                                        }}
-                                        className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                      >
-                                        Send Setup Link
-                                      </button>
-                                    ) : null}
-                                    {!isSetupNeededAccount && !isActivationNeededAccount && !isSuspendedLikeAccount ? (
+                                    {isActiveAccount ? (
                                       <button
                                         type="button"
                                         role="menuitem"
@@ -612,7 +541,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                       >
                                         Activate Account
                                       </button>
-                                    ) : !isSetupNeededAccount ? (
+                                    ) : isActiveAccount || isSuspendedLikeAccount ? (
                                       <button
                                         type="button"
                                         role="menuitem"

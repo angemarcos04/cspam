@@ -571,7 +571,7 @@ describe("DataProvider school record sync recovery", () => {
 
   it("keeps confirmed account status visible when the follow-up record refresh is stale", async () => {
     const apiRequestRawMock = vi.mocked(apiRequestRaw);
-    const buildRecord = (accountStatus: string) => ({
+    const buildRecord = (accountStatus: string, accountOverrides: Record<string, unknown> = {}) => ({
       id: "school-1",
       schoolId: "900001",
       schoolCode: "900001",
@@ -612,6 +612,7 @@ describe("DataProvider school record sync recovery", () => {
         deleteRecordFlagged: false,
         deleteRecordFlaggedAt: null,
         deleteRecordReason: null,
+        ...accountOverrides,
       },
       indicatorLatest: null,
     });
@@ -639,14 +640,19 @@ describe("DataProvider school record sync recovery", () => {
           data: {
             schoolId: "school-1",
             schoolName: "Santiago Elementary",
-            account: buildRecord("suspended").schoolHeadAccount,
+            account: buildRecord("suspended", {
+              lifecycleState: "locked",
+              lifecycleStateLabel: "Locked by monitor",
+              flagged: true,
+              flagReason: "Policy hold",
+            }).schoolHeadAccount,
             message: "Account suspended.",
           },
         },
         headers: new Headers(),
       })
       .mockResolvedValueOnce(recordsResponse("active"))
-      .mockResolvedValueOnce(recordsResponse("suspended"));
+      .mockResolvedValueOnce(recordsResponse("active"));
 
     const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
     const { result } = renderHook(() => useData(), { wrapper });
@@ -666,12 +672,18 @@ describe("DataProvider school record sync recovery", () => {
 
     expect(result.current.records[0]?.status).toBe("active");
     expect(result.current.records[0]?.schoolHeadAccount?.accountStatus).toBe("suspended");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleState).toBe("locked");
+    expect(result.current.records[0]?.schoolHeadAccount?.flagged).toBe(true);
 
     await act(async () => {
       await result.current.refreshRecords({ force: true });
     });
 
     expect(result.current.records[0]?.schoolHeadAccount?.accountStatus).toBe("suspended");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleState).toBe("locked");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleStateLabel).toBe("Locked by monitor");
+    expect(result.current.records[0]?.schoolHeadAccount?.flagged).toBe(true);
+    expect(result.current.records[0]?.schoolHeadAccount?.flagReason).toBe("Policy hold");
   });
 });
 
