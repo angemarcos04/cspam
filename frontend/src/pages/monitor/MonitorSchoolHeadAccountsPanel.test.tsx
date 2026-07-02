@@ -93,6 +93,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.getByRole("heading", { name: "School Head Account Management" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Active/i })).not.toBeNull();
+    expect(screen.getByRole("button", { name: /Setup Needed/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Activation Needed/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Suspended/i })).not.toBeNull();
     expect(screen.queryByRole("button", { name: /Needs account/i })).toBeNull();
@@ -164,6 +165,23 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         lifecycleStateLabel: "Suspended",
       },
     };
+    const setupNeededRecord: SchoolRecord = {
+      ...activeRecord,
+      id: "school-setup-needed",
+      schoolId: "910003",
+      schoolCode: "910003",
+      schoolName: "Setup Needed Account School",
+      schoolHeadAccount: {
+        ...activeRecord.schoolHeadAccount!,
+        id: "account-setup-needed",
+        name: "Setup Needed Head",
+        email: "setup-needed@cspams.local",
+        accountStatus: "pending_setup",
+        lifecycleState: "pending_setup",
+        lifecycleStateLabel: "Pending setup",
+        recommendedAction: "send_setup_link",
+      },
+    };
 
     const openPendingAccountAction = vi.fn();
     const handleUpdateSchoolHeadAccount = vi.fn();
@@ -175,7 +193,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       actions.openPendingAccountAction = openPendingAccountAction;
       actions.handleUpdateSchoolHeadAccount = handleUpdateSchoolHeadAccount;
       actions.handleIssueSchoolHeadSetupLink = handleIssueSchoolHeadSetupLink;
-      const allRows = [activeRecord, suspendedRecord];
+      const allRows = [activeRecord, suspendedRecord, setupNeededRecord];
       const filteredRows = allRows
         .filter((record) => statusFilter === "all" || record.schoolHeadAccount?.accountStatus === statusFilter)
         .map((record) => ({
@@ -192,7 +210,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
           isMobileViewport={false}
           rows={filteredRows}
           totalCount={allRows.length}
-          accountStatusCounts={{ all: 2, active: 1, suspended: 1 }}
+          accountStatusCounts={{ all: 3, active: 1, pending_setup: 1, suspended: 1 }}
           query=""
           statusFilter={statusFilter}
           onlyFlagged={false}
@@ -213,16 +231,25 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     render(<Wrapper />);
     expect(screen.getByText("Active Account School")).not.toBeNull();
     expect(screen.getByText("Suspended Account School")).not.toBeNull();
+    expect(screen.getByText("Setup Needed Account School")).not.toBeNull();
     const filterGroup = screen.getByLabelText("School Head account filters");
 
     fireEvent.click(within(filterGroup).getByRole("button", { name: /Active/i }));
     expect(screen.getByText("Active Account School")).not.toBeNull();
     expect(screen.queryByText("Suspended Account School")).toBeNull();
+    expect(screen.queryByText("Setup Needed Account School")).toBeNull();
     expect(activeRecord.schoolHeadAccount?.accountStatus).toBe("active");
     expect(suspendedRecord.schoolHeadAccount?.accountStatus).toBe("suspended");
 
+    fireEvent.click(within(filterGroup).getByRole("button", { name: /Setup Needed/i }));
+    expect(screen.queryByText("Active Account School")).toBeNull();
+    expect(screen.queryByText("Suspended Account School")).toBeNull();
+    expect(screen.getByText("Setup Needed Account School")).not.toBeNull();
+    expect(setupNeededRecord.schoolHeadAccount?.accountStatus).toBe("pending_setup");
+
     fireEvent.click(within(filterGroup).getByRole("button", { name: /Suspended/i }));
     expect(screen.queryByText("Active Account School")).toBeNull();
+    expect(screen.queryByText("Setup Needed Account School")).toBeNull();
     expect(screen.getByText("Suspended Account School")).not.toBeNull();
     expect(activeRecord.schoolHeadAccount?.accountStatus).toBe("active");
     expect(suspendedRecord.schoolHeadAccount?.accountStatus).toBe("suspended");
@@ -331,10 +358,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     fireEvent.click(within(row!).getByRole("button", { name: "Actions" }));
     const menu = screen.getByRole("menu", { name: "Activation Needed School account actions" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Send Password Reset Link",
       "Activate Account",
       "Remove Account and School",
     ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
 
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Activate Account" }));
@@ -508,6 +535,8 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       },
     };
 
+    const handleIssueSchoolHeadSetupLink = vi.fn();
+
     function Wrapper(): ReactElement {
       const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
       const [query, setQuery] = useState("");
@@ -519,6 +548,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       actions.toggleAccountRowMenu = (schoolId: string) => {
         setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
       };
+      actions.handleIssueSchoolHeadSetupLink = handleIssueSchoolHeadSetupLink;
 
       return (
         <MonitorSchoolHeadAccountsPanel
@@ -580,11 +610,13 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(lockedRow).not.toBeUndefined();
     expect(within(lockedRow!).getByText("Suspended")).not.toBeNull();
     expect(within(lockedRow!).queryByText("Locked")).toBeNull();
-    expect(within(pendingRow!).getByText("Setup link")).not.toBeNull();
+    expect(within(pendingRow!).getByText("Setup Needed")).not.toBeNull();
+    expect(within(pendingRow!).queryByText("Pending Setup")).toBeNull();
+    expect(within(pendingRow!).queryByText("pending_setup")).toBeNull();
+    expect(within(pendingRow!).getByText("Setup Link")).not.toBeNull();
     expect(screen.queryByRole("button", { name: "Manage Account" })).toBeNull();
     expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
 
-    const actionButton = within(activeRow!).getByRole("button", { name: "Actions" });
     Object.defineProperty(window, "innerHeight", {
       configurable: true,
       writable: true,
@@ -595,6 +627,33 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       writable: true,
       value: 1024,
     });
+
+    const pendingActionButton = within(pendingRow!).getByRole("button", { name: "Actions" });
+    pendingActionButton.getBoundingClientRect = vi.fn(() => ({
+      x: 780,
+      y: 420,
+      width: 80,
+      height: 32,
+      top: 420,
+      right: 860,
+      bottom: 452,
+      left: 780,
+      toJSON: () => ({}),
+    }));
+
+    fireEvent.click(pendingActionButton);
+    let menu = screen.getByRole("menu", { name: "Pending Setup School account actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Send Setup Link",
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Send Setup Link" }));
+    expect(handleIssueSchoolHeadSetupLink).toHaveBeenCalledWith(pendingRecord);
+    expect(screen.queryByRole("menu", { name: "Pending Setup School account actions" })).toBeNull();
+
+    const actionButton = within(activeRow!).getByRole("button", { name: "Actions" });
     actionButton.getBoundingClientRect = vi.fn(() => ({
       x: 780,
       y: 460,
@@ -608,7 +667,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     }));
 
     fireEvent.click(actionButton);
-    const menu = screen.getByRole("menu", { name: "Active School account actions" });
+    menu = screen.getByRole("menu", { name: "Active School account actions" });
     expect(menu.closest(".overflow-x-auto")).toBeNull();
     expect(Number.parseFloat(menu.style.top)).toBeLessThan(460);
     const menuItems = within(menu).getAllByRole("menuitem");
@@ -617,7 +676,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       "Suspend Account",
       "Remove Account and School",
     ]);
-    expect(within(menu).queryByRole("menuitem", { name: "Send setup link" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Send Setup Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Open school record" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Regenerate temporary password" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Lock account" })).toBeNull();
@@ -752,10 +811,10 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     fireEvent.click(within(suspendedRow!).getByRole("button", { name: "Actions" }));
     menu = screen.getByRole("menu", { name: "Suspended Bottom School account actions" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Send Password Reset Link",
       "Reactivate Account",
       "Remove Account and School",
     ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Reactivate Account" }));
     expect(handleUpdateSchoolHeadAccount).toHaveBeenCalledWith(
@@ -788,7 +847,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByRole("dialog", { name: "Manage School Head Account" })).toBeNull();
   });
 
-  it("shows setup-link and temporary-password states distinctly in the Temp Pass column", () => {
+  it("shows setup-link and temporary-password states distinctly in the Access column", () => {
     const setupLinkRecord: SchoolRecord = {
       id: "school-5",
       schoolId: "900005",
@@ -916,7 +975,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(activeRow).not.toBeUndefined();
     expect(expiredRow).not.toBeUndefined();
 
-    expect(within(setupRow!).getByText("Setup link")).not.toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Access" })).not.toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Temp Pass" })).toBeNull();
+    expect(within(setupRow!).getByText("Setup Link")).not.toBeNull();
     expect(within(activeRow!).getByText("Ab3Cd4Ef")).not.toBeNull();
     expect(within(expiredRow!).getByText("Expired")).not.toBeNull();
   });

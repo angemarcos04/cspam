@@ -126,7 +126,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
   }, [schoolHeadAccountActions]);
 
   const openSchoolHeadAccountsPanelWithStatus = useCallback((status: SchoolHeadAccountsStatusFilter = "all") => {
-    const visibleStatus = status === "active" || status === "pending_verification" || status === "suspended" ? status : "all";
+    const visibleStatus =
+      status === "active" ||
+      status === "pending_setup" ||
+      status === "pending_verification" ||
+      status === "suspended"
+        ? status
+        : "all";
     setSchoolHeadAccountsQuery("");
     setSchoolHeadAccountsStatusFilter(visibleStatus);
     setSchoolHeadAccountsOnlyFlagged(false);
@@ -154,6 +160,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
       if (statusFilter === "pending_verification") {
         return normalizedAccountStatus === "pending_verification" || lifecycleState === "pending_verification";
       }
+      if (statusFilter === "pending_setup") {
+        return normalizedAccountStatus === "pending_setup" || lifecycleState === "pending_setup";
+      }
       if (statusFilter === "suspended") {
         return (
           normalizedAccountStatus === "suspended" ||
@@ -172,8 +181,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
   const accountStatusCounts = useMemo<Record<SchoolHeadAccountsStatusFilter, number>>(() => {
     const counts: Record<SchoolHeadAccountsStatusFilter, number> = {
       all: accountManagementRecords.length,
-      pending_verification: 0,
       active: 0,
+      pending_setup: 0,
+      pending_verification: 0,
       suspended: 0,
     };
 

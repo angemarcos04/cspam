@@ -15,6 +15,7 @@ import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions"
 
 export type SchoolHeadAccountsStatusFilter =
   | "all"
+  | "pending_setup"
   | "pending_verification"
   | "active"
   | "suspended";
@@ -60,6 +61,7 @@ function accountStatusLabel(
   if (!status) return "No Account";
   const normalized = status.toLowerCase();
   const normalizedLifecycleState = String(lifecycleState ?? "").toLowerCase();
+  if (normalized === "pending_setup" || normalizedLifecycleState === "pending_setup") return "Setup Needed";
   if (normalized === "pending_verification" || normalizedLifecycleState === "pending_verification") return "Activation Needed";
   if (normalized === "locked" || normalized === "archived" || normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") {
     return "Suspended";
@@ -67,7 +69,6 @@ function accountStatusLabel(
   const normalizedLifecycleLabel = lifecycleStateLabel?.trim();
   if (normalizedLifecycleLabel) return normalizedLifecycleLabel;
   if (normalized === "active") return "Active";
-  if (normalized === "pending_setup") return "Pending Setup";
   if (normalized === "suspended") return "Suspended";
   return status;
 }
@@ -128,7 +129,7 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
 
   if (account.lifecycleState === "pending_setup" || account.lifecycleState === "pending_verification") {
     return {
-      label: "Setup link",
+      label: "Setup Link",
       tone: "border-amber-200 bg-amber-50 text-amber-700",
       title: "This account is still on setup-link onboarding. Temporary passwords are not used for this lifecycle.",
     };
@@ -143,6 +144,7 @@ function temporaryPasswordState(account: SchoolRecord["schoolHeadAccount"]): {
 const ACCOUNT_FILTER_OPTIONS: Array<{ id: SchoolHeadAccountsStatusFilter; label: string }> = [
   { id: "all", label: "All" },
   { id: "active", label: "Active" },
+  { id: "pending_setup", label: "Setup Needed" },
   { id: "pending_verification", label: "Activation Needed" },
   { id: "suspended", label: "Suspended" },
 ];
@@ -331,7 +333,7 @@ export function MonitorSchoolHeadAccountsPanel({
                 <th className="w-[15rem] border-r border-slate-100 px-3 py-1.5 text-left">Contact</th>
                 <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Status</th>
                 <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
-                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Temp Pass</th>
+                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Access</th>
                 <th className="w-32 px-3 py-1.5 text-right">Actions</th>
               </tr>
             </thead>
@@ -373,6 +375,9 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isActivationNeededAccount =
                     normalizedAccountStatus === "pending_verification" ||
                     normalizedLifecycleState === "pending_verification";
+                  const isSetupNeededAccount =
+                    normalizedAccountStatus === "pending_setup" ||
+                    normalizedLifecycleState === "pending_setup";
                   const isSuspendedLikeAccount =
                     normalizedAccountStatus === "suspended" ||
                     normalizedAccountStatus === "locked" ||
@@ -555,22 +560,37 @@ export function MonitorSchoolHeadAccountsPanel({
                                     }}
                                     className="fixed z-[95] overflow-hidden rounded-sm border border-slate-200 bg-white py-1 text-left shadow-2xl"
                                   >
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      onClick={() => {
-                                        closeSelectedAccountActionMenu(resolvedRecord.id);
-                                        actions.openPendingAccountAction({
-                                          kind: "reset_password",
-                                          schoolId: resolvedRecord.id,
-                                          schoolName: resolvedRecord.schoolName,
-                                          actionLabel: "Send Password Reset Link",
-                                        });
-                                      }}
-                                      className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                    >
-                                      Send Password Reset Link
-                                    </button>
+                                    {isSetupNeededAccount ? (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          closeSelectedAccountActionMenu(resolvedRecord.id);
+                                          void actions.handleIssueSchoolHeadSetupLink(resolvedRecord);
+                                        }}
+                                        className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Send Setup Link
+                                      </button>
+                                    ) : null}
+                                    {!isSetupNeededAccount && !isActivationNeededAccount && !isSuspendedLikeAccount ? (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          closeSelectedAccountActionMenu(resolvedRecord.id);
+                                          actions.openPendingAccountAction({
+                                            kind: "reset_password",
+                                            schoolId: resolvedRecord.id,
+                                            schoolName: resolvedRecord.schoolName,
+                                            actionLabel: "Send Password Reset Link",
+                                          });
+                                        }}
+                                        className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Send Password Reset Link
+                                      </button>
+                                    ) : null}
                                     {isActivationNeededAccount ? (
                                       <button
                                         type="button"
@@ -588,7 +608,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                       >
                                         Activate Account
                                       </button>
-                                    ) : (
+                                    ) : !isSetupNeededAccount ? (
                                       <button
                                         type="button"
                                         role="menuitem"
@@ -606,7 +626,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                       >
                                         {isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account"}
                                       </button>
-                                    )}
+                                    ) : null}
                                     <button
                                       type="button"
                                       role="menuitem"
