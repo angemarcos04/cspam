@@ -91,6 +91,8 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
 
     expect(screen.getByPlaceholderText("Search school, code, name, or email...")).not.toBeNull();
     expect(screen.getByRole("heading", { name: "School Head Account Management" })).not.toBeNull();
+    expect(screen.getByText("Manage linked School Head accounts without leaving the Schools view.")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Close Panel" })).not.toBeNull();
     expect(screen.getByRole("button", { name: /All/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Active/i })).not.toBeNull();
     expect(screen.getByRole("button", { name: /Setup Needed/i })).not.toBeNull();

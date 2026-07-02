@@ -230,10 +230,13 @@ export function MonitorSchoolHeadAccountsPanel({
 
   return (
     <>
-      <section className="mx-5 mt-4 overflow-visible rounded-sm border border-slate-200 bg-white">
-        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 md:flex-row md:items-start md:justify-between">
+      <section className="mx-4 my-4 overflow-hidden rounded-sm border border-l-4 border-slate-300 border-l-primary-800 bg-slate-50 shadow-sm">
+        <div className="flex flex-col gap-2 border-b border-slate-200 bg-slate-100 px-4 py-3 md:flex-row md:items-start md:justify-between">
           <div>
-            <h3 className="text-sm font-bold text-slate-900">School Head Account Management</h3>
+            <h3 className="text-sm font-extrabold text-slate-900">School Head Account Management</h3>
+            <p className="mt-1 text-xs font-medium text-slate-600">
+              Manage linked School Head accounts without leaving the Schools view.
+            </p>
           </div>
           <button
             type="button"
@@ -241,103 +244,104 @@ export function MonitorSchoolHeadAccountsPanel({
             className="inline-flex items-center gap-1 self-start rounded-sm border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition hover:bg-slate-100"
           >
             <X className="h-3.5 w-3.5" />
-            Close
+            Close Panel
           </button>
         </div>
 
-        {actions.schoolHeadAccountDraftError && (
-          <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-2 text-xs font-semibold text-primary-800">
-            {actions.schoolHeadAccountDraftError}
-          </div>
-        )}
-
-        {actions.temporaryPasswordReceipt && (
-          <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-3 text-xs font-semibold text-primary-800">
-            <p>{actions.temporaryPasswordReceipt.message}</p>
-            <div className="mt-2 space-y-1">
-              <p>School: {actions.temporaryPasswordReceipt.schoolName}</p>
-              <p>Email: {actions.temporaryPasswordReceipt.email}</p>
-              <div className="flex flex-wrap items-center gap-2">
-                <span>Temporary password: {actions.temporaryPasswordReceipt.temporaryPassword}</span>
-                <button
-                  type="button"
-                  onClick={() => void actions.copyTemporaryPasswordReceipt()}
-                  className="inline-flex items-center rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-50"
-                >
-                  Copy password
-                </button>
-                <button
-                  type="button"
-                  onClick={actions.clearTemporaryPasswordReceipt}
-                  className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  Dismiss
-                </button>
-              </div>
-              <p>Copy this password now. It will remain visible in the monitor panel until the School Head changes it on next login.</p>
+        <div className="bg-white">
+          {actions.schoolHeadAccountDraftError && (
+            <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-2 text-xs font-semibold text-primary-800">
+              {actions.schoolHeadAccountDraftError}
             </div>
-          </div>
-        )}
+          )}
 
-        <div className="border-b border-slate-200 bg-white px-4 py-3">
-          <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-            <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <input
-                  value={query}
-                  onChange={(event) => onQueryChange(event.target.value)}
-                  placeholder="Search school, code, name, or email..."
-                  className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                />
+          {actions.temporaryPasswordReceipt && (
+            <div className="border-b border-primary-100 bg-primary-50/70 px-4 py-3 text-xs font-semibold text-primary-800">
+              <p>{actions.temporaryPasswordReceipt.message}</p>
+              <div className="mt-2 space-y-1">
+                <p>School: {actions.temporaryPasswordReceipt.schoolName}</p>
+                <p>Email: {actions.temporaryPasswordReceipt.email}</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span>Temporary password: {actions.temporaryPasswordReceipt.temporaryPassword}</span>
+                  <button
+                    type="button"
+                    onClick={() => void actions.copyTemporaryPasswordReceipt()}
+                    className="inline-flex items-center rounded-sm border border-primary-200 bg-white px-2 py-1 text-[11px] font-semibold text-primary-700 transition hover:bg-primary-50"
+                  >
+                    Copy password
+                  </button>
+                  <button
+                    type="button"
+                    onClick={actions.clearTemporaryPasswordReceipt}
+                    className="inline-flex items-center rounded-sm border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-700 transition hover:bg-slate-50"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+                <p>Copy this password now. It will remain visible in the monitor panel until the School Head changes it on next login.</p>
               </div>
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-1.5" aria-label="School Head account filters">
-            {ACCOUNT_FILTER_OPTIONS.map((option) => {
-              const isSelected = statusFilter === option.id;
-              const count = filterCounts[option.id] ?? 0;
+          )}
 
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  aria-pressed={isSelected}
-                  onClick={() => onStatusFilterChange(option.id)}
-                  className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
-                    isSelected
-                      ? "border-primary-300 bg-primary-50 text-primary-800"
-                      : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <span>{option.label}</span>
-                  <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
-                      isSelected ? "bg-primary-100 text-primary-800" : "bg-slate-100 text-slate-600"
+          <div className="border-b border-slate-200 bg-white px-4 py-3">
+            <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <Search className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <input
+                    value={query}
+                    onChange={(event) => onQueryChange(event.target.value)}
+                    placeholder="Search school, code, name, or email..."
+                    className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="mt-3 flex flex-wrap gap-1.5" aria-label="School Head account filters">
+              {ACCOUNT_FILTER_OPTIONS.map((option) => {
+                const isSelected = statusFilter === option.id;
+                const count = filterCounts[option.id] ?? 0;
+
+                return (
+                  <button
+                    key={option.id}
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => onStatusFilterChange(option.id)}
+                    className={`inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-1 text-[11px] font-semibold transition ${
+                      isSelected
+                        ? "border-primary-300 bg-primary-50 text-primary-800"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                     }`}
                   >
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
+                    <span>{option.label}</span>
+                    <span
+                      className={`rounded-full px-1.5 py-0.5 text-[10px] tabular-nums ${
+                        isSelected ? "bg-primary-100 text-primary-800" : "bg-slate-100 text-slate-600"
+                      }`}
+                    >
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
 
-        <div className="overflow-x-auto overflow-y-visible">
-          <table className="min-w-full table-fixed">
-            <thead>
-              <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
-                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Code</th>
-                <th className="w-[14rem] border-r border-slate-100 px-3 py-1.5 text-left">School</th>
-                <th className="w-[15rem] border-r border-slate-100 px-3 py-1.5 text-left">Contact</th>
-                <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Status</th>
-                <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
-                <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Access</th>
-                <th className="w-32 px-3 py-1.5 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+          <div className="overflow-x-auto overflow-y-visible">
+            <table className="min-w-full table-fixed">
+              <thead>
+                <tr className="border-b border-slate-200 bg-white text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                  <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Code</th>
+                  <th className="w-[14rem] border-r border-slate-100 px-3 py-1.5 text-left">School</th>
+                  <th className="w-[15rem] border-r border-slate-100 px-3 py-1.5 text-left">Contact</th>
+                  <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Status</th>
+                  <th className="w-40 border-r border-slate-100 px-3 py-1.5 text-left">Activity</th>
+                  <th className="w-24 border-r border-slate-100 px-3 py-1.5 text-left">Access</th>
+                  <th className="w-32 px-3 py-1.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
               {rows.length === 0 ? (
                 <tr>
                   <td className="px-3 py-6 text-center text-sm text-slate-500" colSpan={7}>
@@ -657,6 +661,7 @@ export function MonitorSchoolHeadAccountsPanel({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       </section>
 
