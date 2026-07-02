@@ -156,7 +156,7 @@ const ACCOUNT_RECOVERY_SECTIONS: AccountManualSection[] = [
       "Try the 6-digit email code first.",
       "Use a stored backup code if available.",
       "If neither option works, request MFA recovery from the sign-in MFA screen.",
-      "Review MFA recovery requests from Schools -> More -> MFA Recovery Requests.",
+      "Review MFA recovery requests through the monitor recovery approvals workflow when available.",
       "After recovery, store the new backup codes securely.",
       "Production recovery should require another active Division Monitor to approve the request.",
     ],

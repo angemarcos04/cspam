@@ -1,11 +1,9 @@
 import {
-  Archive,
   Building2,
   ChevronDown,
   Download,
   FileUp,
   Search,
-  ShieldCheck,
   Users,
 } from "lucide-react";
 import type { ChangeEvent, MutableRefObject, Ref } from "react";
@@ -40,17 +38,13 @@ interface MonitorSchoolsSectionProps {
   showSchoolHeadAccountsPanel: boolean;
   isSchoolActionsMenuOpen: boolean;
   isBulkImporting: boolean;
-  showArchivedRecords: boolean;
   schoolHeadAccountsPanelProps: MonitorSchoolHeadAccountsPanelProps | null;
   archivedSchoolsProps: MonitorArchivedSchoolsProps;
   handleBulkImportFileChange: (event: ChangeEvent<HTMLInputElement>) => Promise<void>;
   toggleSchoolHeadAccountsPanel: () => void;
   toggleActionsMenu: () => void;
-  closeActionsMenu: () => void;
   downloadCsvFormat: () => void;
   openBulkImportPicker: () => void;
-  toggleArchivedRecords: () => void | Promise<void>;
-  onOpenMfaRecoveryRequests: () => void;
 }
 
 export function MonitorSchoolsSection({
@@ -74,17 +68,13 @@ export function MonitorSchoolsSection({
   showSchoolHeadAccountsPanel,
   isSchoolActionsMenuOpen,
   isBulkImporting,
-  showArchivedRecords,
   schoolHeadAccountsPanelProps,
   archivedSchoolsProps,
   handleBulkImportFileChange,
   toggleSchoolHeadAccountsPanel,
   toggleActionsMenu,
-  closeActionsMenu,
   downloadCsvFormat,
   openBulkImportPicker,
-  toggleArchivedRecords,
-  onOpenMfaRecoveryRequests,
 }: MonitorSchoolsSectionProps) {
   const currentPublicLevel = schoolSectorFilter === "public" ? schoolLevelFilter : "all";
   const currentPrivateLevel = schoolSectorFilter === "private" ? schoolLevelFilter : "all";
@@ -259,27 +249,6 @@ export function MonitorSchoolsSection({
                     >
                       <FileUp className="h-3.5 w-3.5 text-slate-500" />
                       Import CSV
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => void toggleArchivedRecords()}
-                      className={menuItemClass}
-                    >
-                      <Archive className="h-3.5 w-3.5 text-slate-500" />
-                      {showArchivedRecords ? "Hide Archived Schools" : "Show Archived Schools"}
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        closeActionsMenu();
-                        onOpenMfaRecoveryRequests();
-                      }}
-                      className={menuItemClass}
-                    >
-                      <ShieldCheck className="h-3.5 w-3.5 text-slate-500" />
-                      MFA Recovery Requests
                     </button>
                   </div>
                 )}

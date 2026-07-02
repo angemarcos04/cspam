@@ -599,15 +599,13 @@ describe("MonitorDashboard School Head delivery flows", () => {
     const menu = within(schoolsSection).getByRole("menu", { name: "Schools management menu" });
     expect(within(menu).getByRole("menuitem", { name: "Download CSV Format" })).toBeTruthy();
     expect(within(menu).getByRole("menuitem", { name: "Import CSV" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "Show Archived Schools" })).toBeTruthy();
-    expect(within(menu).getByRole("menuitem", { name: "MFA Recovery Requests" })).toBeTruthy();
+    expect(within(menu).queryByRole("menuitem", { name: "Show Archived Schools" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Hide Archived Schools" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "MFA Recovery Requests" })).toBeNull();
     expect(within(menu).queryByText("Add School")).toBeNull();
     expect(within(menu).queryByText("Reviews")).toBeNull();
     expect(within(menu).queryByText("Audit Trail")).toBeNull();
     expect(within(menu).queryByText("User Manual")).toBeNull();
-
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "MFA Recovery Requests" }));
-    expect(await screen.findByRole("dialog", { name: "MFA Recovery Requests" })).toBeTruthy();
   });
 
   it("surfaces School Head account actions in a compact dropdown", async () => {
@@ -682,7 +680,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(updateSchoolHeadAccountStatusMock).not.toHaveBeenCalled();
   });
 
-  it("uses existing import and archived-school flows from the Schools More menu", async () => {
+  it("uses the existing import flow from the Schools More menu", async () => {
     render(<MonitorDashboard />);
 
     fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
@@ -694,19 +692,10 @@ describe("MonitorDashboard School Head delivery flows", () => {
     });
 
     fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
-    fireEvent.click(within(schoolsSection).getByRole("menuitem", { name: "Show Archived Schools" }));
-
-    expect(await within(schoolsSection).findByRole("heading", { name: "Archived Schools" })).toBeTruthy();
-    await waitFor(() => {
-      expect(listArchivedRecordsMock).toHaveBeenCalled();
-    });
-    fireEvent.click(within(schoolsSection).getByRole("button", { name: "Restore" }));
-    await waitFor(() => {
-      expect(restoreRecordMock).toHaveBeenCalledWith("archived-1");
-    });
-    expect(within(schoolsSection).getByRole("button", { name: "Delete permanently" })).toBeTruthy();
-
-    fireEvent.click(within(schoolsSection).getByRole("button", { name: "More" }));
+    const menu = within(schoolsSection).getByRole("menu", { name: "Schools management menu" });
+    expect(within(menu).getByRole("menuitem", { name: "Download CSV Format" })).toBeTruthy();
+    expect(within(menu).queryByRole("menuitem", { name: "Show Archived Schools" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "MFA Recovery Requests" })).toBeNull();
     fireEvent.click(within(schoolsSection).getByRole("menuitem", { name: "Import CSV" }));
     const input = within(schoolsSection).getByLabelText("Import schools CSV");
     const csv = [
@@ -737,6 +726,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
         restoreArchived: true,
       });
     });
+    expect(listArchivedRecordsMock).not.toHaveBeenCalled();
   });
 
   it("does not expose destructive school actions in the active Schools list", async () => {
@@ -1014,7 +1004,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.getByText(/The Review Inbox shows School, Location, Coverage, Type, Status, Last Activity, and Actions/i)).toBeTruthy();
     expect(screen.getByText(/Use Unverify when a verified requirement must be reopened for review/i)).toBeTruthy();
     expect(screen.getAllByText(/Schools -> Accounts/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Schools -> More -> MFA Recovery Requests/)).toBeTruthy();
+    expect(screen.queryByText(/Schools -> More -> MFA Recovery Requests/)).toBeNull();
+    expect(screen.getByText(/monitor recovery approvals workflow/i)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Return to Dashboard Data" }));
     expect(screen.queryByRole("heading", { name: "User Manual" })).toBeNull();
