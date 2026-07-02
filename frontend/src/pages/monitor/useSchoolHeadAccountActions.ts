@@ -9,6 +9,7 @@ import type {
   SchoolHeadAccountRemovalResult,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
+  SchoolHeadPasswordResetLinkPayload,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
   SchoolHeadTemporaryPasswordResult,
@@ -76,7 +77,7 @@ interface UseSchoolHeadAccountActionsOptions {
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: SchoolHeadPasswordResetLinkPayload,
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
   issueSchoolHeadTemporaryPassword: (
     schoolId: string,
@@ -107,6 +108,10 @@ export interface SchoolHeadAccountActionsApi {
   pendingAccountVerificationError: string;
   pendingActionDescription: string;
   pendingActionRequiresVerification: boolean;
+  pendingShowsNotifySchoolHead: boolean;
+  pendingShowsIncludeReasonInEmail: boolean;
+  pendingNotifySchoolHead: boolean;
+  pendingIncludeReasonInEmail: boolean;
   isPendingAccountVerificationSending: boolean;
   isConfirmPendingAccountActionDisabled: boolean;
   confirmPendingAccountActionLabel: string;
@@ -123,6 +128,8 @@ export interface SchoolHeadAccountActionsApi {
   openPendingAccountAction: (action: PendingAccountAction) => void;
   closePendingAccountAction: () => void;
   updatePendingAccountReason: (value: string) => void;
+  updatePendingNotifySchoolHead: (value: boolean) => void;
+  updatePendingIncludeReasonInEmail: (value: boolean) => void;
   updatePendingVerificationCode: (value: string) => void;
   sendPendingAccountVerificationCode: () => Promise<void>;
   confirmPendingAccountAction: () => Promise<void>;
@@ -177,6 +184,25 @@ function requiresVerification(action: PendingAccountAction | null): boolean {
     || action.kind === "remove"
     || (action.kind === "status" && isDeactivationStatus(action.update.accountStatus))
   );
+}
+
+function supportsNotifySchoolHead(action: PendingAccountAction | null): boolean {
+  return Boolean(
+    action?.kind === "remove"
+    || (action?.kind === "status" && isDeactivationStatus(action.update.accountStatus)),
+  );
+}
+
+function supportsIncludeReasonInEmail(action: PendingAccountAction | null): boolean {
+  return Boolean(
+    action?.kind === "reset_password"
+    || action?.kind === "remove"
+    || (action?.kind === "status" && isDeactivationStatus(action.update.accountStatus)),
+  );
+}
+
+function defaultNotifySchoolHead(action: PendingAccountAction): boolean {
+  return supportsNotifySchoolHead(action);
 }
 
 function verificationTargetForAction(
@@ -291,6 +317,8 @@ export function useSchoolHeadAccountActions({
     useState<SchoolHeadAccountActionVerificationCodeResult | null>(null);
   const [pendingAccountVerificationCode, setPendingAccountVerificationCode] = useState("");
   const [pendingAccountVerificationError, setPendingAccountVerificationError] = useState("");
+  const [pendingNotifySchoolHead, setPendingNotifySchoolHead] = useState(false);
+  const [pendingIncludeReasonInEmail, setPendingIncludeReasonInEmail] = useState(false);
   const [isPendingAccountVerificationSending, setIsPendingAccountVerificationSending] = useState(false);
   const [accountActionKey, setAccountActionKey] = useState<string | null>(null);
   const [pendingRemoveCountdownSeconds, setPendingRemoveCountdownSeconds] = useState(0);
@@ -306,6 +334,8 @@ export function useSchoolHeadAccountActions({
     setPendingAccountVerificationChallenge(null);
     setPendingAccountVerificationCode("");
     setPendingAccountVerificationError("");
+    setPendingNotifySchoolHead(false);
+    setPendingIncludeReasonInEmail(false);
     setPendingRemoveCountdownSeconds(0);
   }, []);
 
@@ -416,6 +446,8 @@ export function useSchoolHeadAccountActions({
       setPendingAccountVerificationChallenge(null);
       setPendingAccountVerificationCode("");
       setPendingAccountVerificationError("");
+      setPendingNotifySchoolHead(defaultNotifySchoolHead(action));
+      setPendingIncludeReasonInEmail(false);
     },
     [],
   );
@@ -446,6 +478,17 @@ export function useSchoolHeadAccountActions({
   const updatePendingAccountReason = useCallback((value: string) => {
     setPendingAccountReason(value);
     setPendingAccountReasonError("");
+  }, []);
+
+  const updatePendingNotifySchoolHead = useCallback((value: boolean) => {
+    setPendingNotifySchoolHead(value);
+    if (!value) {
+      setPendingIncludeReasonInEmail(false);
+    }
+  }, []);
+
+  const updatePendingIncludeReasonInEmail = useCallback((value: boolean) => {
+    setPendingIncludeReasonInEmail(value);
   }, []);
 
   const updatePendingVerificationCode = useCallback((value: string) => {
@@ -530,8 +573,14 @@ export function useSchoolHeadAccountActions({
             reason,
             verificationChallengeId: challengeId,
             verificationCode: code,
+            notifySchoolHead: pendingNotifySchoolHead,
+            includeReasonInEmail: pendingIncludeReasonInEmail,
           });
-          pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, "success");
+          const deliveryFailed = String(result.notificationDeliveryStatus ?? "").toLowerCase() === "failed";
+          pushToast(result.message || `School Head account updated for ${pendingAccountAction.schoolName}.`, deliveryFailed ? "warning" : "success");
+          if (result.notificationDeliveryMessage) {
+            pushToast(result.notificationDeliveryMessage, deliveryFailed ? "warning" : "info");
+          }
           closePendingAccountAction();
           return;
         }
@@ -568,8 +617,14 @@ export function useSchoolHeadAccountActions({
           reason,
           verificationChallengeId: challengeId,
           verificationCode: code,
+          notifySchoolHead: pendingNotifySchoolHead,
+          includeReasonInEmail: pendingIncludeReasonInEmail,
         });
-        pushToast(result.message || `${pendingAccountAction.schoolName} permanently deleted.`, "success");
+        const deliveryFailed = String(result.notificationDeliveryStatus ?? "").toLowerCase() === "failed";
+        pushToast(result.message || `${pendingAccountAction.schoolName} permanently deleted.`, deliveryFailed ? "warning" : "success");
+        if (result.notificationDeliveryMessage) {
+          pushToast(result.notificationDeliveryMessage, deliveryFailed ? "warning" : "info");
+        }
         closePendingAccountAction();
         return;
       }
@@ -592,6 +647,7 @@ export function useSchoolHeadAccountActions({
           reason,
           verificationChallengeId: challengeId,
           verificationCode: code,
+          includeReasonInEmail: pendingIncludeReasonInEmail,
         });
         announceSchoolHeadAccountDelivery(receipt, pendingAccountAction.schoolName, "Password reset link", pushToast);
         closePendingAccountAction();
@@ -672,6 +728,8 @@ export function useSchoolHeadAccountActions({
     pendingAccountReason,
     pendingAccountVerificationChallenge,
     pendingAccountVerificationCode,
+    pendingIncludeReasonInEmail,
+    pendingNotifySchoolHead,
     pendingRemoveCountdownSeconds,
     pushToast,
     removeSchoolHeadAccount,
@@ -823,6 +881,8 @@ export function useSchoolHeadAccountActions({
   );
 
   const pendingActionRequiresVerification = requiresVerification(pendingAccountAction);
+  const pendingShowsNotifySchoolHead = supportsNotifySchoolHead(pendingAccountAction);
+  const pendingShowsIncludeReasonInEmail = supportsIncludeReasonInEmail(pendingAccountAction);
   const pendingReasonTooShort = requiresReason(pendingAccountAction) && pendingAccountReason.trim().length < 5;
   const isConfirmPendingAccountActionDisabled = Boolean(
     isSaving
@@ -854,6 +914,10 @@ export function useSchoolHeadAccountActions({
     pendingAccountVerificationError,
     pendingActionDescription: pendingActionDescription(pendingAccountAction),
     pendingActionRequiresVerification,
+    pendingShowsNotifySchoolHead,
+    pendingShowsIncludeReasonInEmail,
+    pendingNotifySchoolHead,
+    pendingIncludeReasonInEmail,
     isPendingAccountVerificationSending,
     isConfirmPendingAccountActionDisabled,
     confirmPendingAccountActionLabel,
@@ -870,6 +934,8 @@ export function useSchoolHeadAccountActions({
     openPendingAccountAction,
     closePendingAccountAction,
     updatePendingAccountReason,
+    updatePendingNotifySchoolHead,
+    updatePendingIncludeReasonInEmail,
     updatePendingVerificationCode,
     sendPendingAccountVerificationCode,
     confirmPendingAccountAction,

@@ -703,6 +703,41 @@ export function MonitorSchoolHeadAccountsPanel({
                   Please provide a reason with at least 5 characters.
                 </p>
               )}
+              {actions.pendingShowsNotifySchoolHead || actions.pendingShowsIncludeReasonInEmail ? (
+                <div className="mt-3 grid gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
+                  {actions.pendingShowsNotifySchoolHead ? (
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={actions.pendingNotifySchoolHead}
+                        onChange={(event) => actions.updatePendingNotifySchoolHead(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                      />
+                      {actions.pendingAccountAction.kind === "remove"
+                        ? "Notify School Head by email before removal"
+                        : "Notify School Head by email"}
+                    </label>
+                  ) : null}
+                  {actions.pendingShowsIncludeReasonInEmail ? (
+                    <label className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                      actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead
+                        ? "text-slate-400"
+                        : "text-slate-700"
+                    }`}>
+                      <input
+                        type="checkbox"
+                        checked={actions.pendingIncludeReasonInEmail}
+                        disabled={actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead}
+                        onChange={(event) => actions.updatePendingIncludeReasonInEmail(event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                      />
+                      {actions.pendingAccountAction.kind === "reset_password"
+                        ? "Include reason in password reset email"
+                        : "Include reason in email"}
+                    </label>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {actions.pendingActionRequiresVerification && (
@@ -710,7 +745,6 @@ export function MonitorSchoolHeadAccountsPanel({
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Confirmation Code</p>
-                    <p className="mt-1 text-xs text-amber-700">Enter a reason and the 6-digit code sent to your monitor email.</p>
                   </div>
                   <button
                     type="button"

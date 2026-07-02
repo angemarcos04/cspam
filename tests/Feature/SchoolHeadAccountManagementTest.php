@@ -9,6 +9,8 @@ use App\Models\User;
 use App\Models\AccountSetupToken;
 use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
+use App\Notifications\SchoolHeadAccountRemovedNotification;
+use App\Notifications\SchoolHeadAccountSuspendedNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
@@ -324,6 +326,8 @@ class SchoolHeadAccountManagementTest extends TestCase
                 'reason' => 'Repeated incomplete submissions from this account.',
                 'verificationChallengeId' => $challengeId,
                 'verificationCode' => '123456',
+                'notifySchoolHead' => true,
+                'includeReasonInEmail' => true,
             ],
         );
 
@@ -335,6 +339,15 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::SUSPENDED->value, $schoolHead->accountStatus()->value);
         $this->assertNotNull($schoolHead->flagged_at);
         $this->assertSame('Repeated incomplete submissions from this account.', $schoolHead->flagged_reason);
+        Notification::assertSentTo($schoolHead, SchoolHeadAccountSuspendedNotification::class);
+        $suspensionNotifications = Notification::sent($schoolHead, SchoolHeadAccountSuspendedNotification::class);
+        /** @var SchoolHeadAccountSuspendedNotification|null $suspensionNotification */
+        $suspensionNotification = $suspensionNotifications->last();
+        $suspensionMail = $suspensionNotification?->toMail($schoolHead);
+        $this->assertContains(
+            'Reason provided by the Division Monitor: Repeated incomplete submissions from this account.',
+            $suspensionMail?->introLines ?? [],
+        );
 
         $activate = $this->withToken($monitorToken)->patchJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
@@ -397,6 +410,7 @@ class SchoolHeadAccountManagementTest extends TestCase
                 'reason' => 'Password reset requested by the school head.',
                 'verificationChallengeId' => $resetChallengeId,
                 'verificationCode' => '123456',
+                'includeReasonInEmail' => true,
             ],
         );
 
@@ -418,8 +432,13 @@ class SchoolHeadAccountManagementTest extends TestCase
         $sent = Notification::sent($schoolHead, SchoolHeadPasswordResetNotification::class);
         /** @var SchoolHeadPasswordResetNotification|null $notification */
         $notification = $sent->last();
-        $resetUrl = (string) ($notification?->toMail($schoolHead)->actionUrl ?? '');
+        $resetMail = $notification?->toMail($schoolHead);
+        $resetUrl = (string) ($resetMail?->actionUrl ?? '');
         $this->assertNotSame('', $resetUrl);
+        $this->assertStringContainsString(
+            'Reason provided by the Division Monitor: Password reset requested by the school head.',
+            implode("\n", array_merge($resetMail?->introLines ?? [], $resetMail?->outroLines ?? [])),
+        );
 
         $schoolHead->refresh();
         $this->assertSame(AccountStatus::ACTIVE->value, $schoolHead->accountStatus()->value);
@@ -1217,13 +1236,20 @@ class SchoolHeadAccountManagementTest extends TestCase
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
+        $removedEmail = (string) $schoolHead->email;
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            $this->deletedAccountPayload(
-                $monitorToken,
-                $school,
-                'School was entered in error and must be removed completely.',
+            array_merge(
+                $this->deletedAccountPayload(
+                    $monitorToken,
+                    $school,
+                    'School was entered in error and must be removed completely.',
+                ),
+                [
+                    'notifySchoolHead' => true,
+                    'includeReasonInEmail' => true,
+                ],
             ),
         );
 
@@ -1248,6 +1274,23 @@ class SchoolHeadAccountManagementTest extends TestCase
             'School was entered in error and must be removed completely.',
             data_get($audit?->metadata, 'reason'),
         );
+        $this->assertTrue((bool) data_get($audit?->metadata, 'notify_school_head'));
+        $this->assertTrue((bool) data_get($audit?->metadata, 'include_reason_in_email'));
+        Notification::assertSentOnDemand(SchoolHeadAccountRemovedNotification::class, function (
+            SchoolHeadAccountRemovedNotification $notification,
+            array $channels,
+            object $notifiable,
+        ) use ($removedEmail): bool {
+            $mail = $notification->toMail($notifiable);
+
+            return ($notifiable->routes['mail'] ?? null) === $removedEmail
+                && in_array('mail', $channels, true)
+                && in_array(
+                    'Reason provided by the Division Monitor: School was entered in error and must be removed completely.',
+                    $mail->introLines,
+                    true,
+                );
+        });
     }
 
     public function test_remove_account_and_school_requires_reason_and_confirmation_code(): void

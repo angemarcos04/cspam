@@ -20,6 +20,7 @@ class IssueSchoolHeadPasswordResetLinkRequest extends FormRequest
             'reason' => ['required', 'string', 'min:5', 'max:500'],
             'verificationChallengeId' => ['required', 'string', 'uuid'],
             'verificationCode' => ['required', 'string', 'regex:/^\\d{6}$/'],
+            'includeReasonInEmail' => ['sometimes', 'boolean'],
         ];
     }
 }

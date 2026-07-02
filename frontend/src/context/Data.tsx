@@ -24,6 +24,7 @@ import type {
   SchoolHeadAccountProvisioningReceipt,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
+  SchoolHeadPasswordResetLinkPayload,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
   SchoolHeadTemporaryPasswordResult,
@@ -201,7 +202,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: SchoolHeadPasswordResetLinkPayload,
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
   issueSchoolHeadTemporaryPassword: (
     schoolId: string,
@@ -1225,7 +1226,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadPasswordResetLink = useCallback(
     async (
       schoolId: string,
-      payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+      payload: SchoolHeadPasswordResetLinkPayload,
     ): Promise<SchoolHeadPasswordResetLinkResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -1261,6 +1262,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
               reason: trimmedReason,
               verificationChallengeId,
               verificationCode,
+              includeReasonInEmail: payload.includeReasonInEmail,
             },
           },
         );
@@ -1492,6 +1494,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
               reason,
               verificationChallengeId,
               verificationCode,
+              notifySchoolHead: payload.notifySchoolHead,
+              includeReasonInEmail: payload.includeReasonInEmail,
             },
           },
         );

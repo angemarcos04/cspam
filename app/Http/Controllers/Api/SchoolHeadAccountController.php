@@ -20,6 +20,8 @@ use App\Models\School;
 use App\Models\Student;
 use App\Models\User;
 use App\Notifications\SchoolHeadAccountSetupNotification;
+use App\Notifications\SchoolHeadAccountRemovedNotification;
+use App\Notifications\SchoolHeadAccountSuspendedNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\MonitorActionVerificationService;
@@ -35,6 +37,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Laravel\Sanctum\PersonalAccessToken;
@@ -555,6 +558,8 @@ class SchoolHeadAccountController extends Controller
             ? $request->boolean('deleteRecordFlagged')
             : $previousDeleteRecordFlagged;
         $reason = trim($request->string('reason')->toString());
+        $notifySchoolHead = $request->has('notifySchoolHead') ? $request->boolean('notifySchoolHead') : false;
+        $includeReasonInEmail = $request->boolean('includeReasonInEmail');
 
         $statusChanged = $nextStatus !== $previousStatus->value;
         $flagChanged = $nextFlagged !== $previousFlagged;
@@ -673,6 +678,46 @@ class SchoolHeadAccountController extends Controller
             $revocationSummary = $this->revokeSchoolHeadSessionsAndTokens($account);
         }
 
+        $notificationDeliveryStatus = null;
+        $notificationDeliveryMessage = null;
+        $notificationDeliveryFailureCategory = null;
+        if (
+            $statusChanged
+            && $nextStatus === AccountStatus::SUSPENDED->value
+            && $notifySchoolHead
+            && trim((string) $account->email) !== ''
+        ) {
+            $notificationDeliveryStatus = 'sent';
+            $notificationDeliveryMessage = 'School Head suspension notification sent.';
+            if (MailDelivery::isSimulated()) {
+                $notificationDeliveryStatus = MailDelivery::simulatedStatus();
+                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Suspension notification was generated, but will not reach real inboxes.');
+            }
+
+            try {
+                $account->notify(new SchoolHeadAccountSuspendedNotification(
+                    $school,
+                    $includeReasonInEmail ? $reason : null,
+                ));
+            } catch (\Throwable $exception) {
+                report($exception);
+                $notificationDeliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
+                $notificationDeliveryStatus = 'failed';
+                $notificationDeliveryMessage = MailDelivery::deliveryFailureMessage($notificationDeliveryFailureCategory, 'Suspension notification email');
+
+                Log::warning('School Head suspension notification failed.', [
+                    'school_id' => (string) $school->id,
+                    'school_code' => (string) $school->school_code,
+                    'target_user_id' => (string) $account->id,
+                    'target_email' => MailDelivery::maskEmail((string) $account->email),
+                    'target_email_domain' => MailDelivery::emailDomain((string) $account->email),
+                    'mailer' => MailDelivery::currentMailer(),
+                    'delivery_failure_category' => $notificationDeliveryFailureCategory,
+                    'exception_class' => $exception::class,
+                ]);
+            }
+        }
+
         AuditLog::query()->create([
             'user_id' => $monitor->id,
             'action' => 'account.status_updated',
@@ -694,6 +739,11 @@ class SchoolHeadAccountController extends Controller
                 'previous_delete_record_flagged' => $previousDeleteRecordFlagged,
                 'new_delete_record_flagged' => $nextDeleteRecordFlagged,
                 'reason' => $reason,
+                'notify_school_head' => $notifySchoolHead,
+                'include_reason_in_email' => $includeReasonInEmail,
+                'notification_delivery_status' => $notificationDeliveryStatus,
+                'notification_delivery_message' => $notificationDeliveryMessage,
+                'notification_delivery_failure_category' => $notificationDeliveryFailureCategory,
                 'revoked_tokens' => $revocationSummary['revokedTokens'],
                 'revoked_web_sessions' => $revocationSummary['revokedWebSessions'],
             ],
@@ -715,7 +765,12 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'account' => $this->serializeSchoolHeadAccount($account),
-                'message' => 'School Head account updated.',
+                'message' => $notificationDeliveryStatus === 'failed'
+                    ? 'School Head account updated, but notification email failed.'
+                    : 'School Head account updated.',
+                'notificationDeliveryStatus' => $notificationDeliveryStatus,
+                'notificationDeliveryMessage' => $notificationDeliveryMessage,
+                'notificationDeliveryFailureCategory' => $notificationDeliveryFailureCategory,
             ],
         ]);
     }
@@ -728,6 +783,8 @@ class SchoolHeadAccountController extends Controller
         $reason = trim($request->string('reason')->toString());
         $challengeId = trim($request->string('verificationChallengeId')->toString());
         $code = trim($request->string('verificationCode')->toString());
+        $notifySchoolHead = $request->has('notifySchoolHead') ? $request->boolean('notifySchoolHead') : true;
+        $includeReasonInEmail = $request->boolean('includeReasonInEmail');
 
         $verified = $this->monitorActionVerificationService->verify(
             $monitor,
@@ -748,6 +805,8 @@ class SchoolHeadAccountController extends Controller
             $school,
             $monitor,
             $reason,
+            $notifySchoolHead,
+            $includeReasonInEmail,
             $request->ip(),
             $request->userAgent(),
         );
@@ -763,6 +822,9 @@ class SchoolHeadAccountController extends Controller
             'data' => [
                 'message' => (string) $result['message'],
                 'deletedCount' => (int) $result['deletedCount'],
+                'notificationDeliveryStatus' => $result['notificationDeliveryStatus'] ?? null,
+                'notificationDeliveryMessage' => $result['notificationDeliveryMessage'] ?? null,
+                'notificationDeliveryFailureCategory' => $result['notificationDeliveryFailureCategory'] ?? null,
             ],
         ]);
     }
@@ -822,6 +884,8 @@ class SchoolHeadAccountController extends Controller
                 $school,
                 $monitor,
                 $reason,
+                false,
+                false,
                 $request->ip(),
                 $request->userAgent(),
             );
@@ -1024,6 +1088,7 @@ class SchoolHeadAccountController extends Controller
         $reason = trim($request->string('reason')->toString());
         $challengeId = trim($request->string('verificationChallengeId')->toString());
         $code = trim($request->string('verificationCode')->toString());
+        $includeReasonInEmail = $request->boolean('includeReasonInEmail');
 
         $verified = $this->monitorActionVerificationService->verify(
             $monitor,
@@ -1064,7 +1129,11 @@ class SchoolHeadAccountController extends Controller
                 'from_address' => MailDelivery::maskEmail((string) config('mail.from.address', '')),
             ]);
 
-            $account->notify(new SchoolHeadPasswordResetNotification($resetUrl, $expiresAt));
+            $account->notify(new SchoolHeadPasswordResetNotification(
+                $resetUrl,
+                $expiresAt,
+                $includeReasonInEmail ? $reason : null,
+            ));
         } catch (\Throwable $exception) {
             report($exception);
             $deliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
@@ -1117,6 +1186,7 @@ class SchoolHeadAccountController extends Controller
                 'school_id' => (string) $school->id,
                 'school_code' => (string) $school->school_code,
                 'reason' => $reason,
+                'include_reason_in_email' => $includeReasonInEmail,
                 'delivery_status' => $deliveryStatus,
                 'delivery_message' => $deliveryMessage,
                 'delivery_failure_category' => $deliveryFailureCategory,
@@ -1406,6 +1476,8 @@ class SchoolHeadAccountController extends Controller
         School $school,
         User $monitor,
         string $reason,
+        bool $notifySchoolHead,
+        bool $includeReasonInEmail,
         ?string $ipAddress,
         ?string $userAgent,
     ): array {
@@ -1440,6 +1512,46 @@ class SchoolHeadAccountController extends Controller
             ->map(static fn (User $account): string => (string) $account->email)
             ->values()
             ->all();
+        $notificationTarget = $linkedUsers
+            ->first(static fn (User $account): bool => trim((string) $account->email) !== '');
+        $notificationDeliveryStatus = null;
+        $notificationDeliveryMessage = null;
+        $notificationDeliveryFailureCategory = null;
+
+        if ($notifySchoolHead && $notificationTarget instanceof User) {
+            $notificationDeliveryStatus = 'sent';
+            $notificationDeliveryMessage = 'School Head removal notification sent.';
+            if (MailDelivery::isSimulated()) {
+                $notificationDeliveryStatus = MailDelivery::simulatedStatus();
+                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Removal notification was generated, but will not reach real inboxes.');
+            }
+
+            try {
+                Notification::route('mail', (string) $notificationTarget->email)->notify(
+                    new SchoolHeadAccountRemovedNotification(
+                        (string) $school->name,
+                        (string) $school->school_code,
+                        (string) $notificationTarget->name,
+                        $includeReasonInEmail ? $reason : null,
+                    ),
+                );
+            } catch (\Throwable $exception) {
+                report($exception);
+                $notificationDeliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
+                $notificationDeliveryStatus = 'failed';
+                $notificationDeliveryMessage = MailDelivery::deliveryFailureMessage($notificationDeliveryFailureCategory, 'Removal notification email');
+
+                Log::warning('School Head removal notification failed.', [
+                    'school_id' => (string) $school->id,
+                    'school_code' => (string) $school->school_code,
+                    'target_email' => MailDelivery::maskEmail((string) $notificationTarget->email),
+                    'target_email_domain' => MailDelivery::emailDomain((string) $notificationTarget->email),
+                    'mailer' => MailDelivery::currentMailer(),
+                    'delivery_failure_category' => $notificationDeliveryFailureCategory,
+                    'exception_class' => $exception::class,
+                ]);
+            }
+        }
         $accountIds = $linkedUsers
             ->map(static fn (User $account): string => (string) $account->id)
             ->values()
@@ -1520,6 +1632,11 @@ class SchoolHeadAccountController extends Controller
                 'removed_user_ids' => $accountIds,
                 'removed_emails' => $accountEmails,
                 'reason' => $reason,
+                'notify_school_head' => $notifySchoolHead,
+                'include_reason_in_email' => $includeReasonInEmail,
+                'notification_delivery_status' => $notificationDeliveryStatus,
+                'notification_delivery_message' => $notificationDeliveryMessage,
+                'notification_delivery_failure_category' => $notificationDeliveryFailureCategory,
                 'dependencies' => $schoolDependencies,
                 'revocations' => $revocationSummaries,
             ],
@@ -1538,8 +1655,13 @@ class SchoolHeadAccountController extends Controller
 
         return [
             'status' => 'deleted',
-            'message' => 'School record, linked School Head account, and school data permanently deleted.',
+            'message' => $notificationDeliveryStatus === 'failed'
+                ? 'School record, linked School Head account, and school data permanently deleted, but notification email failed.'
+                : 'School record, linked School Head account, and school data permanently deleted.',
             'deletedCount' => $removedCount,
+            'notificationDeliveryStatus' => $notificationDeliveryStatus,
+            'notificationDeliveryMessage' => $notificationDeliveryMessage,
+            'notificationDeliveryFailureCategory' => $notificationDeliveryFailureCategory,
         ];
     }
 

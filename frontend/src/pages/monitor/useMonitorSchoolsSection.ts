@@ -36,6 +36,7 @@ import type {
   SchoolRecordDeletePreview,
   SchoolHeadAccountStatusUpdatePayload,
   SchoolHeadAccountStatusUpdateResult,
+  SchoolHeadPasswordResetLinkPayload,
   SchoolHeadPasswordResetLinkResult,
   SchoolHeadSetupLinkResult,
   SchoolHeadTemporaryPasswordResult,
@@ -94,7 +95,7 @@ interface UseMonitorSchoolsSectionOptions {
   issueSchoolHeadSetupLink: (schoolId: string, reason?: string | null) => Promise<SchoolHeadSetupLinkResult>;
   issueSchoolHeadPasswordResetLink: (
     schoolId: string,
-    payload: { reason: string; verificationChallengeId: string; verificationCode: string },
+    payload: SchoolHeadPasswordResetLinkPayload,
   ) => Promise<SchoolHeadPasswordResetLinkResult>;
   issueSchoolHeadTemporaryPassword: (
     schoolId: string,

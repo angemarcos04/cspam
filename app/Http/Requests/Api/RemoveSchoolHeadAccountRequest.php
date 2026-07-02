@@ -19,6 +19,8 @@ class RemoveSchoolHeadAccountRequest extends FormRequest
             'reason' => ['required', 'string', 'min:5', 'max:500'],
             'verificationChallengeId' => ['required', 'string', 'uuid'],
             'verificationCode' => ['required', 'string', 'regex:/^\d{6}$/'],
+            'notifySchoolHead' => ['sometimes', 'boolean'],
+            'includeReasonInEmail' => ['sometimes', 'boolean'],
         ];
     }
 }

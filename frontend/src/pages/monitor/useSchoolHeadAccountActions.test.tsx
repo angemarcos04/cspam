@@ -116,6 +116,8 @@ describe("useSchoolHeadAccountActions", () => {
         reason: "Duplicate school record.",
         verificationChallengeId: "2acb2c69-26f4-4590-9b68-177b0a3f72d6",
         verificationCode: "123456",
+        notifySchoolHead: true,
+        includeReasonInEmail: false,
       });
     } finally {
       vi.useRealTimers();

@@ -27,6 +27,10 @@ function buildActions(): SchoolHeadAccountActionsApi {
     pendingAccountVerificationError: "",
     pendingActionDescription: "",
     pendingActionRequiresVerification: false,
+    pendingShowsNotifySchoolHead: false,
+    pendingShowsIncludeReasonInEmail: false,
+    pendingNotifySchoolHead: false,
+    pendingIncludeReasonInEmail: false,
     isPendingAccountVerificationSending: false,
     isConfirmPendingAccountActionDisabled: false,
     confirmPendingAccountActionLabel: "Confirm",
@@ -43,6 +47,8 @@ function buildActions(): SchoolHeadAccountActionsApi {
     openPendingAccountAction: vi.fn(),
     closePendingAccountAction: vi.fn(),
     updatePendingAccountReason: vi.fn(),
+    updatePendingNotifySchoolHead: vi.fn(),
+    updatePendingIncludeReasonInEmail: vi.fn(),
     updatePendingVerificationCode: vi.fn(),
     sendPendingAccountVerificationCode: vi.fn(),
     confirmPendingAccountAction: vi.fn(),
@@ -1785,6 +1791,83 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
     expect(screen.getByText(/Reason and confirmation code required/i)).not.toBeNull();
     expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
+  });
+
+  it("shows notification controls in guarded account action dialogs without the removed confirmation helper sentence", () => {
+    const renderDialog = (actions: SchoolHeadAccountActionsApi) => render(
+      <MonitorSchoolHeadAccountsPanel
+        isOpen
+        isSaving={false}
+        isMobileViewport={false}
+        rows={[]}
+        totalCount={0}
+        query=""
+        statusFilter="all"
+        onlyFlagged={false}
+        onlyDeleteFlagged={false}
+        onQueryChange={vi.fn()}
+        onStatusFilterChange={vi.fn()}
+        onOnlyFlaggedChange={vi.fn()}
+        onOnlyDeleteFlaggedChange={vi.fn()}
+        onClearFilters={vi.fn()}
+        onClose={vi.fn()}
+        onOpenSchoolRecord={vi.fn()}
+        formatDateTime={(value) => value ?? "-"}
+        actions={actions}
+      />,
+    );
+
+    const suspendActions = buildActions();
+    suspendActions.pendingAccountAction = {
+      kind: "status",
+      schoolId: "school-1",
+      schoolName: "Suspended School",
+      actionLabel: "Suspend Account",
+      update: { accountStatus: "suspended" },
+    };
+    suspendActions.pendingActionRequiresVerification = true;
+    suspendActions.pendingShowsNotifySchoolHead = true;
+    suspendActions.pendingShowsIncludeReasonInEmail = true;
+    suspendActions.pendingNotifySchoolHead = true;
+    const { unmount } = renderDialog(suspendActions);
+
+    expect(screen.queryByText("Enter a reason and the 6-digit code sent to your monitor email.")).toBeNull();
+    expect(screen.getByLabelText("Reason")).not.toBeNull();
+    expect(screen.getByText("Confirmation Code")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
+    expect(screen.getByLabelText("Notify School Head by email")).not.toBeNull();
+    expect(screen.getByLabelText("Include reason in email")).not.toBeNull();
+    unmount();
+
+    const removeActions = buildActions();
+    removeActions.pendingAccountAction = {
+      kind: "remove",
+      schoolId: "school-2",
+      schoolName: "Removed School",
+      actionLabel: "Remove Account and School",
+    };
+    removeActions.pendingActionRequiresVerification = true;
+    removeActions.pendingShowsNotifySchoolHead = true;
+    removeActions.pendingShowsIncludeReasonInEmail = true;
+    removeActions.pendingNotifySchoolHead = true;
+    const removeRender = renderDialog(removeActions);
+    expect(screen.getByLabelText("Notify School Head by email before removal")).not.toBeNull();
+    expect(screen.getByLabelText("Include reason in email")).not.toBeNull();
+    removeRender.unmount();
+
+    const resetActions = buildActions();
+    resetActions.pendingAccountAction = {
+      kind: "reset_password",
+      schoolId: "school-3",
+      schoolName: "Reset School",
+      actionLabel: "Send Password Reset Link",
+    };
+    resetActions.pendingActionRequiresVerification = true;
+    resetActions.pendingShowsNotifySchoolHead = false;
+    resetActions.pendingShowsIncludeReasonInEmail = true;
+    renderDialog(resetActions);
+    expect(screen.queryByLabelText("Notify School Head by email")).toBeNull();
+    expect(screen.getByLabelText("Include reason in password reset email")).not.toBeNull();
   });
 
   it("does not surface the batch delete toolbar trigger even when flagged-school counts are present", () => {

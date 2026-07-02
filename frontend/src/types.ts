@@ -101,11 +101,16 @@ export interface SchoolHeadAccountStatusUpdatePayload {
   reason: string;
   verificationChallengeId?: string;
   verificationCode?: string;
+  notifySchoolHead?: boolean;
+  includeReasonInEmail?: boolean;
 }
 
 export interface SchoolHeadAccountStatusUpdateResult {
   account: SchoolHeadAccountSummary;
   message: string;
+  notificationDeliveryStatus?: "queued" | "sent" | "failed" | string | null;
+  notificationDeliveryMessage?: string | null;
+  notificationDeliveryFailureCategory?: string | null;
 }
 
 export interface SchoolHeadAccountActivationResult {
@@ -118,6 +123,13 @@ export interface SchoolHeadSetupLinkResult {
   expiresAt: string;
   delivery: "queued" | "sent" | "failed" | string;
   deliveryMessage: string;
+}
+
+export interface SchoolHeadPasswordResetLinkPayload {
+  reason: string;
+  verificationChallengeId: string;
+  verificationCode: string;
+  includeReasonInEmail?: boolean;
 }
 
 export interface SchoolHeadPasswordResetLinkResult {
@@ -157,11 +169,16 @@ export interface SchoolHeadAccountRemovalPayload {
   reason: string;
   verificationChallengeId: string;
   verificationCode: string;
+  notifySchoolHead?: boolean;
+  includeReasonInEmail?: boolean;
 }
 
 export interface SchoolHeadAccountRemovalResult {
   message: string;
   deletedCount: number;
+  notificationDeliveryStatus?: "queued" | "sent" | "failed" | string | null;
+  notificationDeliveryMessage?: string | null;
+  notificationDeliveryFailureCategory?: string | null;
 }
 
 export interface SchoolHeadAccountBatchRemovalBlockedResult {
