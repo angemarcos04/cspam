@@ -461,17 +461,6 @@ export function Login() {
                     pattern="(?:\d{6}|[A-Z0-9]{4}-[A-Z0-9]{4})"
                     className={formInputClass}
                   />
-                  <p className="mt-1.5 text-xs leading-relaxed text-slate-600">
-                    Enter the 6-digit code sent into your monitor email.
-                  </p>
-                  <div className="mt-2 flex justify-end">
-                    <Link
-                      to={`/mfa-reset?email=${encodeURIComponent(pendingMfa.login)}`}
-                      className="text-xs font-semibold text-primary-700 hover:text-primary-800"
-                    >
-                      Can't complete MFA? Request recovery
-                    </Link>
-                  </div>
                   {pendingMfa.delivery &&
                     pendingMfa.delivery !== "sent" &&
                     pendingMfa.delivery !== "queued" &&
