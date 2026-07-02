@@ -673,124 +673,137 @@ export function MonitorSchoolHeadAccountsPanel({
               </button>
             </div>
 
-            <div className="mt-3">
-              <label
-                htmlFor="school-head-account-action-reason"
-                className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-              >
-                {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Reason"}
-              </label>
-              <textarea
-                id="school-head-account-action-reason"
-                ref={actions.pendingAccountReasonRef}
-                value={actions.pendingAccountReason}
-                onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
-                rows={3}
-                placeholder={
-                  actions.pendingAccountAction.kind === "activate"
-                    ? "Optional note for approval"
-                    : "Type a short reason (min 5 characters)"
-                }
-                className="w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-              />
-              {actions.pendingAccountReasonError && (
-                <p className="mt-2 rounded-sm border border-primary-200 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                  {actions.pendingAccountReasonError}
+            <p className="mt-2 text-xs font-semibold text-slate-700">School: {actions.pendingAccountAction.schoolName}</p>
+
+            <div className="mt-3 space-y-3">
+              <div className="rounded-sm border border-slate-200 bg-white px-3 py-3">
+                <label
+                  htmlFor="school-head-account-action-reason"
+                  className="block text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                >
+                  {actions.pendingAccountAction.kind === "activate" ? "Activation Note" : "Internal Reason"}
+                </label>
+                <p className="mt-1 text-[11px] font-medium text-slate-500">
+                  {actions.pendingAccountAction.kind === "activate"
+                    ? "Optional note for the audit trail."
+                    : "Required. Saved to the audit trail."}
                 </p>
-              )}
-              {!actions.pendingAccountReasonError && actions.pendingReasonTooShort && actions.pendingAccountAction.kind !== "activate" && (
-                <p className="mt-2 rounded-sm border border-primary-100 bg-primary-50 px-3 py-2 text-xs font-semibold text-primary-700">
-                  Please provide a reason with at least 5 characters.
-                </p>
-              )}
-              {actions.pendingShowsNotifySchoolHead || actions.pendingShowsIncludeReasonInEmail ? (
-                <div className="mt-3 grid gap-2 rounded-sm border border-slate-200 bg-slate-50 px-3 py-2">
-                  {actions.pendingShowsNotifySchoolHead ? (
-                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        checked={actions.pendingNotifySchoolHead}
-                        onChange={(event) => actions.updatePendingNotifySchoolHead(event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
-                      />
-                      {actions.pendingAccountAction.kind === "remove"
-                        ? "Notify School Head by email before removal"
-                        : "Notify School Head by email"}
-                    </label>
-                  ) : null}
-                  {actions.pendingShowsIncludeReasonInEmail ? (
-                    <label className={`inline-flex items-center gap-2 text-xs font-semibold ${
-                      actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead
-                        ? "text-slate-400"
-                        : "text-slate-700"
-                    }`}>
-                      <input
-                        type="checkbox"
-                        checked={actions.pendingIncludeReasonInEmail}
-                        disabled={actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead}
-                        onChange={(event) => actions.updatePendingIncludeReasonInEmail(event.target.checked)}
-                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
-                      />
-                      {actions.pendingAccountAction.kind === "reset_password"
-                        ? "Include reason in password reset email"
-                        : "Include reason in email"}
-                    </label>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-
-            {actions.pendingActionRequiresVerification && (
-              <div className="mt-3 rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Confirmation Code</p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void actions.sendPendingAccountVerificationCode()}
-                    disabled={actions.isPendingAccountVerificationSending || isSaving}
-                    className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {actions.isPendingAccountVerificationSending
-                      ? "Sending..."
-                      : actions.pendingAccountVerificationChallenge
-                        ? "Resend"
-                        : "Send code"}
-                  </button>
-                </div>
-
-                {actions.pendingAccountVerificationChallenge && (
-                  <div className="mt-3">
-                    <label
-                      htmlFor="school-head-account-action-code"
-                      className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600"
-                    >
-                      6-digit code
-                    </label>
-                    <input
-                      id="school-head-account-action-code"
-                      ref={actions.pendingAccountVerificationCodeRef}
-                      type="text"
-                      inputMode="numeric"
-                      value={actions.pendingAccountVerificationCode}
-                      onChange={(event) => actions.updatePendingVerificationCode(event.target.value)}
-                      placeholder="123456"
-                      className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
-                    />
-                    <p className="mt-1 text-[11px] font-medium text-slate-600">
-                      Expires {formatDateTime(actions.pendingAccountVerificationChallenge.expiresAt)}.
-                    </p>
-                  </div>
-                )}
-
-                {actions.pendingAccountVerificationError && (
-                  <p className="mt-2 rounded-sm border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800">
-                    {actions.pendingAccountVerificationError}
+                <textarea
+                  id="school-head-account-action-reason"
+                  ref={actions.pendingAccountReasonRef}
+                  value={actions.pendingAccountReason}
+                  onChange={(event) => actions.updatePendingAccountReason(event.target.value)}
+                  rows={3}
+                  placeholder={
+                    actions.pendingAccountAction.kind === "activate"
+                      ? "Optional note for approval"
+                      : "Type the internal reason"
+                  }
+                  className="mt-2 w-full resize-none rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                />
+                {actions.pendingAccountReasonError && (
+                  <p className="mt-1 text-xs font-semibold text-primary-700">
+                    {actions.pendingAccountReasonError}
                   </p>
                 )}
               </div>
-            )}
+
+              {actions.pendingShowsNotifySchoolHead || actions.pendingShowsIncludeReasonInEmail ? (
+                <div className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                    {actions.pendingAccountAction.kind === "reset_password" ? "Email Content" : "Email Notice"}
+                  </p>
+                  <div className="mt-2 grid gap-2">
+                    {actions.pendingShowsNotifySchoolHead ? (
+                      <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={actions.pendingNotifySchoolHead}
+                          onChange={(event) => actions.updatePendingNotifySchoolHead(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200"
+                        />
+                        {actions.pendingAccountAction.kind === "remove"
+                          ? "Notify School Head by email before removal"
+                          : "Notify School Head by email"}
+                      </label>
+                    ) : null}
+                    {actions.pendingShowsIncludeReasonInEmail ? (
+                      <label className={`inline-flex items-center gap-2 text-xs font-semibold ${
+                        actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead
+                          ? "text-slate-400"
+                          : "text-slate-700"
+                      }`}>
+                        <input
+                          type="checkbox"
+                          checked={actions.pendingIncludeReasonInEmail}
+                          disabled={actions.pendingShowsNotifySchoolHead && !actions.pendingNotifySchoolHead}
+                          onChange={(event) => actions.updatePendingIncludeReasonInEmail(event.target.checked)}
+                          className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary-200 disabled:cursor-not-allowed disabled:opacity-60"
+                        />
+                        {actions.pendingAccountAction.kind === "reset_password"
+                          ? "Include internal reason in the password reset email"
+                          : actions.pendingAccountAction.kind === "remove"
+                            ? "Include internal reason in the removal notice"
+                            : "Include internal reason in the email"}
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+              ) : null}
+
+              {actions.pendingActionRequiresVerification && (
+                <div className="rounded-sm border border-amber-200 bg-amber-50/70 px-3 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-800">Security Confirmation</p>
+                      <p className="mt-1 text-xs font-semibold text-amber-900">Confirmation Code</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void actions.sendPendingAccountVerificationCode()}
+                      disabled={actions.isPendingAccountVerificationSending || isSaving}
+                      className="inline-flex items-center gap-1 rounded-sm border border-amber-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-amber-800 transition hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {actions.isPendingAccountVerificationSending
+                        ? "Sending..."
+                        : actions.pendingAccountVerificationChallenge
+                          ? "Resend"
+                          : "Send code"}
+                    </button>
+                  </div>
+
+                  {actions.pendingAccountVerificationChallenge && (
+                    <div className="mt-3">
+                      <label
+                        htmlFor="school-head-account-action-code"
+                        className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-slate-600"
+                      >
+                        6-digit code
+                      </label>
+                      <input
+                        id="school-head-account-action-code"
+                        ref={actions.pendingAccountVerificationCodeRef}
+                        type="text"
+                        inputMode="numeric"
+                        value={actions.pendingAccountVerificationCode}
+                        onChange={(event) => actions.updatePendingVerificationCode(event.target.value)}
+                        placeholder="123456"
+                        className="w-full rounded-sm border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+                      />
+                      <p className="mt-1 text-[11px] font-medium text-slate-600">
+                        Expires {formatDateTime(actions.pendingAccountVerificationChallenge.expiresAt)}.
+                      </p>
+                    </div>
+                  )}
+
+                  {actions.pendingAccountVerificationError && (
+                    <p className="mt-2 rounded-sm border border-amber-200 bg-white px-3 py-2 text-xs font-semibold text-amber-800">
+                      {actions.pendingAccountVerificationError}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="mt-4 flex items-center justify-end gap-2">
               <button

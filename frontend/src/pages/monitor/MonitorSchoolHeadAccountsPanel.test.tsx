@@ -1626,10 +1626,11 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       });
     });
 
-    expect(result.current.pendingActionDescription).toContain("Reason and confirmation code required");
+    expect(result.current.pendingActionDescription).toContain("This will remove the School Head account");
     expect(result.current.pendingActionRequiresVerification).toBe(true);
     expect(result.current.pendingReasonTooShort).toBe(true);
     expect(result.current.isConfirmPendingAccountActionDisabled).toBe(true);
+    expect(result.current.confirmPendingAccountActionLabel).toBe("Remove in 3s");
   });
 
   it("keeps email-change confirmation disabled while the reason is missing", () => {
@@ -1662,7 +1663,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       });
     });
 
-    expect(result.current.pendingActionDescription).toContain("Enter a reason and the 6-digit code");
+    expect(result.current.pendingActionDescription).toContain("security confirmation");
     expect(result.current.pendingReasonTooShort).toBe(true);
     expect(result.current.isConfirmPendingAccountActionDisabled).toBe(true);
   });
@@ -1757,9 +1758,9 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       actionLabel: "Remove account and school",
     };
     actions.pendingActionDescription =
-      "Reason and confirmation code required to remove the School Head account and school record for Batal Elementary School.";
+      "This will remove the School Head account and linked school record from the active monitor dashboard. This action cannot be undone from this screen.";
     actions.pendingActionRequiresVerification = true;
-    actions.confirmPendingAccountActionLabel = "Confirm";
+    actions.confirmPendingAccountActionLabel = "Remove Account and School";
     actions.isConfirmPendingAccountActionDisabled = true;
 
     render(
@@ -1786,14 +1787,20 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     );
 
     expect(screen.queryByText(/This permanently deletes Batal Elementary School/i)).toBeNull();
-    expect(screen.getByLabelText("Reason")).not.toBeNull();
+    expect(screen.getByLabelText("Internal Reason")).not.toBeNull();
     expect(screen.queryByPlaceholderText(/Optional note for permanent removal/i)).toBeNull();
     expect(screen.queryByText(/This removes Batal Elementary School from active Schools/i)).toBeNull();
-    expect(screen.getByText(/Reason and confirmation code required/i)).not.toBeNull();
+    expect(screen.getByText(/This will remove the School Head account/i)).not.toBeNull();
+    expect(screen.getByText(/School: Batal Elementary School/i)).not.toBeNull();
+    expect(screen.getAllByText(/Internal Reason/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Security Confirmation/i)).not.toBeNull();
+    expect(screen.getByText("Confirmation Code")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
+    expect(screen.queryByText("Please provide a reason with at least 5 characters.")).toBeNull();
+    expect(screen.queryByText("Enter a reason and the 6-digit code sent to your monitor email.")).toBeNull();
   });
 
-  it("shows notification controls in guarded account action dialogs without the removed confirmation helper sentence", () => {
+  it("shows sectioned notification controls in guarded account action dialogs without removed helper wording", () => {
     const renderDialog = (actions: SchoolHeadAccountActionsApi) => render(
       <MonitorSchoolHeadAccountsPanel
         isOpen
@@ -1829,14 +1836,21 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     suspendActions.pendingShowsNotifySchoolHead = true;
     suspendActions.pendingShowsIncludeReasonInEmail = true;
     suspendActions.pendingNotifySchoolHead = true;
+    suspendActions.confirmPendingAccountActionLabel = "Suspend Account";
     const { unmount } = renderDialog(suspendActions);
 
+    expect(screen.getByRole("heading", { name: "Suspend Account" })).not.toBeNull();
     expect(screen.queryByText("Enter a reason and the 6-digit code sent to your monitor email.")).toBeNull();
-    expect(screen.getByLabelText("Reason")).not.toBeNull();
+    expect(screen.queryByText("Please provide a reason with at least 5 characters.")).toBeNull();
+    expect(screen.getByLabelText("Internal Reason")).not.toBeNull();
+    expect(screen.getAllByText(/Internal Reason/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Email Notice/i)).not.toBeNull();
+    expect(screen.getByText(/Security Confirmation/i)).not.toBeNull();
     expect(screen.getByText("Confirmation Code")).not.toBeNull();
     expect(screen.getByRole("button", { name: "Send code" })).not.toBeNull();
-    expect(screen.getByLabelText("Notify School Head by email")).not.toBeNull();
-    expect(screen.getByLabelText("Include reason in email")).not.toBeNull();
+    expect((screen.getByLabelText("Notify School Head by email") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText("Include internal reason in the email")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Suspend Account" })).not.toBeNull();
     unmount();
 
     const removeActions = buildActions();
@@ -1850,9 +1864,15 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     removeActions.pendingShowsNotifySchoolHead = true;
     removeActions.pendingShowsIncludeReasonInEmail = true;
     removeActions.pendingNotifySchoolHead = true;
+    removeActions.confirmPendingAccountActionLabel = "Remove Account and School";
     const removeRender = renderDialog(removeActions);
+    expect(screen.getByRole("heading", { name: "Remove Account and School" })).not.toBeNull();
+    expect(screen.getAllByText(/Internal Reason/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Email Notice/i)).not.toBeNull();
+    expect(screen.getByText(/Security Confirmation/i)).not.toBeNull();
     expect(screen.getByLabelText("Notify School Head by email before removal")).not.toBeNull();
-    expect(screen.getByLabelText("Include reason in email")).not.toBeNull();
+    expect((screen.getByLabelText("Notify School Head by email before removal") as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByLabelText("Include internal reason in the removal notice")).not.toBeNull();
     removeRender.unmount();
 
     const resetActions = buildActions();
@@ -1865,9 +1885,15 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     resetActions.pendingActionRequiresVerification = true;
     resetActions.pendingShowsNotifySchoolHead = false;
     resetActions.pendingShowsIncludeReasonInEmail = true;
+    resetActions.confirmPendingAccountActionLabel = "Send Reset Link";
     renderDialog(resetActions);
+    expect(screen.getByRole("heading", { name: "Send Password Reset Link" })).not.toBeNull();
+    expect(screen.getAllByText(/Internal Reason/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Email Content/i)).not.toBeNull();
+    expect(screen.getByText(/Security Confirmation/i)).not.toBeNull();
     expect(screen.queryByLabelText("Notify School Head by email")).toBeNull();
-    expect(screen.getByLabelText("Include reason in password reset email")).not.toBeNull();
+    expect(screen.getByLabelText("Include internal reason in the password reset email")).not.toBeNull();
+    expect(screen.getByRole("button", { name: "Send Reset Link" })).not.toBeNull();
   });
 
   it("does not surface the batch delete toolbar trigger even when flagged-school counts are present", () => {

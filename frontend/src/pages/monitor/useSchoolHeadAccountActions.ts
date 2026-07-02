@@ -241,28 +241,58 @@ function pendingActionDescription(action: PendingAccountAction | null): string {
   }
 
   if (action.kind === "remove") {
-    return `Reason and confirmation code required to remove the School Head account and school record for ${action.schoolName}.`;
+    return "This will remove the School Head account and linked school record from the active monitor dashboard. This action cannot be undone from this screen.";
   }
 
   if (action.kind === "activate") {
-    return `Optional activation note for ${action.schoolName}.`;
+    return "This will allow the School Head account to sign in to CSPAMS.";
   }
 
   if (action.kind === "status") {
     return isDeactivationStatus(action.update.accountStatus)
-      ? `Reason and confirmation code required for ${action.schoolName}.`
-      : `Reason required for ${action.schoolName}.`;
+      ? "This will prevent the School Head from signing in to CSPAMS until the account is reactivated."
+      : "This will update the School Head account status.";
   }
 
   if (action.kind === "reset_password") {
-    return `Reason and confirmation code required to send a password reset link for ${action.schoolName}.`;
+    return "This will send a password reset link to the School Head email and require the account owner to set a new password.";
   }
 
   if (action.kind === "temporary_password") {
-    return `Reason and confirmation code required to generate a new temporary password for ${action.schoolName}.`;
+    return "This will generate a new temporary password for the School Head account.";
   }
 
-  return `Enter a reason and the 6-digit code sent to your monitor email to change the School Head email for ${action.schoolName}.`;
+  return "This will update the School Head account email after security confirmation.";
+}
+
+function confirmLabelForAction(action: PendingAccountAction | null, removeCountdownSeconds: number): string {
+  if (!action) {
+    return "Confirm";
+  }
+
+  if (action.kind === "remove") {
+    return removeCountdownSeconds > 0
+      ? `Remove in ${removeCountdownSeconds}s`
+      : "Remove Account and School";
+  }
+
+  if (action.kind === "activate") {
+    return "Activate Account";
+  }
+
+  if (action.kind === "status" && isDeactivationStatus(action.update.accountStatus)) {
+    return "Suspend Account";
+  }
+
+  if (action.kind === "reset_password") {
+    return "Send Reset Link";
+  }
+
+  if (action.kind === "temporary_password") {
+    return "Generate Temporary Password";
+  }
+
+  return action.actionLabel || "Confirm";
 }
 
 function announceSchoolHeadAccountDelivery(
@@ -534,7 +564,7 @@ export function useSchoolHeadAccountActions({
 
     const reason = pendingAccountReason.trim();
     if (requiresReason(pendingAccountAction) && reason.length < 5) {
-      setPendingAccountReasonError("Please provide a reason with at least 5 characters.");
+      setPendingAccountReasonError("Enter at least 5 characters.");
       return;
     }
 
@@ -895,9 +925,7 @@ export function useSchoolHeadAccountActions({
     )
   );
   const confirmPendingAccountActionLabel =
-    pendingAccountAction?.kind === "remove" && pendingRemoveCountdownSeconds > 0
-      ? `Confirm in ${pendingRemoveCountdownSeconds}s`
-      : "Confirm";
+    confirmLabelForAction(pendingAccountAction, pendingRemoveCountdownSeconds);
 
   return {
     editingSchoolHeadAccountSchoolId,

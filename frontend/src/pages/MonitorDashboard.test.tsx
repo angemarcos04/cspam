@@ -660,7 +660,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Suspend Account" }));
 
     const confirmationDialog = await screen.findByRole("dialog", { name: "Suspend Account" });
-    expect(within(confirmationDialog).getByLabelText("Reason")).toBeTruthy();
+    expect(within(confirmationDialog).getByLabelText("Internal Reason")).toBeTruthy();
+    expect(within(confirmationDialog).getByText("Email Notice")).toBeTruthy();
+    expect(within(confirmationDialog).getByText("Security Confirmation")).toBeTruthy();
     expect(within(confirmationDialog).getByRole("button", { name: "Send code" })).toBeTruthy();
     expect(updateSchoolHeadAccountStatusMock).not.toHaveBeenCalled();
   });
