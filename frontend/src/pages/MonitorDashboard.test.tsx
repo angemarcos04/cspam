@@ -548,6 +548,9 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(schoolsSection).getByRole("button", { name: "Accounts" })).toBeTruthy();
     expect(within(schoolsSection).getByRole("button", { name: "More" })).toBeTruthy();
     expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
+    const schoolsSearch = within(schoolsSection).getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
+    expect(schoolsSection.contains(schoolsSearch)).toBe(true);
+    expect(schoolsSearch.closest(".dashboard-shell-visible")).toBeNull();
 
     const activeSchoolRow = within(schoolsSection).getByText("Santiago Elementary").closest("article");
     expect(activeSchoolRow).toBeTruthy();
@@ -557,7 +560,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /delete/i })).toBeNull();
     expect(within(activeSchoolRow as HTMLElement).queryByRole("button", { name: /suspend/i })).toBeNull();
 
-    fireEvent.click(within(activeSchoolRow as HTMLElement).getByRole("button", { name: "Open" }));
+    fireEvent.change(schoolsSearch, { target: { value: "No matching school name" } });
+    expect(schoolsSearch.value).toBe("No matching school name");
+    await waitFor(() => {
+      expect(within(schoolsSection).queryByText("Santiago Elementary")).toBeNull();
+    });
+    fireEvent.change(schoolsSearch, { target: { value: "Santiago" } });
+    expect(await within(schoolsSection).findByText("Santiago Elementary")).toBeTruthy();
+
+    const filteredActiveSchoolRow = within(schoolsSection).getByText("Santiago Elementary").closest("article");
+    fireEvent.click(within(filteredActiveSchoolRow as HTMLElement).getByRole("button", { name: "Open" }));
     expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
     await waitFor(() => {
       const drawer = screen.getByText("School Detail").closest("aside");
@@ -1186,7 +1198,16 @@ describe("MonitorDashboard School Head delivery flows", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Open Audit Trail" }));
 
-    expect(await screen.findByText("Sent file")).toBeTruthy();
+    const auditEvent = await screen.findByText("Sent file");
+    const auditTrailSection = auditEvent.closest("#monitor-audit-trail") as HTMLElement;
+    expect(auditTrailSection).toBeTruthy();
+    expect(screen.queryByPlaceholderText("Search school code, school name, or school head")).toBeNull();
+    expect(screen.getByRole("button", { name: "Filters" })).toBeTruthy();
+    expect(within(auditTrailSection).getByRole("button", { name: "Refresh" })).toBeTruthy();
+    expect(within(auditTrailSection).getByLabelText("Action")).toBeTruthy();
+    expect(within(auditTrailSection).getByRole("option", { name: "All actions" })).toBeTruthy();
+    expect(within(auditTrailSection).getByLabelText("From")).toBeTruthy();
+    expect(within(auditTrailSection).getByLabelText("To")).toBeTruthy();
     expect(screen.getByText("submission.file_sent")).toBeTruthy();
     expect(screen.getByText("Santiago Elementary")).toBeTruthy();
     expect(screen.getByText("Maria Santos")).toBeTruthy();

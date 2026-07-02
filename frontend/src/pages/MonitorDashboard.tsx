@@ -1429,6 +1429,9 @@ export function MonitorDashboard() {
               schoolCategoryCounts={schoolCategoryCounts}
               schoolSectorFilter={schoolSectorFilter}
               schoolLevelFilter={schoolLevelFilter}
+              search={search}
+              onSearchChange={setSearch}
+              globalSearchInputRef={globalSearchInputRef}
               onClearSchoolCategoryFilter={handleClearSchoolCategoryFilter}
               onSelectSchoolCategoryFilter={handleSelectSchoolCategoryFilter}
               messages={schoolsSectionApi.schoolMessagesProps}

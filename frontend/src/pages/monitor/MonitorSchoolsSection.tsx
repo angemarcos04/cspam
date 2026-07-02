@@ -4,10 +4,11 @@ import {
   ChevronDown,
   Download,
   FileUp,
+  Search,
   ShieldCheck,
   Users,
 } from "lucide-react";
-import type { ChangeEvent, MutableRefObject } from "react";
+import type { ChangeEvent, MutableRefObject, Ref } from "react";
 import { MonitorArchivedSchools, type MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
 import { MonitorSchoolHeadAccountsPanel, type MonitorSchoolHeadAccountsPanelProps } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
@@ -27,6 +28,9 @@ interface MonitorSchoolsSectionProps {
   schoolCategoryCounts: SchoolCategoryCounts;
   schoolSectorFilter: SchoolSectorFilter;
   schoolLevelFilter: SchoolLevelFilter;
+  search: string;
+  onSearchChange: (value: string) => void;
+  globalSearchInputRef: Ref<HTMLInputElement>;
   onClearSchoolCategoryFilter: () => void;
   onSelectSchoolCategoryFilter: (sector: Exclude<SchoolSectorFilter, "all">, level?: SchoolLevelFilter) => void;
   messages: MonitorSchoolMessagesProps;
@@ -58,6 +62,9 @@ export function MonitorSchoolsSection({
   schoolCategoryCounts,
   schoolSectorFilter,
   schoolLevelFilter,
+  search,
+  onSearchChange,
+  globalSearchInputRef,
   onClearSchoolCategoryFilter,
   onSelectSchoolCategoryFilter,
   messages,
@@ -289,6 +296,20 @@ export function MonitorSchoolsSection({
             </div>
           </div>
           {isMobileViewport && <MonitorQuickJumpChips {...quickJumpBindings} mobile />}
+        </div>
+
+        <div className="border-b border-slate-200 bg-white px-5 py-3">
+          <label className="relative block w-full lg:max-w-lg">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <input
+              ref={globalSearchInputRef}
+              type="text"
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder="Search school code, school name, or school head"
+              className="w-full rounded-sm border border-slate-200 bg-white py-2 pl-10 pr-4 text-sm text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
+            />
+          </label>
         </div>
 
         <MonitorSchoolMessages {...messages} />
