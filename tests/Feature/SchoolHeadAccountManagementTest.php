@@ -78,6 +78,42 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame('Junior High / Senior High', $school->refresh()->level);
     }
 
+    public function test_monitor_school_upsert_rejects_invalid_mixed_school_coverage(): void
+    {
+        $this->seed();
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        foreach ([
+            'Elementary / Integrated',
+            'Junior High / Unknown',
+            'High School / Junior High',
+            'Secondary / Senior High',
+        ] as $index => $level) {
+            $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
+                'schoolId' => (string) (911120 + $index),
+                'schoolName' => 'Invalid Coverage Upsert School ' . ($index + 1),
+                'level' => $level,
+                'type' => 'public',
+                'district' => 'District Test',
+                'region' => 'Region Test',
+                'address' => 'District Test, Region Test',
+                'studentCount' => 0,
+                'teacherCount' => 0,
+                'status' => 'active',
+            ]);
+
+            $response->assertUnprocessable()
+                ->assertJsonValidationErrors(['level']);
+        }
+    }
+
     public function test_monitor_can_create_school_head_with_temporary_password_and_required_first_login_reset(): void
     {
         $this->seed();
