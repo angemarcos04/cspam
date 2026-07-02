@@ -225,6 +225,122 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(handleIssueSchoolHeadSetupLink).not.toHaveBeenCalled();
   });
 
+  it("shows activation-needed rows without redundant labels and routes Activate Account through the pending action flow", () => {
+    const activationNeededRecord: SchoolRecord = {
+      id: "school-activation-needed",
+      schoolId: "910003",
+      schoolCode: "910003",
+      schoolName: "Activation Needed School",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1",
+      type: "public",
+      studentCount: 0,
+      teacherCount: 0,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-05-08T08:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-activation-needed",
+        name: "Activation Head",
+        email: "activation@cspams.local",
+        accountStatus: "pending_verification",
+        mustResetPassword: false,
+        lifecycleState: "pending_verification",
+        lifecycleStateLabel: "Pending Verification",
+        recommendedAction: "activate_account",
+        emailVerifiedAt: null,
+        verifiedAt: null,
+        verifiedByUserId: null,
+        verifiedByName: null,
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+      },
+      indicatorLatest: null,
+    };
+    const openPendingAccountAction = vi.fn();
+    const handleUpdateSchoolHeadAccount = vi.fn();
+
+    function Wrapper(): ReactElement {
+      const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
+      const actions = buildActions();
+      actions.openAccountRowMenuSchoolId = openAccountRowMenuSchoolId;
+      actions.toggleAccountRowMenu = (schoolId: string) => {
+        setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
+      };
+      actions.openPendingAccountAction = openPendingAccountAction;
+      actions.handleUpdateSchoolHeadAccount = handleUpdateSchoolHeadAccount;
+
+      return (
+        <MonitorSchoolHeadAccountsPanel
+          isOpen
+          isSaving={false}
+          isMobileViewport={false}
+          rows={[{
+            schoolKey: activationNeededRecord.id,
+            schoolCode: activationNeededRecord.schoolCode ?? "",
+            schoolName: activationNeededRecord.schoolName,
+            record: activationNeededRecord,
+          }]}
+          totalCount={1}
+          accountStatusCounts={{ all: 1, pending_verification: 1, active: 0, suspended: 0 }}
+          query=""
+          statusFilter="all"
+          onlyFlagged={false}
+          onlyDeleteFlagged={false}
+          onQueryChange={vi.fn()}
+          onStatusFilterChange={vi.fn()}
+          onOnlyFlaggedChange={vi.fn()}
+          onOnlyDeleteFlaggedChange={vi.fn()}
+          onClearFilters={vi.fn()}
+          onClose={vi.fn()}
+          onOpenSchoolRecord={vi.fn()}
+          formatDateTime={(value) => value ?? "-"}
+          actions={actions}
+        />
+      );
+    }
+
+    render(<Wrapper />);
+
+    const row = screen.getAllByRole("row").find((candidate) => candidate.textContent?.includes("Activation Needed School"));
+    expect(row).not.toBeUndefined();
+    expect(within(row!).getByText("Activation Needed")).not.toBeNull();
+    expect(within(row!).queryByText("Pending Verification")).toBeNull();
+    expect(within(row!).queryByText("pending_verification")).toBeNull();
+    expect(within(row!).queryByText("Awaiting monitor approval")).toBeNull();
+
+    fireEvent.click(within(row!).getByRole("button", { name: "Actions" }));
+    const menu = screen.getByRole("menu", { name: "Activation Needed School account actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Send Password Reset Link",
+      "Activate Account",
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Activate Account" }));
+    expect(openPendingAccountAction).toHaveBeenCalledWith({
+      kind: "activate",
+      schoolId: "school-activation-needed",
+      schoolName: "Activation Needed School",
+      actionLabel: "Activate Account",
+    });
+    expect(handleUpdateSchoolHeadAccount).not.toHaveBeenCalled();
+  });
+
   it("keeps no-account rows limited to the create-account action", () => {
     const record: SchoolRecord = {
       id: "school-1",
@@ -1048,6 +1164,23 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       },
     };
 
+    const legacyArchivedRecord: SchoolRecord = {
+      ...activationNeededRecord,
+      id: "school-14",
+      schoolId: "901014",
+      schoolCode: "901014",
+      schoolName: "Legacy Archived School",
+      schoolHeadAccount: {
+        ...activationNeededRecord.schoolHeadAccount!,
+        id: "account-14",
+        email: "archived@cspams.local",
+        accountStatus: "active",
+        lifecycleState: "archived",
+        lifecycleStateLabel: "Archived",
+        recommendedAction: "none",
+      },
+    };
+
     const compactSchoolRows: MonitorSchoolRecordsListRow[] = [
       {
         summary: {
@@ -1137,6 +1270,28 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
         },
         record: legacyLockedRecord,
       },
+      {
+        summary: {
+          schoolKey: "school-14",
+          schoolCode: "901014",
+          schoolName: "Legacy Archived School",
+          region: "Region II",
+          schoolStatus: "active",
+          packageSchoolType: "public",
+          requirementModeLabel: "Active package requirements: BMEF and SMEA.",
+          activePackageLabel: "BMEF and SMEA",
+          hasComplianceRecord: true,
+          indicatorStatus: null,
+          hasActivePackageSubmission: false,
+          hasAnySubmitted: false,
+          isComplete: false,
+          awaitingReviewCount: 0,
+          missingCount: 1,
+          lastActivityAt: null,
+          lastActivityTime: 0,
+        },
+        record: legacyArchivedRecord,
+      },
     ];
 
     const recordBySchoolKey = new Map<string, SchoolRecord>([
@@ -1144,6 +1299,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       ["school-11", activationNeededRecord],
       ["school-12", suspendedRecord],
       ["school-13", legacyLockedRecord],
+      ["school-14", legacyArchivedRecord],
     ]);
 
     const { result } = renderHook(() =>
@@ -1182,6 +1338,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("suspended");
     });
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
+      "Legacy Archived School",
       "Legacy Locked School",
       "Suspended School",
     ]);

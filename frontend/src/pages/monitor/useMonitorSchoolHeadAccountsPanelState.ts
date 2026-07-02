@@ -157,7 +157,9 @@ export function useMonitorSchoolHeadAccountsPanelState({
         return (
           normalizedAccountStatus === "suspended" ||
           normalizedAccountStatus === "locked" ||
-          normalizedAccountStatus === "archived"
+          normalizedAccountStatus === "archived" ||
+          lifecycleState === "locked" ||
+          lifecycleState === "archived"
         );
       }
 
@@ -234,7 +236,13 @@ export function useMonitorSchoolHeadAccountsPanelState({
       if (lifecycleState === "password_reset_required") return 6;
       if (lifecycleState === "temporary_password_active") return 7;
       if (normalizedAccountStatus === "active") return 8;
-      if (normalizedAccountStatus === "suspended" || normalizedAccountStatus === "locked" || normalizedAccountStatus === "archived") return 9;
+      if (
+        normalizedAccountStatus === "suspended" ||
+        normalizedAccountStatus === "locked" ||
+        normalizedAccountStatus === "archived" ||
+        lifecycleState === "locked" ||
+        lifecycleState === "archived"
+      ) return 9;
       return 99;
     };
 

@@ -77,6 +77,7 @@ function accountStatusTone(status: string | null | undefined, lifecycleState: st
   if (normalizedLifecycleState === "password_reset_required") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   if (normalizedLifecycleState === "temporary_password_expired") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   if (normalizedLifecycleState === "temporary_password_active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
+  if (normalizedLifecycleState === "locked" || normalizedLifecycleState === "archived") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
   const normalized = (status ?? "").toLowerCase();
   if (normalized === "active") return "bg-primary-100 text-primary-700 ring-1 ring-primary-300";
   if (normalized === "pending_setup") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
@@ -368,15 +369,16 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
                   const normalizedAccountStatus = String(account?.accountStatus ?? "").toLowerCase();
+                  const normalizedLifecycleState = String(account?.lifecycleState ?? "").toLowerCase();
+                  const isActivationNeededAccount =
+                    normalizedAccountStatus === "pending_verification" ||
+                    normalizedLifecycleState === "pending_verification";
                   const isSuspendedLikeAccount =
                     normalizedAccountStatus === "suspended" ||
                     normalizedAccountStatus === "locked" ||
-                    normalizedAccountStatus === "archived";
-                  const verificationLabel = normalizedAccountStatus === "pending_setup"
-                    ? ""
-                    : normalizedAccountStatus === "pending_verification"
-                      ? "Awaiting monitor approval"
-                      : "";
+                    normalizedAccountStatus === "archived" ||
+                    normalizedLifecycleState === "locked" ||
+                    normalizedLifecycleState === "archived";
                   const tempPassword = temporaryPasswordState(account);
 
                   return (
@@ -452,11 +454,6 @@ export function MonitorSchoolHeadAccountsPanel({
                               {account.flagged ? <AlertTriangle className="h-3.5 w-3.5 text-rose-600" /> : null}
                               {accountStatusLabel(account.accountStatus, account.lifecycleStateLabel, account.lifecycleState)}
                             </span>
-                            {verificationLabel ? (
-                              <span className="text-[11px] font-semibold text-amber-700">
-                                {verificationLabel}
-                              </span>
-                            ) : null}
                           </div>
                         ) : (
                           <span className="inline-flex items-center self-start rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">
@@ -574,23 +571,42 @@ export function MonitorSchoolHeadAccountsPanel({
                                     >
                                       Send Password Reset Link
                                     </button>
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      onClick={() => {
-                                        closeSelectedAccountActionMenu(resolvedRecord.id);
-                                        actions.handleUpdateSchoolHeadAccount(
-                                          resolvedRecord,
-                                          {
-                                            accountStatus: isSuspendedLikeAccount ? "active" : "suspended",
-                                          },
-                                          isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account",
-                                        );
-                                      }}
-                                      className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
-                                    >
-                                      {isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account"}
-                                    </button>
+                                    {isActivationNeededAccount ? (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          closeSelectedAccountActionMenu(resolvedRecord.id);
+                                          actions.openPendingAccountAction({
+                                            kind: "activate",
+                                            schoolId: resolvedRecord.id,
+                                            schoolName: resolvedRecord.schoolName,
+                                            actionLabel: "Activate Account",
+                                          });
+                                        }}
+                                        className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        Activate Account
+                                      </button>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          closeSelectedAccountActionMenu(resolvedRecord.id);
+                                          actions.handleUpdateSchoolHeadAccount(
+                                            resolvedRecord,
+                                            {
+                                              accountStatus: isSuspendedLikeAccount ? "active" : "suspended",
+                                            },
+                                            isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account",
+                                          );
+                                        }}
+                                        className="block w-full px-3 py-2 text-left text-xs font-semibold text-slate-700 transition hover:bg-slate-50"
+                                      >
+                                        {isSuspendedLikeAccount ? "Reactivate Account" : "Suspend Account"}
+                                      </button>
+                                    )}
                                     <button
                                       type="button"
                                       role="menuitem"

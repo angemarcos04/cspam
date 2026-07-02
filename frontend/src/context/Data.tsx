@@ -193,7 +193,7 @@ interface DataContextType {
   ) => Promise<SchoolHeadAccountActivationResult>;
   issueSchoolHeadAccountActionVerificationCode: (
     schoolId: string,
-    targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset" | "temporary_password",
+    targetStatus: "suspended" | "deleted" | "email_change" | "password_reset" | "temporary_password",
   ) => Promise<SchoolHeadAccountActionVerificationCodeResult>;
   issueSchoolHeadSetupLink: (
     schoolId: string,
@@ -1074,7 +1074,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
     async (
       schoolId: string,
-      targetStatus: "suspended" | "locked" | "archived" | "deleted" | "email_change" | "password_reset" | "temporary_password",
+      targetStatus: "suspended" | "deleted" | "email_change" | "password_reset" | "temporary_password",
     ): Promise<SchoolHeadAccountActionVerificationCodeResult> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
