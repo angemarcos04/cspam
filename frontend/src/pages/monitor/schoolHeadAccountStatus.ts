@@ -49,6 +49,8 @@ export function schoolHeadAccountStatusLabel(status: SchoolHeadAccountUiStatus):
   return "No Account";
 }
 
+export const formatSchoolHeadAccountUiStatus = schoolHeadAccountStatusLabel;
+
 export function schoolHeadAccountStatusTone(status: SchoolHeadAccountUiStatus): string {
   if (status === "activation_needed") return "bg-amber-50 text-amber-700 ring-1 ring-amber-200";
   if (status === "suspended") return "bg-rose-50 text-rose-700 ring-1 ring-rose-200";
@@ -66,6 +68,8 @@ export function schoolHeadAccountMatchesStatusFilter(
 
   return resolveSchoolHeadAccountUiStatus(account) === statusFilter;
 }
+
+export const schoolHeadAccountMatchesFilter = schoolHeadAccountMatchesStatusFilter;
 
 export const SCHOOL_HEAD_ACCOUNT_STATUS_FILTER_OPTIONS: Array<{
   id: SchoolHeadAccountsStatusFilter;

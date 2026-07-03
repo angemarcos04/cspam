@@ -685,6 +685,120 @@ describe("DataProvider school record sync recovery", () => {
     expect(result.current.records[0]?.schoolHeadAccount?.flagged).toBe(true);
     expect(result.current.records[0]?.schoolHeadAccount?.flagReason).toBe("Policy hold");
   });
+
+  it("keeps a reactivated account object visible when the follow-up record refresh is stale", async () => {
+    const apiRequestRawMock = vi.mocked(apiRequestRaw);
+    const buildRecord = (accountStatus: string, accountOverrides: Record<string, unknown> = {}) => ({
+      id: "school-1",
+      schoolId: "900001",
+      schoolCode: "900001",
+      schoolName: "Santiago Elementary",
+      level: "Elementary",
+      district: "District 1",
+      address: "District 1, Santiago City",
+      type: "public",
+      studentCount: 120,
+      teacherCount: 12,
+      region: "Region II",
+      status: "active",
+      submittedBy: "Monitor User",
+      lastUpdated: "2026-06-01T00:00:00.000Z",
+      deletedAt: null,
+      schoolHeadAccount: {
+        id: "account-1",
+        name: "School Head",
+        email: "head@example.com",
+        accountStatus,
+        mustResetPassword: false,
+        lifecycleState: accountStatus === "suspended" ? "suspended" : "active_ready",
+        lifecycleStateLabel: accountStatus === "suspended" ? "Suspended" : "Active",
+        recommendedAction: "none",
+        emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedAt: "2026-05-01T08:00:00.000Z",
+        verifiedByUserId: "1",
+        verifiedByName: "Monitor User",
+        verificationNotes: null,
+        setupLinkExpiresAt: null,
+        temporaryPasswordIssuedAt: null,
+        temporaryPasswordExpiresAt: null,
+        temporaryPasswordExpired: false,
+        lastLoginAt: null,
+        flagged: false,
+        flaggedAt: null,
+        flagReason: null,
+        deleteRecordFlagged: false,
+        deleteRecordFlaggedAt: null,
+        deleteRecordReason: null,
+        ...accountOverrides,
+      },
+      indicatorLatest: null,
+    });
+    const recordsResponse = (accountStatus: string) => ({
+      status: 200,
+      data: {
+        data: [buildRecord(accountStatus)],
+        meta: {
+          syncedAt: "2026-06-01T00:00:00.000Z",
+          scope: "division",
+          scopeKey: "division:all|filters:none",
+          recordCount: 1,
+          targetsMet: null,
+          alerts: [],
+        },
+      },
+      headers: new Headers({ "X-Sync-Etag": `"etag-${accountStatus}"` }),
+    });
+
+    apiRequestRawMock
+      .mockResolvedValueOnce(recordsResponse("suspended"))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            schoolId: "school-1",
+            schoolName: "Santiago Elementary",
+            account: buildRecord("active", {
+              lifecycleState: "active_ready",
+              lifecycleStateLabel: "Active",
+              flagged: false,
+              flagReason: null,
+            }).schoolHeadAccount,
+            message: "Account reactivated.",
+          },
+        },
+        headers: new Headers(),
+      })
+      .mockResolvedValueOnce(recordsResponse("suspended"))
+      .mockResolvedValueOnce(recordsResponse("suspended"));
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(result.current.records[0]?.schoolHeadAccount?.accountStatus).toBe("suspended");
+    });
+
+    await act(async () => {
+      await result.current.updateSchoolHeadAccountStatus("school-1", {
+        accountStatus: "active",
+        reason: "Account restored",
+        verificationChallengeId: "challenge-1",
+        verificationCode: "123456",
+      });
+    });
+
+    expect(result.current.records[0]?.schoolHeadAccount?.accountStatus).toBe("active");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleState).toBe("active_ready");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleStateLabel).toBe("Active");
+
+    await act(async () => {
+      await result.current.refreshRecords({ force: true });
+    });
+
+    expect(result.current.records[0]?.schoolHeadAccount?.accountStatus).toBe("active");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleState).toBe("active_ready");
+    expect(result.current.records[0]?.schoolHeadAccount?.lifecycleStateLabel).toBe("Active");
+  });
 });
 
 describe("buildDataProviderSessionKey", () => {

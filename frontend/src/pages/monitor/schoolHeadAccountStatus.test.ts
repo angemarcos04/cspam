@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatSchoolHeadAccountUiStatus,
+  schoolHeadAccountMatchesFilter,
   resolveSchoolHeadAccountUiStatus,
   schoolHeadAccountMatchesStatusFilter,
   schoolHeadAccountStatusLabel,
+  schoolHeadAccountStatusTone,
 } from "@/pages/monitor/schoolHeadAccountStatus";
 import type { SchoolHeadAccountSummary } from "@/types";
 
@@ -51,9 +54,18 @@ describe("schoolHeadAccountStatus", () => {
 
   it("uses the simplified labels and combined activation filter", () => {
     expect(schoolHeadAccountStatusLabel("activation_needed")).toBe("Activation Needed");
+    expect(formatSchoolHeadAccountUiStatus("suspended")).toBe("Suspended");
     expect(schoolHeadAccountStatusLabel("no_account")).toBe("No Account");
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_setup"), "activation_needed")).toBe(true);
+    expect(schoolHeadAccountMatchesFilter(account("pending_setup"), "activation_needed")).toBe(true);
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_verification"), "activation_needed")).toBe(true);
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_setup"), "active")).toBe(false);
+  });
+
+  it("returns consistent status badge tones", () => {
+    expect(schoolHeadAccountStatusTone("active")).toContain("bg-primary-100");
+    expect(schoolHeadAccountStatusTone("activation_needed")).toContain("bg-amber-50");
+    expect(schoolHeadAccountStatusTone("suspended")).toContain("bg-rose-50");
+    expect(schoolHeadAccountStatusTone("no_account")).toContain("bg-slate-");
   });
 });

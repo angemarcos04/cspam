@@ -28,6 +28,23 @@ function matchesAccountOverride(record: SchoolRecord, override: MonitorAccountSt
   );
 }
 
+function accountMatchesOverrideAccount(
+  serverAccount: SchoolHeadAccountSummary | null | undefined,
+  overrideAccount: SchoolHeadAccountSummary,
+): boolean {
+  if (!serverAccount) {
+    return false;
+  }
+
+  return (
+    String(serverAccount.accountStatus ?? "").trim().toLowerCase() === String(overrideAccount.accountStatus ?? "").trim().toLowerCase() &&
+    String(serverAccount.lifecycleState ?? "").trim().toLowerCase() === String(overrideAccount.lifecycleState ?? "").trim().toLowerCase() &&
+    String(serverAccount.lifecycleStateLabel ?? "").trim() === String(overrideAccount.lifecycleStateLabel ?? "").trim() &&
+    String(serverAccount.recommendedAction ?? "").trim().toLowerCase() === String(overrideAccount.recommendedAction ?? "").trim().toLowerCase() &&
+    String(serverAccount.temporaryPasswordDisplay ?? "").trim() === String(overrideAccount.temporaryPasswordDisplay ?? "").trim()
+  );
+}
+
 export function buildMonitorAccountStatusOverride(
   schoolId: string,
   record: SchoolRecord | null | undefined,
@@ -82,8 +99,7 @@ export function pruneMonitorAccountStatusOverrides(
     }
 
     const matchingRecord = records.find((record) => matchesAccountOverride(record, override));
-    const serverAccountStatus = String(matchingRecord?.schoolHeadAccount?.accountStatus ?? "").trim().toLowerCase();
-    if (serverAccountStatus && serverAccountStatus === override.accountStatus) {
+    if (accountMatchesOverrideAccount(matchingRecord?.schoolHeadAccount, override.account)) {
       delete next[key];
       changed = true;
     }

@@ -2,6 +2,11 @@ import { AlertCircle, Building2 } from "lucide-react";
 import { SCHOOL_QUICK_PRESET_OPTIONS } from "@/pages/monitor/monitorDashboardConfig";
 import type { SchoolQuickPreset, RequirementFilter } from "@/pages/monitor/monitorFilters";
 import { monitorSchoolStatusLabel } from "@/pages/monitor/monitorSchoolStatus";
+import {
+  formatSchoolHeadAccountUiStatus,
+  resolveSchoolHeadAccountUiStatus,
+  schoolHeadAccountStatusTone,
+} from "@/pages/monitor/schoolHeadAccountStatus";
 import type { SchoolRecord, SchoolReminderSummary, SchoolStatus } from "@/types";
 
 export interface SubmissionProgressBadge {
@@ -168,6 +173,11 @@ export function MonitorSchoolRecordsList({
           const updatedLabel = summary.lastActivityAt ?? record?.lastUpdated ?? null;
           const statusPillPressed = statusFilter === rowStatus;
           const schoolStatusLabel = monitorSchoolStatusLabel(rowStatus);
+          const schoolHeadAccountStatus = resolveSchoolHeadAccountUiStatus(record?.schoolHeadAccount ?? null);
+          const schoolHeadAccountLabel =
+            schoolHeadAccountStatus === "no_account"
+              ? "No School Head Account"
+              : `School Head: ${formatSchoolHeadAccountUiStatus(schoolHeadAccountStatus)}`;
           const submissionProgress = summary.submissionProgress ?? {
             submitted: summary.hasAnySubmitted ? 1 : 0,
             total: Math.max(1, summary.missingCount + (summary.hasAnySubmitted ? 1 : 0)),
@@ -274,6 +284,12 @@ export function MonitorSchoolRecordsList({
                         {queuePill.label}
                       </span>
                     )}
+                    <span
+                      title="Linked School Head account status"
+                      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-semibold ${schoolHeadAccountStatusTone(schoolHeadAccountStatus)}`}
+                    >
+                      {schoolHeadAccountLabel}
+                    </span>
                   </div>
                 </div>
                 <div className="flex items-center gap-2 sm:shrink-0 sm:self-start">

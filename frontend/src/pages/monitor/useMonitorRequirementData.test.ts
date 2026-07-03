@@ -344,7 +344,7 @@ describe("buildMonitorRequirementSummaryState", () => {
     expect(result.current.paginatedCompactSchoolRows[0].summary.submissionProgress?.label).toBe("Submitted 1/2");
   });
 
-  it("uses suspended account status as the monitor display status for cards, counts, and filters", () => {
+  it("keeps account suspension separate from operational school status for cards, counts, and filters", () => {
     const activeRecord = buildRecord("validated", {
       id: "record-active",
       schoolId: "108323",
@@ -366,13 +366,17 @@ describe("buildMonitorRequirementSummaryState", () => {
     const suspendedRow = allResult.current.paginatedCompactSchoolRows.find((row) => row.summary.schoolName === "Suspended Account School");
     const activeRow = allResult.current.paginatedCompactSchoolRows.find((row) => row.summary.schoolName === "Active Account School");
 
-    expect(suspendedRow?.summary.schoolStatus).toBe("inactive");
+    expect(suspendedRow?.summary.schoolStatus).toBe("active");
     expect(activeRow?.summary.schoolStatus).toBe("active");
     expect(suspendedAccountRecord.status).toBe("active");
-    expect(allResult.current.schoolStatusCounts).toMatchObject({ all: 2, active: 1, inactive: 1, pending: 0 });
+    expect(allResult.current.schoolStatusCounts).toMatchObject({ all: 2, active: 2, inactive: 0, pending: 0 });
 
     const { result: suspendedFilterResult } = renderRequirementHook([activeRecord, suspendedAccountRecord], [], "inactive");
-    expect(suspendedFilterResult.current.paginatedCompactSchoolRows.map((row) => row.summary.schoolName)).toEqual([
+    expect(suspendedFilterResult.current.paginatedCompactSchoolRows.map((row) => row.summary.schoolName)).toEqual([]);
+
+    const { result: activeFilterResult } = renderRequirementHook([activeRecord, suspendedAccountRecord], [], "active");
+    expect(activeFilterResult.current.paginatedCompactSchoolRows.map((row) => row.summary.schoolName)).toEqual([
+      "Active Account School",
       "Suspended Account School",
     ]);
   });

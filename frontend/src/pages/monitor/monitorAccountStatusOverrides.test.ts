@@ -88,4 +88,18 @@ describe("monitor account status overrides", () => {
     expect(pruneMonitorAccountStatusOverrides([staleRecord], overrides, 2000)).toBe(overrides);
     expect(pruneMonitorAccountStatusOverrides([buildRecord("suspended")], overrides, 2000)).toEqual({});
   });
+
+  it("keeps an override when status matches but lifecycle metadata is still stale", () => {
+    const staleRecord = buildRecord("active");
+    const overrideAccount = buildAccount("active", {
+      lifecycleState: "temporary_password_active",
+      lifecycleStateLabel: "Temporary password active",
+      temporaryPasswordDisplay: "Ab3Cd4Ef",
+    });
+    const override = buildMonitorAccountStatusOverride("school-1", staleRecord, overrideAccount, 1000);
+    const overrides = { "school-1": override };
+
+    expect(pruneMonitorAccountStatusOverrides([buildRecord("active")], overrides, 2000)).toBe(overrides);
+    expect(pruneMonitorAccountStatusOverrides([{ ...buildRecord("active"), schoolHeadAccount: overrideAccount }], overrides, 2000)).toEqual({});
+  });
 });

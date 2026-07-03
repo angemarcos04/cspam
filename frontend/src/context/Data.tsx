@@ -325,6 +325,21 @@ function schoolRecordMatchesAccountStatusOverride(record: SchoolRecord, override
   return false;
 }
 
+function schoolHeadAccountMatchesOverrideAccount(
+  serverAccount: SchoolHeadAccountSummary | null | undefined,
+  overrideAccount: SchoolHeadAccountSummary,
+): boolean {
+  if (!serverAccount) return false;
+
+  return (
+    String(serverAccount.accountStatus ?? "").trim().toLowerCase() === String(overrideAccount.accountStatus ?? "").trim().toLowerCase() &&
+    String(serverAccount.lifecycleState ?? "").trim().toLowerCase() === String(overrideAccount.lifecycleState ?? "").trim().toLowerCase() &&
+    String(serverAccount.lifecycleStateLabel ?? "").trim() === String(overrideAccount.lifecycleStateLabel ?? "").trim() &&
+    String(serverAccount.recommendedAction ?? "").trim().toLowerCase() === String(overrideAccount.recommendedAction ?? "").trim().toLowerCase() &&
+    String(serverAccount.temporaryPasswordDisplay ?? "").trim() === String(overrideAccount.temporaryPasswordDisplay ?? "").trim()
+  );
+}
+
 function pruneAccountStatusOverrides(
   records: SchoolRecord[],
   overrides: AccountStatusOverride[],
@@ -341,9 +356,8 @@ function pruneAccountStatusOverrides(
       return true;
     }
 
-    const serverStatus = String(matchingRecord.schoolHeadAccount.accountStatus ?? "").toLowerCase();
-    const overrideStatus = String(override.accountStatus ?? "").toLowerCase();
-    if (serverStatus === overrideStatus) {
+    const serverAccount = matchingRecord.schoolHeadAccount;
+    if (schoolHeadAccountMatchesOverrideAccount(serverAccount, override.account)) {
       return false;
     }
 
@@ -454,6 +468,26 @@ export function DataProvider({ children }: { children: ReactNode }) {
     accountStatusOverridesRef.current = next;
     setAccountStatusOverrides(next);
   }, []);
+
+  const applyReturnedSchoolHeadAccount = useCallback((schoolId: string, account: SchoolHeadAccountSummary) => {
+    const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
+    rememberAccountStatusOverride(schoolId, existingRecord, account);
+    setRecords((current) =>
+      current.map((record) => {
+        const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
+          schoolId,
+          schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
+          accountStatus: String(account.accountStatus ?? "").toLowerCase(),
+          account,
+          appliedAt: new Date().toISOString(),
+        }) : record.id === schoolId;
+
+        return shouldUpdateRecord
+          ? { ...record, schoolHeadAccount: account }
+          : record;
+      }),
+    );
+  }, [rememberAccountStatusOverride]);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -1036,23 +1070,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Account update response is empty.");
         }
 
-        const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
-        rememberAccountStatusOverride(schoolId, existingRecord, result.account);
-        setRecords((current) =>
-          current.map((record) => {
-            const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
-              schoolId,
-              schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
-              accountStatus: String(result.account.accountStatus ?? "").toLowerCase(),
-              account: result.account,
-              appliedAt: new Date().toISOString(),
-            }) : record.id === schoolId;
-
-            return shouldUpdateRecord
-              ? { ...record, schoolHeadAccount: result.account }
-              : record;
-          }),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1066,7 +1084,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, rememberAccountStatusOverride, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const issueSchoolHeadAccountActionVerificationCode = useCallback(
@@ -1135,23 +1153,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Account activation response is empty.");
         }
 
-        const existingRecord = recordsRef.current.find((record) => record.id === schoolId || record.schoolId === schoolId);
-        rememberAccountStatusOverride(schoolId, existingRecord, result.account);
-        setRecords((current) =>
-          current.map((record) => {
-            const shouldUpdateRecord = existingRecord ? schoolRecordMatchesAccountStatusOverride(record, {
-              schoolId,
-              schoolCode: existingRecord.schoolCode ?? existingRecord.schoolId ?? null,
-              accountStatus: String(result.account.accountStatus ?? "").toLowerCase(),
-              account: result.account,
-              appliedAt: new Date().toISOString(),
-            }) : record.id === schoolId;
-
-            return shouldUpdateRecord
-              ? { ...record, schoolHeadAccount: result.account }
-              : record;
-          }),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1165,7 +1167,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, rememberAccountStatusOverride, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const issueSchoolHeadSetupLink = useCallback(
@@ -1195,16 +1197,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Setup link response is empty.");
         }
 
-        setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1218,7 +1211,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const issueSchoolHeadPasswordResetLink = useCallback(
@@ -1270,16 +1263,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Password reset link response is empty.");
         }
 
-        setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1293,7 +1277,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const permanentlyDeleteArchivedRecord = useCallback(
@@ -1373,16 +1357,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Temporary password response is empty.");
         }
 
-        setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1396,7 +1371,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const upsertSchoolHeadAccountProfile = useCallback(
@@ -1439,16 +1414,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           throw new Error("Account update response is empty.");
         }
 
-        setRecords((current) =>
-          current.map((record) =>
-            record.id === schoolId
-              ? {
-                  ...record,
-                  schoolHeadAccount: result.account,
-                }
-              : record,
-          ),
-        );
+        applyReturnedSchoolHeadAccount(schoolId, result.account);
         setLastSyncedAt(new Date().toISOString());
         setSyncStatus("updated");
         etagRef.current = "";
@@ -1462,7 +1428,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, applyReturnedSchoolHeadAccount, syncRecords],
   );
 
   const removeSchoolHeadAccount = useCallback(

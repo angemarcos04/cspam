@@ -1,11 +1,6 @@
 import type { SchoolRecord, SchoolStatus } from "@/types";
 
 export function resolveMonitorSchoolDisplayStatus(record: SchoolRecord | null | undefined): SchoolStatus {
-  const accountStatus = String(record?.schoolHeadAccount?.accountStatus ?? "").trim().toLowerCase();
-  if (accountStatus === "suspended") {
-    return "inactive";
-  }
-
   return record?.status ?? "pending";
 }
 

@@ -55,7 +55,7 @@ function buildRecord(accountStatus: string): SchoolRecord {
 }
 
 describe("MonitorSchoolManagementPanel", () => {
-  it("displays Suspended when the linked School Head account is suspended without mutating school status", () => {
+  it("keeps the school status Active when the linked School Head account is suspended", () => {
     const record = buildRecord("suspended");
 
     render(
@@ -67,7 +67,9 @@ describe("MonitorSchoolManagementPanel", () => {
       />,
     );
 
-    expect(screen.getAllByText("Suspended")).toHaveLength(2);
+    expect(screen.getByText("Current status:")).toBeTruthy();
+    expect(screen.getByText("Active")).toBeTruthy();
+    expect(screen.getByText("Suspended")).toBeTruthy();
     expect(screen.queryByText("Inactive")).toBeNull();
     expect(screen.queryByText("Update school profile fields for this selected school.")).toBeNull();
     expect(screen.queryByText(/Manage School Head account actions/)).toBeNull();

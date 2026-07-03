@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MonitorSchoolRecordsList } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type { MonitorSchoolRecordsListProps, MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
-import type { SchoolStatus } from "@/types";
+import type { SchoolHeadAccountSummary, SchoolRecord, SchoolStatus } from "@/types";
 
 afterEach(() => {
   cleanup();
@@ -43,13 +43,61 @@ function buildSummary(overrides: Partial<MonitorSchoolRequirementSummary> = {}):
   };
 }
 
+function buildSchoolHeadAccount(accountStatus: string, lifecycleState = accountStatus): SchoolHeadAccountSummary {
+  return {
+    id: `account-${accountStatus}-${lifecycleState}`,
+    name: "School Head",
+    email: "head@cspams.local",
+    emailVerifiedAt: "2026-05-01T08:00:00.000Z",
+    lastLoginAt: null,
+    accountStatus,
+    mustResetPassword: false,
+    lifecycleState,
+    lifecycleStateLabel: null,
+    recommendedAction: "none",
+    verifiedAt: "2026-05-01T08:00:00.000Z",
+    verifiedByUserId: "1",
+    verifiedByName: "Monitor User",
+    verificationNotes: null,
+    flagged: false,
+    flaggedAt: null,
+    flagReason: null,
+    deleteRecordFlagged: false,
+    deleteRecordFlaggedAt: null,
+    deleteRecordReason: null,
+    setupLinkExpiresAt: null,
+  };
+}
+
+function buildRecord(overrides: Partial<SchoolRecord> = {}): SchoolRecord {
+  return {
+    id: "record-1",
+    schoolId: "108323",
+    schoolCode: "108323",
+    schoolName: "Abra Elementary School",
+    level: "Elementary",
+    district: null,
+    address: null,
+    type: "public",
+    studentCount: 0,
+    teacherCount: 0,
+    region: "Region II",
+    status: "active",
+    submittedBy: "Monitor User",
+    lastUpdated: "2026-06-18T08:00:00.000Z",
+    schoolHeadAccount: buildSchoolHeadAccount("active", "active_ready"),
+    indicatorLatest: null,
+    ...overrides,
+  };
+}
+
 function renderList(overrides: Partial<MonitorSchoolRecordsListProps> = {}) {
   const props: MonitorSchoolRecordsListProps = {
     showLoadingSkeleton: false,
     scopeSchoolsCount: 1,
     hasDashboardFilters: false,
     compactSchoolRowsCount: 1,
-    paginatedRows: [{ summary: buildSummary(), record: null }],
+    paginatedRows: [{ summary: buildSummary(), record: buildRecord() }],
     statusFilter: "all",
     requirementFilter: "all",
     schoolQuickPreset: "all",
@@ -225,5 +273,39 @@ describe("MonitorSchoolRecordsList", () => {
     expect(screen.getByText("Submitted 1/2")).toBeTruthy();
     expect(screen.queryByText(/Incomplete/)).toBeNull();
     expect(screen.queryByText("OK")).toBeNull();
+  });
+
+  it("renders School Head account badges separately from submission progress badges", () => {
+    renderList({
+      paginatedRows: [
+        {
+          summary: buildSummary({ schoolKey: "active", schoolName: "Active Head School" }),
+          record: buildRecord({ id: "active", schoolHeadAccount: buildSchoolHeadAccount("active", "active_ready") }),
+        },
+        {
+          summary: buildSummary({ schoolKey: "setup", schoolName: "Setup Head School" }),
+          record: buildRecord({ id: "setup", schoolHeadAccount: buildSchoolHeadAccount("pending_setup", "pending_setup") }),
+        },
+        {
+          summary: buildSummary({ schoolKey: "verify", schoolName: "Verify Head School" }),
+          record: buildRecord({ id: "verify", schoolHeadAccount: buildSchoolHeadAccount("pending_verification", "pending_verification") }),
+        },
+        {
+          summary: buildSummary({ schoolKey: "suspended", schoolName: "Suspended Head School" }),
+          record: buildRecord({ id: "suspended", schoolHeadAccount: buildSchoolHeadAccount("suspended", "suspended") }),
+        },
+        {
+          summary: buildSummary({ schoolKey: "missing", schoolName: "Missing Head School" }),
+          record: buildRecord({ id: "missing", schoolHeadAccount: null }),
+        },
+      ],
+    });
+
+    expect(screen.getByText("School Head: Active")).toBeTruthy();
+    expect(screen.getAllByText("School Head: Activation Needed")).toHaveLength(2);
+    expect(screen.getByText("School Head: Suspended")).toBeTruthy();
+    expect(screen.getByText("No School Head Account")).toBeTruthy();
+    expect(screen.getAllByText("Submitted 4/4")).toHaveLength(5);
+    expect(screen.queryByText("Setup Needed")).toBeNull();
   });
 });
