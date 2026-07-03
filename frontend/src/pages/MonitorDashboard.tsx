@@ -1255,6 +1255,14 @@ export function MonitorDashboard() {
   });
 
   useEffect(() => {
+    if (showNavigatorManual || activeTopNavigator === "reviews" || !schoolDrawerKey) {
+      return;
+    }
+
+    closeSchoolDrawer();
+  }, [activeTopNavigator, closeSchoolDrawer, schoolDrawerKey, showNavigatorManual]);
+
+  useEffect(() => {
     if (activeTopNavigator !== "add_school" || showNavigatorManual) {
       return;
     }
@@ -1447,7 +1455,9 @@ export function MonitorDashboard() {
             />
           )}
 
-          <MonitorSchoolDrawer {...schoolDrawerProps} />
+          {!showNavigatorManual && activeTopNavigator === "reviews" && (
+            <MonitorSchoolDrawer {...schoolDrawerProps} />
+          )}
 
           <MonitorToastStack toasts={toasts} onDismiss={dismissToast} />
         </div>

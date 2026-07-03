@@ -170,6 +170,17 @@ function setViewportWidth(width: number) {
   window.dispatchEvent(new Event("resize"));
 }
 
+function querySchoolDetailDrawer(): HTMLElement | null {
+  for (const label of screen.queryAllByText("School Detail")) {
+    const drawer = label.closest("aside");
+    if (drawer) {
+      return drawer as HTMLElement;
+    }
+  }
+
+  return null;
+}
+
 describe("MonitorDashboard School Head delivery flows", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/monitor/dashboard");
@@ -1032,6 +1043,75 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(within(schoolDetail as HTMLElement).getByText("Santiago Elementary")).toBeTruthy();
     });
     expect(scrollIntoViewMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps School Detail scoped to Review Inbox and removes it on other monitor sections", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/api/audit-logs")) {
+        return new Response(JSON.stringify({
+          data: [],
+          meta: {
+            current_page: 1,
+            last_page: 1,
+            per_page: 15,
+            total: 0,
+          },
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify(defaultReviewInboxResponse()), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }));
+
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    expect(await screen.findByRole("heading", { name: "Review Inbox" })).toBeTruthy();
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+
+    const schoolDetail = await waitFor(() => {
+      const drawer = querySchoolDetailDrawer();
+      expect(drawer).toBeTruthy();
+      return drawer as HTMLElement;
+    });
+    expect(within(schoolDetail).getByText("Santiago Elementary")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+    await waitFor(() => {
+      expect(querySchoolDetailDrawer()).toBeNull();
+    });
+    await waitFor(() => {
+      expect(document.getElementById("monitor-school-records")).not.toBeNull();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Reviews" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+    expect(await waitFor(() => querySchoolDetailDrawer())).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Audit Trail" }));
+    await waitFor(() => {
+      expect(querySchoolDetailDrawer()).toBeNull();
+    });
+    expect(await screen.findByRole("heading", { name: "Audit Trail" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Reviews" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "Review" }))[0]!);
+    expect(await waitFor(() => querySchoolDetailDrawer())).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Add School" }));
+    await waitFor(() => {
+      expect(querySchoolDetailDrawer()).toBeNull();
+    });
+    const addSchoolSection = document.getElementById("monitor-add-school");
+    expect(addSchoolSection).not.toBeNull();
+    expect(within(addSchoolSection as HTMLElement).getByRole("heading", { name: "Add School" })).toBeTruthy();
   });
 
   it("opens the School Detail Management tab without restoring Schools-section actions", async () => {
