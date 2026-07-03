@@ -41,10 +41,12 @@ fi
 
 echo "[1/7] Prepare writable dirs"
 mkdir -p \
+  /tmp \
   storage/framework/cache \
   storage/framework/sessions \
   storage/framework/views \
   bootstrap/cache
+chmod 1777 /tmp || true
 if ! chmod -R ug+rw storage bootstrap/cache; then
   echo "FATAL: failed to set writable permissions on storage/bootstrap cache dirs"
   exit 1

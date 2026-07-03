@@ -14,11 +14,13 @@ is_truthy() {
 }
 
 mkdir -p \
+    /tmp \
     storage/framework/cache \
     storage/framework/sessions \
     storage/framework/views \
     bootstrap/cache
 
+chmod 1777 /tmp || true
 chmod -R ug+rw storage bootstrap/cache || true
 
 echo "Clearing Laravel cached configuration before boot..."

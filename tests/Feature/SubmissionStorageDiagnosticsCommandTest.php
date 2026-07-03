@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -22,6 +23,9 @@ class SubmissionStorageDiagnosticsCommandTest extends TestCase
         $this->assertStringContainsString('Submission storage diagnostics', $output);
         $this->assertStringContainsString('databaseBlobTableExists: yes', $output);
         $this->assertStringContainsString('databaseBlobReadable: yes', $output);
+        $this->assertStringContainsString('databaseBlobColumnsReady: yes', $output);
+        $this->assertStringContainsString('databaseBlobMissingColumns: none', $output);
+        $this->assertStringContainsString('databaseBlobSchemaReady: yes', $output);
         $this->assertStringContainsString('databaseBlobReady: yes', $output);
     }
 
@@ -48,11 +52,18 @@ class SubmissionStorageDiagnosticsCommandTest extends TestCase
             $this->assertSame('ok', $diagnostics['status'] ?? null);
             $this->assertSame(true, $diagnostics['databaseBlobTableExists'] ?? null);
             $this->assertSame(true, $diagnostics['databaseBlobReadable'] ?? null);
+            $this->assertSame(true, $diagnostics['databaseBlobColumnsReady'] ?? null);
+            $this->assertSame([], $diagnostics['databaseBlobMissingColumns'] ?? null);
+            $this->assertArrayHasKey('databaseBlobContentColumnType', $diagnostics);
+            $this->assertSame(true, $diagnostics['databaseBlobContentColumnTypeReady'] ?? null);
+            $this->assertSame(true, $diagnostics['databaseBlobSchemaReady'] ?? null);
             $this->assertSame(true, $diagnostics['databaseBlobReady'] ?? null);
             $this->assertJson($output);
             $this->assertStringNotContainsString('DATABASE_URL', $output);
             $this->assertStringNotContainsString('DB_PASSWORD', $output);
             $this->assertStringNotContainsString('APP_KEY', $output);
+            $this->assertStringNotContainsString(storage_path(), $output);
+            $this->assertStringNotContainsString('pretend-uploaded-file-content', $output);
             $this->assertStringNotContainsString('diagnostics-secret', $output);
             $this->assertStringNotContainsString('diagnostics-secret-password', $output);
             $this->assertStringNotContainsString('diagnostics-secret-app-key', $output);
@@ -64,6 +75,30 @@ class SubmissionStorageDiagnosticsCommandTest extends TestCase
                 ? putenv('DB_PASSWORD')
                 : putenv('DB_PASSWORD=' . $originalDatabasePassword);
             config()->set('app.key', $originalAppKey);
+        }
+    }
+
+    public function test_current_blob_schema_has_required_columns(): void
+    {
+        $requiredColumns = [
+            'id',
+            'indicator_submission_id',
+            'type',
+            'original_filename',
+            'mime_type',
+            'size_bytes',
+            'sha256',
+            'content',
+            'uploaded_at',
+            'created_at',
+            'updated_at',
+        ];
+
+        foreach ($requiredColumns as $column) {
+            $this->assertTrue(
+                Schema::hasColumn('indicator_submission_file_blobs', $column),
+                "Missing indicator_submission_file_blobs.{$column}",
+            );
         }
     }
 }

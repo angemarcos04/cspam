@@ -57,13 +57,17 @@ After pushing storage fixes, use Render:
 Manual Deploy -> Clear build cache & deploy
 ```
 
-The Render logs should show `databaseBlobReady: yes`. The protected readiness endpoint should also report:
+The Render logs should show the blob table and schema are ready:
 
 ```text
-checks.submissionStorage.databaseBlobTableExists: true
-checks.submissionStorage.databaseBlobReadable: true
-checks.submissionStorage.databaseBlobReady: true
+databaseBlobTableExists: yes
+databaseBlobReadable: yes
+databaseBlobColumnsReady: yes
+databaseBlobSchemaReady: yes
+databaseBlobReady: yes
 ```
+
+The protected readiness endpoint should report matching `true` values under `checks.submissionStorage`. Diagnostics verify blob table existence, readability, required columns, and the PostgreSQL `content` column type. The expected production type is `bytea`.
 
 ## Storage Audit
 
@@ -79,6 +83,21 @@ php artisan cspams:audit-submission-storage --fail-on-missing
 The audit is read-only. It reports database blobs, legacy disk files, and missing storage without showing file contents, absolute server paths, or secrets. Startup intentionally runs the audit without `--fail-on-missing`, so old missing files do not stop the app.
 
 Missing rows with `reupload_required` must be re-uploaded through the School Head workflow.
+
+## Upload Failure Logs
+
+If a new upload still returns `The uploaded file could not be persisted. Please try again or contact the administrator.`, search Render logs for:
+
+```text
+submission_file_upload_persist_failed
+SQLSTATE
+indicator_submission_file_blobs
+invalid byte sequence
+content
+bytea
+```
+
+The structured upload-failure log is safe to search. It includes submission ID, school ID, file type, exception class, and a bounded exception message. It does not include uploaded file contents, temporary upload paths, absolute storage paths, or secrets.
 
 ## Manual QA Checklist
 
@@ -108,7 +127,7 @@ Deployment:
 
 1. Push the fix to `main`.
 2. In Render, run `Manual Deploy -> Clear build cache & deploy`.
-3. Check logs for `databaseBlobReady: yes`.
+3. Check logs for `databaseBlobSchemaReady: yes` and `databaseBlobReady: yes`.
 4. Upload a small PDF under 500 KB.
 5. Refresh, then logout and login again.
 6. Send the scope or full package.

@@ -44,6 +44,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -669,6 +670,13 @@ class IndicatorSubmissionController extends Controller
             });
         } catch (\Throwable $e) {
             report($e);
+            Log::error('submission_file_upload_persist_failed', [
+                'submission_id' => (int) $submission->getKey(),
+                'school_id' => (int) $submission->school_id,
+                'file_type' => $fileType,
+                'exception_class' => $e::class,
+                'exception_message' => mb_substr($e->getMessage(), 0, 500),
+            ]);
 
             if (! is_string($existingPath) || trim($existingPath) !== $path) {
                 $blobStorage->deleteForPath($path);

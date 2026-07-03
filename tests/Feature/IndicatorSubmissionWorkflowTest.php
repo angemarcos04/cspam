@@ -25,6 +25,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
@@ -2630,6 +2631,44 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertSame(1, $exitCode, $output);
         $this->assertSame(1, (int) data_get($audit, 'summary.reuploadRequired'));
         $this->assertAuditRow($audit, (int) $submissionId, 'fm_qad_001', 'missing_legacy_disk', 'reupload_required', false);
+    }
+
+    public function test_submission_file_upload_failure_logs_safe_searchable_context(): void
+    {
+        [$token, $submissionId] = $this->createStorageAuditSubmission();
+        Log::spy();
+
+        app()->instance(SubmissionFileBlobStorage::class, new class extends SubmissionFileBlobStorage
+        {
+            public function put(
+                IndicatorSubmission $submission,
+                string $type,
+                UploadedFile $file,
+                string $originalFilename,
+            ): IndicatorSubmissionFileBlob {
+                throw new \RuntimeException('simulated blob persistence failure');
+            }
+        });
+
+        $file = UploadedFile::fake()->createWithContent('bmef.pdf', 'pretend-uploaded-file-content');
+
+        $response = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'bmef',
+            'file' => $file,
+        ]);
+
+        $response->assertUnprocessable()
+            ->assertJsonValidationErrors(['file'])
+            ->assertJsonPath('errors.file.0', 'The uploaded file could not be persisted. Please try again or contact the administrator.');
+
+        Log::shouldHaveReceived('error')
+            ->with('submission_file_upload_persist_failed', \Mockery::on(
+                static fn (array $context): bool => ($context['submission_id'] ?? null) === (int) $submissionId
+                    && ($context['file_type'] ?? null) === 'bmef'
+                    && ($context['exception_class'] ?? null) === \RuntimeException::class
+                    && str_contains((string) ($context['exception_message'] ?? ''), 'simulated blob persistence failure')
+                    && ! str_contains(json_encode($context, JSON_THROW_ON_ERROR), 'pretend-uploaded-file-content'),
+            ));
     }
 
     public function test_submission_file_upload_stores_database_blob_and_reset_deletes_that_blob(): void

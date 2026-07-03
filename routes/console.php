@@ -219,6 +219,12 @@ Artisan::command('cspams:diagnose-submission-storage {--json : Output machine-re
         'canWriteReadDelete',
         'databaseBlobTableExists',
         'databaseBlobReadable',
+        'databaseBlobRequiredColumns',
+        'databaseBlobMissingColumns',
+        'databaseBlobColumnsReady',
+        'databaseBlobContentColumnType',
+        'databaseBlobContentColumnTypeReady',
+        'databaseBlobSchemaReady',
         'databaseBlobReady',
         'errorCode',
     ];
@@ -243,6 +249,18 @@ Artisan::command('cspams:diagnose-submission-storage {--json : Output machine-re
         $formatValue = static function (mixed $value): string {
             if (is_bool($value)) {
                 return $value ? 'yes' : 'no';
+            }
+
+            if (is_array($value)) {
+                $safeValues = array_values(array_filter(
+                    array_map(
+                        static fn (mixed $item): string => is_scalar($item) ? trim((string) $item) : '',
+                        $value,
+                    ),
+                    static fn (string $item): bool => $item !== '',
+                ));
+
+                return $safeValues === [] ? 'none' : implode(', ', $safeValues);
             }
 
             if ($value === null || $value === '') {

@@ -10,6 +10,22 @@ use Illuminate\Support\Facades\Storage;
 
 class SubmissionFileStorage
 {
+    private const DATABASE_BLOB_TABLE = 'indicator_submission_file_blobs';
+
+    private const DATABASE_BLOB_REQUIRED_COLUMNS = [
+        'id',
+        'indicator_submission_id',
+        'type',
+        'original_filename',
+        'mime_type',
+        'size_bytes',
+        'sha256',
+        'content',
+        'uploaded_at',
+        'created_at',
+        'updated_at',
+    ];
+
     public function diskName(): string
     {
         $configured = trim((string) config('cspams.submission_file_disk', 'local'));
@@ -38,11 +54,23 @@ class SubmissionFileStorage
         $rootWritable = $isLocalDriver && $rootExists === true ? is_writable($root) : null;
         $databaseBlobTableExists = false;
         $databaseBlobReadable = false;
+        $databaseBlobRequiredColumns = self::DATABASE_BLOB_REQUIRED_COLUMNS;
+        $databaseBlobMissingColumns = self::DATABASE_BLOB_REQUIRED_COLUMNS;
+        $databaseBlobColumnsReady = false;
+        $databaseBlobContentColumnType = null;
+        $databaseBlobContentColumnTypeReady = false;
+        $databaseBlobSchemaReady = false;
         $databaseBlobErrorCode = null;
+        $databaseDriver = null;
         try {
-            $databaseBlobTableExists = Schema::hasTable('indicator_submission_file_blobs');
+            $databaseDriver = DB::connection()->getDriverName();
+        } catch (\Throwable) {
+            $databaseDriver = null;
+        }
+        try {
+            $databaseBlobTableExists = Schema::hasTable(self::DATABASE_BLOB_TABLE);
             if ($databaseBlobTableExists) {
-                DB::table('indicator_submission_file_blobs')
+                DB::table(self::DATABASE_BLOB_TABLE)
                     ->whereRaw('1 = 0')
                     ->get();
                 $databaseBlobReadable = true;
@@ -51,7 +79,42 @@ class SubmissionFileStorage
             $databaseBlobReadable = false;
             $databaseBlobErrorCode = 'database_blob_probe_failed';
         }
-        $databaseBlobReady = $databaseBlobTableExists && $databaseBlobReadable;
+
+        if ($databaseBlobTableExists) {
+            try {
+                $databaseBlobMissingColumns = array_values(array_filter(
+                    self::DATABASE_BLOB_REQUIRED_COLUMNS,
+                    static fn (string $column): bool => ! Schema::hasColumn(self::DATABASE_BLOB_TABLE, $column),
+                ));
+                $databaseBlobColumnsReady = $databaseBlobMissingColumns === [];
+            } catch (\Throwable) {
+                $databaseBlobMissingColumns = self::DATABASE_BLOB_REQUIRED_COLUMNS;
+                $databaseBlobColumnsReady = false;
+                $databaseBlobErrorCode ??= 'database_blob_schema_probe_failed';
+            }
+
+            try {
+                $databaseBlobContentColumnType = $this->databaseBlobContentColumnType();
+                $contentColumnExists = ! in_array('content', $databaseBlobMissingColumns, true);
+                $databaseBlobContentColumnTypeReady = $contentColumnExists
+                    && (
+                        $databaseBlobContentColumnType === 'bytea'
+                        || $databaseBlobContentColumnType === null
+                        || $databaseBlobContentColumnType === ''
+                    );
+            } catch (\Throwable) {
+                $databaseBlobContentColumnType = null;
+                $databaseBlobContentColumnTypeReady = ! in_array('content', $databaseBlobMissingColumns, true)
+                    && $databaseDriver !== 'pgsql';
+                $databaseBlobErrorCode ??= 'database_blob_content_type_probe_failed';
+            }
+        }
+
+        $databaseBlobSchemaReady = $databaseBlobTableExists
+            && $databaseBlobReadable
+            && $databaseBlobColumnsReady
+            && $databaseBlobContentColumnTypeReady;
+        $databaseBlobReady = $databaseBlobSchemaReady;
 
         $canWriteReadDelete = false;
         $writeReadDeleteError = null;
@@ -70,7 +133,7 @@ class SubmissionFileStorage
         }
 
         return [
-            'status' => (($diskConfigured && $rootConfigured && $canWriteReadDelete) || $databaseBlobReady) ? 'ok' : 'failed',
+            'status' => $databaseBlobReady ? 'ok' : 'failed',
             'diskConfigured' => $diskConfigured,
             'diskName' => $diskName,
             'driver' => $driver !== '' ? $driver : null,
@@ -80,9 +143,42 @@ class SubmissionFileStorage
             'canWriteReadDelete' => $canWriteReadDelete,
             'databaseBlobTableExists' => $databaseBlobTableExists,
             'databaseBlobReadable' => $databaseBlobReadable,
+            'databaseBlobRequiredColumns' => $databaseBlobRequiredColumns,
+            'databaseBlobMissingColumns' => $databaseBlobMissingColumns,
+            'databaseBlobColumnsReady' => $databaseBlobColumnsReady,
+            'databaseBlobContentColumnType' => $databaseBlobContentColumnType,
+            'databaseBlobContentColumnTypeReady' => $databaseBlobContentColumnTypeReady,
+            'databaseBlobSchemaReady' => $databaseBlobSchemaReady,
             'databaseBlobReady' => $databaseBlobReady,
             'errorCode' => $databaseBlobErrorCode ?? $writeReadDeleteError,
         ];
+    }
+
+    private function databaseBlobContentColumnType(): ?string
+    {
+        if (! Schema::hasColumn(self::DATABASE_BLOB_TABLE, 'content')) {
+            return null;
+        }
+
+        if (DB::connection()->getDriverName() !== 'pgsql') {
+            return null;
+        }
+
+        $row = DB::selectOne(
+            <<<'SQL'
+            select data_type
+            from information_schema.columns
+            where table_schema = current_schema()
+              and table_name = ?
+              and column_name = ?
+            limit 1
+            SQL,
+            [self::DATABASE_BLOB_TABLE, 'content'],
+        );
+
+        $type = is_object($row) && isset($row->data_type) ? trim((string) $row->data_type) : '';
+
+        return $type !== '' ? strtolower($type) : null;
     }
 
     public function hasMetadata(IndicatorSubmission $submission, string $type): bool

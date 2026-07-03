@@ -156,15 +156,30 @@ php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STO
 
 The audit is non-fatal and does not use `--fail-on-missing` during startup. Old missing files cannot be reconstructed from metadata; rows marked `reupload_required` must be re-uploaded by the School Head.
 
-After pushing this fix, run Render `Manual Deploy -> Clear build cache & deploy`. Check logs for `databaseBlobReady: yes`. With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.databaseBlobTableExists: true`, `databaseBlobReadable: true`, and `databaseBlobReady: true`:
+After pushing this fix, run Render `Manual Deploy -> Clear build cache & deploy`. Check logs for `databaseBlobTableExists: yes`, `databaseBlobReadable: yes`, `databaseBlobColumnsReady: yes`, `databaseBlobSchemaReady: yes`, and `databaseBlobReady: yes`. With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report matching `true` values under `checks.submissionStorage`:
 
 ```bash
 curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
 ```
 
+Diagnostics verify blob table existence, table readability, required blob columns, and the PostgreSQL `content` column type. The expected production type is `bytea`.
+
 Smoke-test persistence after deploy: upload a small PDF under 500 KB, refresh, logout and login again, preview/download, send the scope or package, confirm Monitor preview/download works, redeploy the backend, then preview/download the same file again. Existing old disk-based files may already be missing if they were uploaded before the blob fix. The startup audit identifies records that require School Head re-upload.
 
 Files already lost from ephemeral storage cannot be reconstructed from database metadata alone. Re-upload those files through the School Head workflow.
+
+If upload still fails with the safe persistence message, search Render logs for:
+
+```text
+submission_file_upload_persist_failed
+SQLSTATE
+indicator_submission_file_blobs
+invalid byte sequence
+content
+bytea
+```
+
+The upload-failure log is structured and safe: it does not print uploaded file contents, temporary upload paths, absolute storage paths, `DATABASE_URL`, `DB_PASSWORD`, `APP_KEY`, or other secrets.
 
 ## Notification Center Runtime Check
 

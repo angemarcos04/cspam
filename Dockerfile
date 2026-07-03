@@ -42,6 +42,7 @@ RUN set -eux; \
     chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
 COPY docker/nginx/default.conf.template /etc/nginx/http.d/default.conf.template
+COPY docker/php/uploads.ini /usr/local/etc/php/conf.d/uploads.ini
 COPY docker/supervisord.conf /etc/supervisord.conf
 COPY docker/render-start.sh /usr/local/bin/render-start.sh
 COPY docker/worker-start.sh /usr/local/bin/worker-start.sh
