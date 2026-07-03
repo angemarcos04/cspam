@@ -2517,6 +2517,39 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertResponseBodyMatches($download, $legacyContent);
     }
 
+    public function test_submission_file_upload_persists_invalid_utf8_binary_bytes(): void
+    {
+        [$token, $submissionId] = $this->createStorageAuditSubmission();
+        $binaryContent = "%PDF-1.4\n" . "\x9c\x00\xff\x80" . "\n%%EOF";
+        $file = UploadedFile::fake()->createWithContent('fm-qad-001.pdf', $binaryContent);
+
+        $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'fm_qad_001',
+            'file' => $file,
+        ]);
+
+        $upload->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'fm-qad-001.pdf');
+        $this->assertStringNotContainsString('SQLSTATE', (string) $upload->getContent());
+        $this->assertStringNotContainsString('invalid byte sequence', (string) $upload->getContent());
+
+        $storedPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->value('path');
+        $this->assertSame("database://indicator-submissions/{$submissionId}/fm_qad_001", $storedPath);
+        $this->assertBlobContent($storedPath, $binaryContent);
+
+        $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/fm_qad_001");
+        $view->assertOk();
+        $this->assertResponseBodyMatches($view, $binaryContent);
+
+        $download = $this->withToken($token)->get("/api/submissions/{$submissionId}/download/fm_qad_001");
+        $download->assertOk();
+        $this->assertResponseBodyMatches($download, $binaryContent);
+    }
+
     public function test_file_responses_sanitize_weird_filenames_for_content_disposition(): void
     {
         [$token, $submissionId] = $this->createStorageAuditSubmission();

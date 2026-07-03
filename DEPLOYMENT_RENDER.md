@@ -162,7 +162,7 @@ After pushing this fix, run Render `Manual Deploy -> Clear build cache & deploy`
 curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
 ```
 
-Diagnostics verify blob table existence, table readability, required blob columns, and the PostgreSQL `content` column type. The expected production type is `bytea`.
+Diagnostics verify blob table existence, table readability, required blob columns, and the PostgreSQL `content` column type. The expected production type is `bytea`. That schema result is necessary but not sufficient by itself: CSPAMS writes PostgreSQL blobs through a binary-safe `bytea` path using hex bytes and `decode(..., 'hex')`, so raw uploaded file bytes are not inserted as UTF-8 text.
 
 Smoke-test persistence after deploy: upload a small PDF under 500 KB, refresh, logout and login again, preview/download, send the scope or package, confirm Monitor preview/download works, redeploy the backend, then preview/download the same file again. Existing old disk-based files may already be missing if they were uploaded before the blob fix. The startup audit identifies records that require School Head re-upload.
 

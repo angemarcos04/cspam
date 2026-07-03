@@ -67,7 +67,7 @@ databaseBlobSchemaReady: yes
 databaseBlobReady: yes
 ```
 
-The protected readiness endpoint should report matching `true` values under `checks.submissionStorage`. Diagnostics verify blob table existence, readability, required columns, and the PostgreSQL `content` column type. The expected production type is `bytea`.
+The protected readiness endpoint should report matching `true` values under `checks.submissionStorage`. Diagnostics verify blob table existence, readability, required columns, and the PostgreSQL `content` column type. The expected production type is `bytea`. This schema check is necessary but not sufficient by itself: CSPAMS writes PostgreSQL blobs through a binary-safe `bytea` path using hex bytes and `decode(..., 'hex')`, so raw uploaded file bytes are not inserted as UTF-8 text.
 
 ## Storage Audit
 
