@@ -650,21 +650,14 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     fireEvent.click(pendingActionButton);
     let menu = screen.getByRole("menu", { name: "Pending Setup School account actions" });
     expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
-      "Activate Account",
       "Remove Account and School",
     ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Activate Account" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Send Setup Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
     expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "Activate Account" }));
-    expect(openPendingAccountAction).toHaveBeenCalledWith({
-      kind: "activate",
-      schoolId: "school-2",
-      schoolName: "Pending Setup School",
-      actionLabel: "Activate Account",
-    });
     expect(handleIssueSchoolHeadSetupLink).not.toHaveBeenCalled();
-    expect(screen.queryByRole("menu", { name: "Pending Setup School account actions" })).toBeNull();
+    expect(openPendingAccountAction).not.toHaveBeenCalled();
 
     const actionButton = within(activeRow!).getByRole("button", { name: "Actions" });
     actionButton.getBoundingClientRect = vi.fn(() => ({
@@ -1043,38 +1036,66 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       indicatorLatest: null,
     };
 
-    render(
-      <MonitorSchoolHeadAccountsPanel
-        isOpen
-        isSaving={false}
-        isMobileViewport={false}
-        rows={[{ schoolKey: "school-60", schoolCode: "906000", schoolName: "Temp Password School", record }]}
-        totalCount={1}
-        query=""
-        statusFilter="all"
-        onlyFlagged={false}
-        onlyDeleteFlagged={false}
-        onQueryChange={vi.fn()}
-        onStatusFilterChange={vi.fn()}
-        onOnlyFlaggedChange={vi.fn()}
-        onOnlyDeleteFlaggedChange={vi.fn()}
-        onClearFilters={vi.fn()}
-        onClose={vi.fn()}
-        onOpenSchoolRecord={vi.fn()}
-        formatDateTime={() => "5/14/2026 06:41 AM"}
-        actions={buildActions()}
-      />,
-    );
+    const openPendingAccountAction = vi.fn();
+    const handleUpdateSchoolHeadAccount = vi.fn();
+
+    function Wrapper(): ReactElement {
+      const [openAccountRowMenuSchoolId, setOpenAccountRowMenuSchoolId] = useState<string | null>(null);
+      const actions = buildActions();
+      actions.openAccountRowMenuSchoolId = openAccountRowMenuSchoolId;
+      actions.toggleAccountRowMenu = (schoolId: string) => {
+        setOpenAccountRowMenuSchoolId((current) => (current === schoolId ? null : schoolId));
+      };
+      actions.openPendingAccountAction = openPendingAccountAction;
+      actions.handleUpdateSchoolHeadAccount = handleUpdateSchoolHeadAccount;
+
+      return (
+        <MonitorSchoolHeadAccountsPanel
+          isOpen
+          isSaving={false}
+          isMobileViewport={false}
+          rows={[{ schoolKey: "school-60", schoolCode: "906000", schoolName: "Temp Password School", record }]}
+          totalCount={1}
+          query=""
+          statusFilter="all"
+          onlyFlagged={false}
+          onlyDeleteFlagged={false}
+          onQueryChange={vi.fn()}
+          onStatusFilterChange={vi.fn()}
+          onOnlyFlaggedChange={vi.fn()}
+          onOnlyDeleteFlaggedChange={vi.fn()}
+          onClearFilters={vi.fn()}
+          onClose={vi.fn()}
+          onOpenSchoolRecord={vi.fn()}
+          formatDateTime={() => "5/14/2026 06:41 AM"}
+          actions={actions}
+        />
+      );
+    }
+
+    render(<Wrapper />);
 
     const row = screen.getAllByRole("row").find((candidate) => candidate.textContent?.includes("Temp Password School"));
 
     expect(row).not.toBeUndefined();
-    expect(within(row!).getByText("Active")).not.toBeNull();
+    expect(within(row!).getByText("Activation Needed")).not.toBeNull();
+    expect(within(row!).queryByText("Active")).toBeNull();
     expect(within(row!).queryByText("Temp Password Active")).toBeNull();
     expect(within(row!).queryByText("Temporary password active")).toBeNull();
     expect(within(row!).queryByText("Monitor approved")).toBeNull();
     expect(within(row!).getByText("Never")).not.toBeNull();
     expect(within(row!).queryByText(/Approved 5\/14\/2026 06:41 AM/i)).toBeNull();
+
+    fireEvent.click(within(row!).getByRole("button", { name: "Actions" }));
+    const menu = screen.getByRole("menu", { name: "Temp Password School account actions" });
+    expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Remove Account and School",
+    ]);
+    expect(within(menu).queryByRole("menuitem", { name: "Activate Account" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Send Password Reset Link" })).toBeNull();
+    expect(within(menu).queryByRole("menuitem", { name: "Suspend Account" })).toBeNull();
+    expect(openPendingAccountAction).not.toHaveBeenCalled();
+    expect(handleUpdateSchoolHeadAccount).not.toHaveBeenCalled();
   });
 
   it("shows only formatted lastLoginAt in Activity once the account has been used", () => {
@@ -1575,7 +1596,7 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual(["Visible Account School"]);
   });
 
-  it("sorts collapsed active lifecycle states alphabetically within the Active bucket", () => {
+  it("separates active-ready accounts from activation-needed temporary password states", () => {
     const expiredTempRecord: SchoolRecord = {
       id: "school-20",
       schoolId: "902020",
@@ -1711,8 +1732,19 @@ describe("MonitorSchoolHeadAccountsPanel", () => {
       result.current.toggleSchoolHeadAccountsPanel();
     });
 
+    act(() => {
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("active");
+    });
+
     expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
       "Active Ready School",
+    ]);
+
+    act(() => {
+      result.current.schoolHeadAccountsPanelProps!.onStatusFilterChange("activation_needed");
+    });
+
+    expect(result.current.schoolHeadAccountsPanelProps?.rows.map((row) => row.schoolName)).toEqual([
       "Expired Temp Password School",
       "Password Reset School",
     ]);

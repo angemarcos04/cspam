@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatSchoolHeadAccountUiStatus,
   schoolHeadAccountMatchesFilter,
+  schoolHeadAccountCanBeActivated,
   resolveSchoolHeadAccountUiStatus,
   schoolHeadAccountMatchesStatusFilter,
   schoolHeadAccountStatusLabel,
@@ -11,7 +12,7 @@ import type { SchoolHeadAccountSummary } from "@/types";
 
 function account(
   accountStatus: string,
-  lifecycleState = accountStatus,
+  lifecycleState: string | null = accountStatus,
 ): SchoolHeadAccountSummary {
   return {
     id: `account-${accountStatus}-${lifecycleState}`,
@@ -43,10 +44,12 @@ describe("schoolHeadAccountStatus", () => {
     expect(resolveSchoolHeadAccountUiStatus(null)).toBe("no_account");
     expect(resolveSchoolHeadAccountUiStatus(account("pending_setup"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("pending_verification"))).toBe("activation_needed");
-    expect(resolveSchoolHeadAccountUiStatus(account("active", "temporary_password_active"))).toBe("active");
-    expect(resolveSchoolHeadAccountUiStatus(account("active", "temporary_password_expired"))).toBe("active");
-    expect(resolveSchoolHeadAccountUiStatus(account("active", "password_reset_required"))).toBe("active");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", "temporary_password_active"))).toBe("activation_needed");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", "temporary_password_expired"))).toBe("activation_needed");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", "password_reset_required"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("active", "active_ready"))).toBe("active");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", null))).toBe("active");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", "new_backend_lifecycle"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("suspended"))).toBe("suspended");
     expect(resolveSchoolHeadAccountUiStatus(account("locked"))).toBe("suspended");
     expect(resolveSchoolHeadAccountUiStatus(account("active", "archived"))).toBe("suspended");
@@ -59,7 +62,19 @@ describe("schoolHeadAccountStatus", () => {
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_setup"), "activation_needed")).toBe(true);
     expect(schoolHeadAccountMatchesFilter(account("pending_setup"), "activation_needed")).toBe(true);
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_verification"), "activation_needed")).toBe(true);
+    expect(schoolHeadAccountMatchesStatusFilter(account("active", "temporary_password_active"), "activation_needed")).toBe(true);
+    expect(schoolHeadAccountMatchesStatusFilter(account("active", "temporary_password_active"), "active")).toBe(false);
     expect(schoolHeadAccountMatchesStatusFilter(account("pending_setup"), "active")).toBe(false);
+  });
+
+  it("only allows the activate action for pending verification accounts", () => {
+    expect(schoolHeadAccountCanBeActivated(account("pending_verification"))).toBe(true);
+    expect(schoolHeadAccountCanBeActivated(account("active", "pending_verification"))).toBe(true);
+    expect(schoolHeadAccountCanBeActivated(account("pending_setup"))).toBe(false);
+    expect(schoolHeadAccountCanBeActivated(account("active", "temporary_password_active"))).toBe(false);
+    expect(schoolHeadAccountCanBeActivated(account("active", "temporary_password_expired"))).toBe(false);
+    expect(schoolHeadAccountCanBeActivated(account("active", "password_reset_required"))).toBe(false);
+    expect(schoolHeadAccountCanBeActivated(null)).toBe(false);
   });
 
   it("returns consistent status badge tones", () => {

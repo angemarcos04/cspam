@@ -9,7 +9,11 @@ import {
 } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import type { SchoolRecord } from "@/types";
-import { resolveSchoolHeadAccountUiStatus, schoolHeadAccountStatusLabel } from "./schoolHeadAccountStatus";
+import {
+  resolveSchoolHeadAccountUiStatus,
+  schoolHeadAccountCanBeActivated,
+  schoolHeadAccountStatusLabel,
+} from "./schoolHeadAccountStatus";
 import type { SchoolHeadAccountActionsApi } from "./useSchoolHeadAccountActions";
 
 interface MonitorSchoolHeadAccountManagementDialogProps {
@@ -81,7 +85,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
 
   const account = record.schoolHeadAccount;
   const accountUiStatus = resolveSchoolHeadAccountUiStatus(account ?? null);
-  const isActivationNeededAccount = accountUiStatus === "activation_needed";
+  const canActivateAccount = schoolHeadAccountCanBeActivated(account ?? null);
   const isActiveAccount = accountUiStatus === "active";
   const isSuspendedAccount = accountUiStatus === "suspended";
   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${record.id}:`));
@@ -210,7 +214,7 @@ export function MonitorSchoolHeadAccountManagementDialog({
           <ManagementSection title="Account Status">
             {account ? (
               <>
-                {isActivationNeededAccount && (
+                {canActivateAccount && (
                   <button
                     type="button"
                     onClick={() =>

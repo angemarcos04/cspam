@@ -13,6 +13,7 @@ import { createPortal } from "react-dom";
 import type { SchoolRecord } from "@/types";
 import {
   resolveSchoolHeadAccountUiStatus,
+  schoolHeadAccountCanBeActivated,
   schoolHeadAccountStatusLabel,
   schoolHeadAccountStatusTone,
   SCHOOL_HEAD_ACCOUNT_STATUS_FILTER_OPTIONS,
@@ -330,7 +331,7 @@ export function MonitorSchoolHeadAccountsPanel({
                   const isEditing = actions.editingSchoolHeadAccountSchoolId === resolvedRecord.id;
                   const isRowSaving = Boolean(actions.accountActionKey?.startsWith(`${resolvedRecord.id}:`));
                   const uiStatus = resolveSchoolHeadAccountUiStatus(account);
-                  const isActivationNeededAccount = uiStatus === "activation_needed";
+                  const canActivateAccount = schoolHeadAccountCanBeActivated(account);
                   const isActiveAccount = uiStatus === "active";
                   const isSuspendedLikeAccount = uiStatus === "suspended";
                   const tempPassword = temporaryPasswordState(account);
@@ -524,7 +525,7 @@ export function MonitorSchoolHeadAccountsPanel({
                                         Send Password Reset Link
                                       </button>
                                     ) : null}
-                                    {isActivationNeededAccount ? (
+                                    {canActivateAccount ? (
                                       <button
                                         type="button"
                                         role="menuitem"

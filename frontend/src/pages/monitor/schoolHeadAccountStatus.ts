@@ -5,14 +5,14 @@ export type SchoolHeadAccountsStatusFilter = "all" | Exclude<SchoolHeadAccountUi
 
 type SchoolHeadAccount = SchoolRecord["schoolHeadAccount"];
 
-const ACTIVE_STATES = new Set([
-  "active",
-  "active_ready",
+const ACTIVE_LIFECYCLE_STATES = new Set(["active_ready"]);
+const ACTIVATION_NEEDED_STATES = new Set([
+  "pending_setup",
+  "pending_verification",
   "temporary_password_active",
   "temporary_password_expired",
   "password_reset_required",
 ]);
-const ACTIVATION_NEEDED_STATES = new Set(["pending_setup", "pending_verification"]);
 const SUSPENDED_STATES = new Set(["suspended", "locked", "archived"]);
 
 function normalizeStatus(value: string | null | undefined): string {
@@ -31,15 +31,34 @@ export function resolveSchoolHeadAccountUiStatus(account: SchoolHeadAccount): Sc
     return "suspended";
   }
 
-  if (ACTIVATION_NEEDED_STATES.has(accountStatus) || ACTIVATION_NEEDED_STATES.has(lifecycleState)) {
+  if (lifecycleState) {
+    if (ACTIVE_LIFECYCLE_STATES.has(lifecycleState)) {
+      return "active";
+    }
+
     return "activation_needed";
   }
 
-  if (ACTIVE_STATES.has(accountStatus) || ACTIVE_STATES.has(lifecycleState)) {
+  if (ACTIVATION_NEEDED_STATES.has(accountStatus)) {
+    return "activation_needed";
+  }
+
+  if (accountStatus === "active" || ACTIVE_LIFECYCLE_STATES.has(accountStatus)) {
     return "active";
   }
 
-  return "active";
+  return "activation_needed";
+}
+
+export function schoolHeadAccountCanBeActivated(account: SchoolHeadAccount): boolean {
+  if (!account) {
+    return false;
+  }
+
+  return (
+    normalizeStatus(account.accountStatus) === "pending_verification" ||
+    normalizeStatus(account.lifecycleState) === "pending_verification"
+  );
 }
 
 export function schoolHeadAccountStatusLabel(status: SchoolHeadAccountUiStatus): string {
