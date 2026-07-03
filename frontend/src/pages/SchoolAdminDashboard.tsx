@@ -1570,7 +1570,6 @@ export function SchoolAdminDashboard() {
         ? "ready"
         : "empty";
   const isReportViewReady = reportViewRenderState === "ready";
-  const canShowReportSourceContext = reportViewRenderState !== "empty" && reportHasSource;
   const reportViewTitle = groupAReportView.sourceMode === "submitted"
     ? "Submitted Report Package"
     : "TARGETS-MET";
@@ -1623,10 +1622,6 @@ export function SchoolAdminDashboard() {
     effectiveAcademicYearId,
     orderedAcademicYears.map((year) => ({ id: year.id, name: year.name })),
     currentAcademicYearOption?.name ?? "N/A",
-  );
-  const submittedReportSourceContext = useMemo(
-    () => buildSchoolHeadCurrentReportSourceContext(groupAReportView.submission, selectedReportYearLabel),
-    [groupAReportView.submission, selectedReportYearLabel],
   );
   const schoolAchievementReviewDecision = resolveLatestScopeReviewDecision(
     groupAReportView.submission,
@@ -2113,23 +2108,6 @@ export function SchoolAdminDashboard() {
           <div className="mb-3 flex items-center justify-between gap-2 border-b border-primary-200 pb-2">
             <div>
               <h2 className="text-[18px] font-semibold text-slate-900">Report View</h2>
-              <p className="mt-1 text-xs text-slate-500">
-                Saved workspace values appear here immediately. Final submitted packages are visible to the monitor.
-              </p>
-              {canShowReportSourceContext && (
-                <div className="mt-2 space-y-1">
-                  {submittedReportSourceContext.map((line) => (
-                    <p key={line} className="text-xs text-slate-500">
-                      {line}
-                    </p>
-                  ))}
-                  {groupAReportView.sourceMode === "workspace_preview" && (
-                    <p className="text-xs font-medium text-amber-700">
-                      Saved locally for this school account. Not sent to the monitor until final submit.
-                    </p>
-                  )}
-                </div>
-              )}
             </div>
           </div>
 

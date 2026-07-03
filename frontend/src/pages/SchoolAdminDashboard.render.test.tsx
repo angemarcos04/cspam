@@ -367,20 +367,17 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #202 (Submitted).")).not.toBeNull();
+      expect(screen.getByText("9,999")).not.toBeNull();
     });
     expect(screen.getByText("Submitted Report Package")).not.toBeNull();
-    expect(screen.getByText("9,999")).not.toBeNull();
-    expect(screen.queryByText("Source package: #101 (Submitted).")).toBeNull();
 
     fireEvent.change(screen.getByLabelText("Academic year filter"), {
       target: { value: "year-1" },
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #101 (Submitted).")).not.toBeNull();
+      expect(screen.getByText("1,515")).not.toBeNull();
     });
-    expect(screen.getByText("1,515")).not.toBeNull();
   });
 
   it("hydrates the latest saved package on login before rendering stale TARGETS-MET list values", async () => {
@@ -452,9 +449,8 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-repeat-login (Draft).")).not.toBeNull();
+      expect(fetchSubmission).toHaveBeenCalledWith("draft-repeat-login");
     });
-    expect(fetchSubmission).toHaveBeenCalledWith("draft-repeat-login");
     expect(screen.getByText("Loading saved report details before showing TARGETS-MET values.")).not.toBeNull();
     expect(screen.queryByText("1,111")).toBeNull();
 
@@ -718,12 +714,12 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("TARGETS-MET")).not.toBeNull();
     });
-    expect(screen.getByText("Source package: #draft-101 (Draft).")).not.toBeNull();
-    expect(screen.getByText("Saved locally for this school account. Not sent to the monitor until final submit.")).not.toBeNull();
+    expect(screen.queryByText("Saved workspace values appear here immediately. Final submitted packages are visible to the monitor.")).toBeNull();
+    expect(screen.queryByText("Saved locally for this school account. Not sent to the monitor until final submit.")).toBeNull();
+    expect(screen.queryByText(/Source package:/)).toBeNull();
     await waitFor(() => {
       expect(screen.getByText("2,024")).not.toBeNull();
     });
-    expect(screen.queryByText("Source package: #finalized-101 (Submitted).")).toBeNull();
     expect(screen.queryByText("1,515")).toBeNull();
   });
 
@@ -795,7 +791,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-sync-101 (Draft).")).not.toBeNull();
+      expect(screen.getByText("TARGETS-MET")).not.toBeNull();
     });
     expect(screen.queryByText("2,024")).toBeNull();
     expect(screen.queryByText("97.00%")).toBeNull();
@@ -997,10 +993,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-empty-source (Draft).")).not.toBeNull();
+      expect(screen.getByText("3,030")).not.toBeNull();
     });
     expect(screen.getByText("TARGETS-MET")).not.toBeNull();
-    expect(screen.getByText("3,030")).not.toBeNull();
     expect(screen.getByText("98.00%")).not.toBeNull();
     expect(screen.getByText("99.00%")).not.toBeNull();
     expect(screen.queryByText("Submit your indicators to generate the report view.")).toBeNull();
@@ -1140,7 +1135,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #finalized-old-year (Submitted).")).not.toBeNull();
+      expect(screen.getByText("Submitted Report Package")).not.toBeNull();
     });
     expect(screen.queryByText("3,030")).toBeNull();
 
@@ -1149,10 +1144,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-new-year (Draft).")).not.toBeNull();
+      expect(screen.getByText("3,030")).not.toBeNull();
     });
     expect(screen.getByText("TARGETS-MET")).not.toBeNull();
-    expect(screen.getByText("3,030")).not.toBeNull();
     expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
   });
 
@@ -1236,10 +1230,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #draft-202 (Draft).")).not.toBeNull();
+      expect(screen.getByText("9,999")).not.toBeNull();
     });
     expect(screen.getByText("TARGETS-MET")).not.toBeNull();
-    expect(screen.getByText("9,999")).not.toBeNull();
     expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
     expect(loadSubmissionsForYear).toHaveBeenCalledWith("school-1", "year-2");
   });
@@ -1337,9 +1330,6 @@ describe("SchoolAdminDashboard submitted report view", () => {
     const view = render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #submitted-202 (Submitted).")).not.toBeNull();
-    });
-    await waitFor(() => {
       expect(screen.getByText("1,515")).not.toBeNull();
       expect(screen.getByText("94.00%")).not.toBeNull();
     });
@@ -1425,18 +1415,16 @@ describe("SchoolAdminDashboard submitted report view", () => {
     const view = render(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #submitted-stale (Submitted).")).not.toBeNull();
+      expect(screen.getByText("1,515")).not.toBeNull();
     });
-    expect(screen.getByText("1,515")).not.toBeNull();
     expect(screen.getByText("94.00%")).not.toBeNull();
 
     indicatorDataState.allSubmissions = [staleSubmitted, fresherSubmitted];
     view.rerender(<SchoolAdminDashboard />);
 
     await waitFor(() => {
-      expect(screen.getByText("Source package: #submitted-fresh (Submitted).")).not.toBeNull();
+      expect(screen.getByText("2,024")).not.toBeNull();
     });
-    expect(screen.getByText("2,024")).not.toBeNull();
     expect(screen.getByText("96.00%")).not.toBeNull();
     expect(loadSubmissionsForYear).toHaveBeenCalledTimes(1);
   });
