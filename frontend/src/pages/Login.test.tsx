@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 import { Login } from "@/pages/Login";
 
@@ -20,6 +20,10 @@ vi.mock("@/context/Auth", () => ({
 }));
 
 describe("Login", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
   beforeEach(() => {
     authState.login.mockReset();
     authState.verifyMfa.mockReset();
@@ -51,7 +55,7 @@ describe("Login", () => {
     expect(screen.getByText("Enter Passcode")).toBeTruthy();
   });
 
-  it("toggles passcode visibility and preserves forgot-password routing by role", () => {
+  it("toggles passcode visibility and shows forgot-password only for monitor sign-in", () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Login />
@@ -64,12 +68,45 @@ describe("Login", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /show passcode/i })[0]!);
     expect(passcodeInput.getAttribute("type")).toBe("text");
 
-    const initialForgotLinks = screen.getAllByRole("link", { name: /forgot password/i });
-    expect(initialForgotLinks.some((link) => link.getAttribute("href") === "/forgot-password?role=school_head")).toBe(true);
+    expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
-    const switchedForgotLinks = screen.getAllByRole("link", { name: /forgot password/i });
-    expect(switchedForgotLinks.some((link) => link.getAttribute("href") === "/forgot-password?role=monitor")).toBe(true);
+    expect(screen.getByRole("link", { name: /forgot password/i }).getAttribute("href")).toBe("/forgot-password?role=monitor");
+
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "monitor+reset@cspams.local" } });
+    expect(screen.getByRole("link", { name: /forgot password/i }).getAttribute("href")).toBe(
+      "/forgot-password?role=monitor&email=monitor%2Breset%40cspams.local",
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
+    expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
+  });
+
+  it("hides monitor forgot-password while MFA is pending", async () => {
+    authState.login.mockResolvedValueOnce({
+      status: "mfa_required",
+      challengeId: "11111111-1111-4111-8111-111111111111",
+      expiresAt: new Date(Date.now() + 600000).toISOString(),
+      login: "cspamsmonitor@gmail.com",
+      delivery: "sent",
+      deliveryMessage: "A verification code was sent to your email.",
+    });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    expect(screen.getByRole("link", { name: /forgot password/i })).toBeTruthy();
+
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    expect(await screen.findByLabelText("Verification Code")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
   });
 
   it("submits a leading-zero school code as a six-digit string", async () => {

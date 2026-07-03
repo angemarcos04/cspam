@@ -20,7 +20,6 @@ use App\Models\User;
 use App\Notifications\MonitorMfaCodeNotification;
 use App\Notifications\MonitorMfaResetApprovedNotification;
 use App\Notifications\MonitorPasswordResetNotification;
-use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
@@ -392,11 +391,8 @@ class AuthController extends Controller
 
     public function forgotPassword(ForgotPasswordRequest $request): JsonResponse
     {
-        $roleHint = strtolower(trim($request->string('role')->toString()));
-        if (! in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-            $roleHint = null;
-        }
         $email = strtolower(trim($request->string('email')->toString()));
+        $role = UserRoleResolver::MONITOR;
 
         $payload = [
             'message' => 'If a matching account exists, a password reset link will be sent to the provided email address.',
@@ -411,15 +407,15 @@ class AuthController extends Controller
             ->where('email_normalized', $email)
             ->first();
 
-        $role = $this->resolvePasswordResetRoleForUser($user, $roleHint);
+        $user = $this->resolveMonitorUserForPasswordReset($user);
 
-        if (! $user || $role === null) {
+        if (! $user) {
             AuthAuditLogger::record(
                 $request,
                 'auth.forgot_password.requested',
                 'success',
                 $user,
-                $roleHint,
+                $role,
                 $email,
                 ['result' => 'ignored'],
             );
@@ -454,11 +450,7 @@ class AuthController extends Controller
                 function (User $user, string $token) use ($expiresAt, $role): void {
                     $resetUrl = $this->buildPasswordResetUrl((string) $user->email, $token, $role);
 
-                    $user->notify(
-                        $role === UserRoleResolver::SCHOOL_HEAD
-                            ? new SchoolHeadPasswordResetNotification($resetUrl, $expiresAt)
-                            : new MonitorPasswordResetNotification($resetUrl, $expiresAt),
-                    );
+                    $user->notify(new MonitorPasswordResetNotification($resetUrl, $expiresAt));
                 },
             );
 
@@ -498,28 +490,25 @@ class AuthController extends Controller
 
     public function resetPassword(ResetPasswordRequest $request): JsonResponse
     {
-        $roleHint = strtolower(trim($request->string('role')->toString()));
-        if (! in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-            $roleHint = null;
-        }
         $email = strtolower(trim($request->string('email')->toString()));
         $token = $request->string('token')->toString();
         $newPassword = $request->string('password')->toString();
         $confirmPassword = $request->string('password_confirmation')->toString();
+        $role = UserRoleResolver::MONITOR;
 
         $user = User::query()
             ->where('email_normalized', $email)
             ->first();
 
-        $role = $this->resolvePasswordResetRoleForUser($user, $roleHint);
+        $user = $this->resolveMonitorUserForPasswordReset($user);
 
-        if (! $user || $role === null) {
+        if (! $user) {
             AuthAuditLogger::record(
                 $request,
                 'auth.reset_password.failed',
                 'failure',
                 $user,
-                $roleHint,
+                $role,
                 $email,
                 ['reason' => 'invalid_user'],
             );
@@ -3052,7 +3041,7 @@ class AuthController extends Controller
         return self::$mfaResetTicketsTableExistsCache;
     }
 
-    private function resolvePasswordResetRoleForUser(?User $user, ?string $roleHint = null): ?string
+    private function resolveMonitorUserForPasswordReset(?User $user): ?User
     {
         if (! $user) {
             return null;
@@ -3063,28 +3052,16 @@ class AuthController extends Controller
                 ? trim($user->account_type)
                 : null;
 
-            if (in_array($accountType, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)) {
-                return $accountType;
+            if ($accountType === UserRoleResolver::MONITOR) {
+                return $user;
+            }
+
+            if ($accountType === UserRoleResolver::SCHOOL_HEAD) {
+                return null;
             }
         }
 
-        if (
-            $roleHint !== null
-            && in_array($roleHint, [UserRoleResolver::MONITOR, UserRoleResolver::SCHOOL_HEAD], true)
-            && UserRoleResolver::has($user, $roleHint)
-        ) {
-            return $roleHint;
-        }
-
-        if (UserRoleResolver::has($user, UserRoleResolver::MONITOR)) {
-            return UserRoleResolver::MONITOR;
-        }
-
-        if (UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD)) {
-            return UserRoleResolver::SCHOOL_HEAD;
-        }
-
-        return null;
+        return UserRoleResolver::has($user, UserRoleResolver::MONITOR) ? $user : null;
     }
 
     private function resolveRoleForUser(User $user): string

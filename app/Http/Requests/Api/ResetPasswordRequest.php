@@ -2,9 +2,7 @@
 
 namespace App\Http\Requests\Api;
 
-use App\Support\Auth\UserRoleResolver;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 
 class ResetPasswordRequest extends FormRequest
@@ -28,7 +26,7 @@ class ResetPasswordRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'role' => ['sometimes', 'nullable', 'string', Rule::in(UserRoleResolver::loginRoles())],
+            'role' => ['sometimes', 'nullable', 'string', 'max:32'],
             'token' => ['required', 'string', 'max:255'],
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => [

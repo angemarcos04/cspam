@@ -1221,19 +1221,19 @@ class SchoolHeadAccountManagementTest extends TestCase
             'password_confirmation' => $newPassword,
         ]);
 
-        $resetPassword->assertOk()
-            ->assertJsonPath('message', 'Password reset successfully. Please sign in with your new password.');
+        $resetPassword->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'This password reset link is invalid or expired.');
 
-        $activate = $this->withToken($monitorToken)->patchJson(
+        $activateAfterPublicResetAttempt = $this->withToken($monitorToken)->patchJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
             [
                 'accountStatus' => AccountStatus::ACTIVE->value,
-                'reason' => 'Activated after password reset completion.',
+                'reason' => 'Attempted activation after public reset completion.',
             ],
         );
 
-        $activate->assertOk()
-            ->assertJsonPath('data.account.accountStatus', AccountStatus::ACTIVE->value);
+        $activateAfterPublicResetAttempt->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Password reset is required before activation. Issue a password reset link first.');
 
         $loginOld = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -1250,8 +1250,8 @@ class SchoolHeadAccountManagementTest extends TestCase
             'password' => $newPassword,
         ]);
 
-        $loginNew->assertOk();
-        $this->assertNotSame('', (string) $loginNew->json('token'));
+        $loginNew->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
+            ->assertJsonPath('message', 'Invalid school code or password.');
     }
 
     public function test_remove_account_and_school_permanently_deletes_school_and_preserves_reason(): void

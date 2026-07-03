@@ -334,9 +334,9 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'password_confirmation' => 'NewStrongPass@123',
         ]);
 
-        $response->assertStatus(Response::HTTP_FORBIDDEN);
-        $response->assertJsonFragment([
-            'message' => 'This account is waiting for Division Monitor activation. Password reset is not available until activation.',
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+        $response->assertJsonPath('message', 'This password reset link is invalid or expired.');
+        $response->assertJsonMissing([
             'requiresMonitorApproval' => true,
             'accountStatus' => AccountStatus::PENDING_VERIFICATION->value,
         ]);
@@ -359,9 +359,9 @@ class SchoolHeadAccountLifecycleTest extends TestCase
             'password_confirmation' => 'NewStrongPass@123',
         ]);
 
-        $response->assertStatus(Response::HTTP_FORBIDDEN);
-        $response->assertJsonFragment([
-            'message' => 'This account has not completed setup yet. Use the setup link sent by your Division Monitor.',
+        $response->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY);
+        $response->assertJsonPath('message', 'This password reset link is invalid or expired.');
+        $response->assertJsonMissing([
             'requiresAccountSetup' => true,
             'accountStatus' => AccountStatus::PENDING_SETUP->value,
         ]);

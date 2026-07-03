@@ -14,11 +14,6 @@ export function ForgotPassword() {
   const { requestMonitorPasswordReset, isAuthenticating } = useAuth();
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const initialEmail = query.get("email") ?? "";
-  const role = useMemo(
-    () => ((query.get("role") ?? "").trim().toLowerCase() === "school_head" ? "school_head" : "monitor"),
-    [query],
-  );
-  const roleLabel = role === "school_head" ? "School Head" : "Monitor";
 
   const [email, setEmail] = useState(initialEmail);
   const [error, setError] = useState("");
@@ -34,7 +29,7 @@ export function ForgotPassword() {
     const normalizedEmail = email.trim().toLowerCase();
 
     if (!normalizedEmail) {
-      setError(`Enter your ${roleLabel.toLowerCase()} email address.`);
+      setError("Enter your monitor email address.");
       return;
     }
 
@@ -49,7 +44,7 @@ export function ForgotPassword() {
     setDeliveryNote(null);
 
     try {
-      const payload = await requestMonitorPasswordReset(normalizedEmail, role);
+      const payload = await requestMonitorPasswordReset(normalizedEmail);
       setSuccess(
         payload.message?.trim() ||
           "If a matching account exists, a password reset link will be sent to the provided email address.",
@@ -93,10 +88,10 @@ export function ForgotPassword() {
                       CSPAMS
                     </p>
                     <h1 className="mt-1 max-w-md text-2xl font-bold leading-tight text-white">
-                      Reset {roleLabel} Password
+                      Reset Division Monitor Password
                     </h1>
                     <p className="mt-1 max-w-md text-sm font-medium text-primary-100/90">
-                      We will email you a secure reset link.
+                      We will email a secure reset link to the Division Monitor account.
                     </p>
                   </div>
                 </div>
@@ -107,7 +102,7 @@ export function ForgotPassword() {
               <form className="space-y-4" onSubmit={handleSubmit}>
                 <div>
                   <label htmlFor="email" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                    {roleLabel} Email
+                    Monitor Email
                   </label>
                   <div className="relative">
                     <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
