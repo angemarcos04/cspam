@@ -12,6 +12,8 @@ services:
         value: database
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
+      - key: CSPAMS_SUBMISSION_FILE_MAX_KB
+        value: "2048"
       - key: LOG_CHANNEL
         value: stderr
       - key: LOG_LEVEL
@@ -31,6 +33,8 @@ services:
         value: database
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
+      - key: CSPAMS_SUBMISSION_FILE_MAX_KB
+        value: "2048"
       - key: LOG_CHANNEL
         value: stderr
       - key: LOG_LEVEL

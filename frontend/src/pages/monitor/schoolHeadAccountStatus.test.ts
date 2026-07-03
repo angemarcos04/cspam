@@ -12,8 +12,10 @@ import type { SchoolHeadAccountSummary } from "@/types";
 
 function account(
   accountStatus: string,
-  lifecycleState: string | null = accountStatus,
+  lifecycleState?: string,
 ): SchoolHeadAccountSummary {
+  const resolvedLifecycleState = arguments.length > 1 ? lifecycleState : accountStatus;
+
   return {
     id: `account-${accountStatus}-${lifecycleState}`,
     name: "School Head",
@@ -22,7 +24,7 @@ function account(
     lastLoginAt: null,
     accountStatus,
     mustResetPassword: false,
-    lifecycleState,
+    lifecycleState: resolvedLifecycleState,
     lifecycleStateLabel: null,
     recommendedAction: "none",
     verifiedAt: null,
@@ -48,7 +50,7 @@ describe("schoolHeadAccountStatus", () => {
     expect(resolveSchoolHeadAccountUiStatus(account("active", "temporary_password_expired"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("active", "password_reset_required"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("active", "active_ready"))).toBe("active");
-    expect(resolveSchoolHeadAccountUiStatus(account("active", null))).toBe("active");
+    expect(resolveSchoolHeadAccountUiStatus(account("active", undefined))).toBe("active");
     expect(resolveSchoolHeadAccountUiStatus(account("active", "new_backend_lifecycle"))).toBe("activation_needed");
     expect(resolveSchoolHeadAccountUiStatus(account("suspended"))).toBe("suspended");
     expect(resolveSchoolHeadAccountUiStatus(account("locked"))).toBe("suspended");

@@ -112,6 +112,12 @@ class IndicatorSubmission extends Model
             ->orderBy('type');
     }
 
+    public function fileBlobs(): HasMany
+    {
+        return $this->hasMany(IndicatorSubmissionFileBlob::class)
+            ->orderBy('type');
+    }
+
     public function scopeReviews(): HasMany
     {
         return $this->hasMany(IndicatorSubmissionScopeReview::class)

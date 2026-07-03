@@ -84,7 +84,9 @@ class ReadinessDiagnosticsTest extends TestCase
             ->assertJsonPath('checks.submissionStorage.status', 'ok')
             ->assertJsonPath('checks.submissionStorage.diskConfigured', true)
             ->assertJsonPath('checks.submissionStorage.diskName', 'submissions')
-            ->assertJsonPath('checks.submissionStorage.canWriteReadDelete', true);
+            ->assertJsonPath('checks.submissionStorage.canWriteReadDelete', true)
+            ->assertJsonPath('checks.submissionStorage.databaseBlobTableExists', true)
+            ->assertJsonPath('checks.submissionStorage.databaseBlobReady', true);
 
         $this->assertIsBool($response->json('checks.tables.accountSetupTokens.exists'));
         $this->assertIsBool($response->json('checks.tables.notifications.exists'));

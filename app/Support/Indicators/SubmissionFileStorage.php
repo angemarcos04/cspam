@@ -4,6 +4,7 @@ namespace App\Support\Indicators;
 
 use App\Models\IndicatorSubmission;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 class SubmissionFileStorage
@@ -34,6 +35,13 @@ class SubmissionFileStorage
         $rootConfigured = ! $isLocalDriver || trim($root) !== '';
         $rootExists = $isLocalDriver ? is_dir($root) : null;
         $rootWritable = $isLocalDriver && $rootExists === true ? is_writable($root) : null;
+        $databaseBlobTableExists = false;
+        try {
+            $databaseBlobTableExists = Schema::hasTable('indicator_submission_file_blobs');
+        } catch (\Throwable) {
+            $databaseBlobTableExists = false;
+        }
+        $databaseBlobReady = $databaseBlobTableExists;
 
         $canWriteReadDelete = false;
         $writeReadDeleteError = null;
@@ -52,7 +60,7 @@ class SubmissionFileStorage
         }
 
         return [
-            'status' => $diskConfigured && $rootConfigured && $canWriteReadDelete ? 'ok' : 'failed',
+            'status' => (($diskConfigured && $rootConfigured && $canWriteReadDelete) || $databaseBlobReady) ? 'ok' : 'failed',
             'diskConfigured' => $diskConfigured,
             'diskName' => $diskName,
             'driver' => $driver !== '' ? $driver : null,
@@ -60,6 +68,8 @@ class SubmissionFileStorage
             'rootExists' => $rootExists,
             'rootWritable' => $rootWritable,
             'canWriteReadDelete' => $canWriteReadDelete,
+            'databaseBlobTableExists' => $databaseBlobTableExists,
+            'databaseBlobReady' => $databaseBlobReady,
             'errorCode' => $writeReadDeleteError,
         ];
     }
@@ -74,12 +84,22 @@ class SubmissionFileStorage
     public function exists(IndicatorSubmission $submission, string $type): bool
     {
         $path = $submission->submissionFilePathForType($type);
+        $blobStorage = app(SubmissionFileBlobStorage::class);
+
+        if ($blobStorage->isDatabasePath($path)) {
+            return $blobStorage->existsForSubmission($submission, $type);
+        }
 
         return $this->pathExists($path);
     }
 
     public function pathExists(?string $path): bool
     {
+        $blobStorage = app(SubmissionFileBlobStorage::class);
+        if ($blobStorage->isDatabasePath($path)) {
+            return $blobStorage->existsForPath($path);
+        }
+
         return is_string($path)
             && trim($path) !== ''
             && $this->disk()->exists($path);

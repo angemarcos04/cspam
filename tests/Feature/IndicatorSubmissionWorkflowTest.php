@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionFileBlob;
 use App\Models\IndicatorSubmissionScopeReview;
 use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\PerformanceMetric;
@@ -16,6 +17,7 @@ use App\Support\Domain\MetricDataType;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
+use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileDefinition;
 use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
@@ -2406,10 +2408,13 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED);
         $submissionId = (string) $created->json('data.id');
 
+        $uploadedFile = UploadedFile::fake()->create('bmef-report.pdf', 64, 'application/pdf');
+        $uploadedContent = (string) file_get_contents((string) $uploadedFile->getRealPath());
+
         $this->withToken($token)
             ->postJson("/api/submissions/{$submissionId}/upload-file", [
                 'type' => 'bmef',
-                'file' => UploadedFile::fake()->create('bmef-report.pdf', 64, 'application/pdf'),
+                'file' => $uploadedFile,
             ])
             ->assertOk();
 
@@ -2418,6 +2423,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $view->assertOk();
         $this->assertStringContainsString('inline;', (string) $view->headers->get('content-disposition'));
         $this->assertStringContainsString('application/pdf', (string) $view->headers->get('content-type'));
+        $this->assertSame($uploadedContent, $view->getContent());
     }
 
     public function test_fm_qad_upload_view_and_download_work_with_generic_submission_file_flow(): void
@@ -2438,7 +2444,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED);
         $submissionId = (string) $created->json('data.id');
 
-        $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
+        $uploadedFile = UploadedFile::fake()->create('fm-qad-001.pdf', 64, 'application/pdf');
+        $uploadedContent = (string) file_get_contents((string) $uploadedFile->getRealPath());
+        $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'fm_qad_001',
+            'file' => $uploadedFile,
+        ]);
         $upload->assertOk()
             ->assertJsonMissingPath('data.indicators')
             ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
@@ -2449,13 +2460,62 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/fm_qad_001");
         $view->assertOk();
         $this->assertStringContainsString('inline;', (string) $view->headers->get('content-disposition'));
+        $this->assertSame($uploadedContent, $view->getContent());
 
         $download = $this->withToken($token)->get("/api/submissions/{$submissionId}/download/fm_qad_001");
         $download->assertOk();
         $this->assertStringContainsString('attachment;', (string) $download->headers->get('content-disposition'));
+        $this->assertSame($uploadedContent, $download->getContent());
     }
 
-    public function test_submission_file_upload_uses_configured_storage_disk_and_reset_deletes_that_file(): void
+    public function test_legacy_disk_path_fallback_still_serves_existing_file(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $legacyPath = 'submissions/legacy-fm-qad-001.pdf';
+        $legacyContent = '%PDF-1.4 legacy disk bytes';
+        Storage::disk('submissions')->put($legacyPath, $legacyContent);
+        IndicatorSubmission::query()->findOrFail((int) $submissionId)
+            ->submissionFiles()
+            ->create([
+                'type' => 'fm_qad_001',
+                'path' => $legacyPath,
+                'original_filename' => 'legacy-fm-qad-001.pdf',
+                'size_bytes' => strlen($legacyContent),
+                'uploaded_at' => now(),
+            ]);
+
+        $show = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}");
+        $show->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
+            ->assertJsonPath('data.files.fm_qad_001.available', true)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false);
+
+        $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/fm_qad_001");
+        $view->assertOk();
+        $this->assertStringContainsString('inline;', (string) $view->headers->get('content-disposition'));
+        $this->assertSame($legacyContent, $view->getContent());
+
+        $download = $this->withToken($token)->get("/api/submissions/{$submissionId}/download/fm_qad_001");
+        $download->assertOk();
+        $this->assertStringContainsString('attachment;', (string) $download->headers->get('content-disposition'));
+        $this->assertSame($legacyContent, $download->getContent());
+    }
+
+    public function test_submission_file_upload_stores_database_blob_and_reset_deletes_that_blob(): void
     {
         config()->set('cspams.submission_file_disk', 'submissions');
         Storage::fake('local');
@@ -2475,7 +2535,12 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $created->assertStatus(Response::HTTP_CREATED);
         $submissionId = (string) $created->json('data.id');
 
-        $upload = $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf');
+        $fmQadFile = UploadedFile::fake()->create('fm-qad-001.pdf', 64, 'application/pdf');
+        $fmQadContent = (string) file_get_contents((string) $fmQadFile->getRealPath());
+        $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'fm_qad_001',
+            'file' => $fmQadFile,
+        ]);
         $upload->assertOk()
             ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
             ->assertJsonPath('data.files.fm_qad_001.available', true)
@@ -2487,11 +2552,17 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('indicator_submission_id', (int) $submissionId)
             ->where('type', 'fm_qad_001')
             ->value('path');
-        $this->assertNotSame('', $storedPath);
-        Storage::disk('submissions')->assertExists($storedPath);
-        Storage::disk('local')->assertMissing($storedPath);
+        $this->assertSame("database://indicator-submissions/{$submissionId}/fm_qad_001", $storedPath);
+        $blob = $this->assertBlobContent($storedPath, $fmQadContent);
+        $this->assertSame('fm-qad-001.pdf', $blob->original_filename);
+        $this->assertSame('application/pdf', $blob->mime_type);
 
-        $bmefUpload = $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf');
+        $bmefFile = UploadedFile::fake()->create('bmef-report.pdf', 64, 'application/pdf');
+        $bmefContent = (string) file_get_contents((string) $bmefFile->getRealPath());
+        $bmefUpload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'bmef',
+            'file' => $bmefFile,
+        ]);
         $bmefUpload->assertOk()
             ->assertJsonPath('data.files.bmef.uploaded', true)
             ->assertJsonPath('data.files.bmef.available', true)
@@ -2500,8 +2571,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $bmefPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submissions')
             ->where('id', (int) $submissionId)
             ->value('bmef_file_path');
-        $this->assertNotSame('', $bmefPath);
-        Storage::disk('submissions')->assertExists($bmefPath);
+        $this->assertSame("database://indicator-submissions/{$submissionId}/bmef", $bmefPath);
+        $this->assertBlobContent($bmefPath, $bmefContent);
 
         $reset = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/reset-workspace", [
             'workspace' => 'fm_qad_001',
@@ -2513,10 +2584,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false)
             ->assertJsonPath('data.files.fm_qad_001.viewUrl', null)
             ->assertJsonPath('data.files.fm_qad_001.downloadUrl', null);
-        Storage::disk('submissions')->assertMissing($storedPath);
+        $this->assertSubmissionStorageMissing($storedPath);
     }
 
-    public function test_submission_file_upload_failure_does_not_save_broken_metadata(): void
+    public function test_submission_file_upload_does_not_depend_on_configured_disk(): void
     {
         config()->set('cspams.submission_file_disk', 'missing-submission-disk');
         $this->seedIndicatorFixtures();
@@ -2535,17 +2606,24 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submissionId = (string) $created->json('data.id');
 
         $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef-report.pdf', 'application/pdf')
-            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('errors.file.0', 'The uploaded file could not be persisted. Please try again or contact the administrator.');
+            ->assertOk()
+            ->assertJsonPath('data.files.bmef.uploaded', true)
+            ->assertJsonPath('data.files.bmef.available', true)
+            ->assertJsonPath('data.files.bmef.missingFromStorage', false);
 
         $this->assertDatabaseHas('indicator_submissions', [
             'id' => (int) $submissionId,
-            'bmef_file_path' => null,
-            'bmef_original_filename' => null,
+            'bmef_file_path' => "database://indicator-submissions/{$submissionId}/bmef",
+            'bmef_original_filename' => 'bmef-report.pdf',
+        ]);
+        $this->assertDatabaseHas('indicator_submission_file_blobs', [
+            'indicator_submission_id' => (int) $submissionId,
+            'type' => 'bmef',
+            'original_filename' => 'bmef-report.pdf',
         ]);
     }
 
-    public function test_successful_submission_file_replacement_deletes_old_file_after_metadata_update(): void
+    public function test_successful_submission_file_replacement_updates_single_database_blob(): void
     {
         config()->set('cspams.submission_file_disk', 'submissions');
         Storage::fake('submissions');
@@ -2562,17 +2640,25 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ])->assertCreated();
         $submissionId = (string) $created->json('data.id');
 
-        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'old-fm-qad-001.pdf', 'application/pdf')
-            ->assertOk();
+        $oldFile = UploadedFile::fake()->create('old-fm-qad-001.pdf', 64, 'application/pdf');
+        $oldContent = (string) file_get_contents((string) $oldFile->getRealPath());
+        $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'fm_qad_001',
+            'file' => $oldFile,
+        ])->assertOk();
         $oldPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
             ->where('indicator_submission_id', (int) $submissionId)
             ->where('type', 'fm_qad_001')
             ->value('path');
-        Storage::disk('submissions')->assertExists($oldPath);
+        $oldBlob = $this->assertBlobContent($oldPath, $oldContent);
 
         $this->travel(1)->seconds();
-        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'new-fm-qad-001.pdf', 'application/pdf')
-            ->assertOk()
+        $newFile = UploadedFile::fake()->create('new-fm-qad-001.pdf', 65, 'application/pdf');
+        $newContent = (string) file_get_contents((string) $newFile->getRealPath());
+        $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
+            'type' => 'fm_qad_001',
+            'file' => $newFile,
+        ])->assertOk()
             ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'new-fm-qad-001.pdf');
 
         $newPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
@@ -2580,12 +2666,17 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('type', 'fm_qad_001')
             ->value('path');
 
-        $this->assertNotSame($oldPath, $newPath);
-        Storage::disk('submissions')->assertMissing($oldPath);
-        Storage::disk('submissions')->assertExists($newPath);
+        $this->assertSame($oldPath, $newPath);
+        $newBlob = $this->assertBlobContent($newPath, $newContent);
+        $this->assertSame($oldBlob->id, $newBlob->id);
+        $this->assertNotSame($oldBlob->sha256, $newBlob->sha256);
+        $this->assertSame(1, IndicatorSubmissionFileBlob::query()
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'fm_qad_001')
+            ->count());
     }
 
-    public function test_failed_submission_file_replacement_preserves_old_metadata_and_file(): void
+    public function test_replacing_legacy_disk_file_deletes_old_file_and_uses_database_blob(): void
     {
         config()->set('cspams.submission_file_disk', 'submissions');
         Storage::fake('submissions');
@@ -2602,30 +2693,40 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ])->assertCreated();
         $submissionId = (string) $created->json('data.id');
 
-        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'old-fm-qad-001.pdf', 'application/pdf')
-            ->assertOk();
-        $oldPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
+        $oldPath = 'submissions/legacy-fm-qad-001.pdf';
+        Storage::disk('submissions')->put($oldPath, 'legacy file bytes');
+        IndicatorSubmission::query()->findOrFail((int) $submissionId)
+            ->submissionFiles()
+            ->updateOrCreate(
+                ['type' => 'fm_qad_001'],
+                [
+                    'path' => $oldPath,
+                    'original_filename' => 'old-fm-qad-001.pdf',
+                    'size_bytes' => strlen('legacy file bytes'),
+                    'uploaded_at' => now(),
+                ],
+            );
+        Storage::disk('submissions')->assertExists($oldPath);
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'new-fm-qad-001.pdf', 'application/pdf')
+            ->assertOk()
+            ->assertJsonPath('data.files.fm_qad_001.originalFilename', 'new-fm-qad-001.pdf')
+            ->assertJsonPath('data.files.fm_qad_001.available', true)
+            ->assertJsonPath('data.files.fm_qad_001.missingFromStorage', false);
+
+        $newPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
             ->where('indicator_submission_id', (int) $submissionId)
             ->where('type', 'fm_qad_001')
             ->value('path');
-        Storage::disk('submissions')->assertExists($oldPath);
 
-        config()->set('cspams.submission_file_disk', 'missing-submission-disk');
-
-        $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'new-fm-qad-001.pdf', 'application/pdf')
-            ->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('errors.file.0', 'The uploaded file could not be persisted. Please try again or contact the administrator.');
-
-        $this->assertSame($oldPath, (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
-            ->where('indicator_submission_id', (int) $submissionId)
-            ->where('type', 'fm_qad_001')
-            ->value('path'));
+        $this->assertSame("database://indicator-submissions/{$submissionId}/fm_qad_001", $newPath);
         $this->assertDatabaseHas('indicator_submission_files', [
             'indicator_submission_id' => (int) $submissionId,
             'type' => 'fm_qad_001',
-            'original_filename' => 'old-fm-qad-001.pdf',
+            'original_filename' => 'new-fm-qad-001.pdf',
         ]);
-        Storage::disk('submissions')->assertExists($oldPath);
+        $this->assertTrue(app(SubmissionFileBlobStorage::class)->existsForPath($newPath));
+        Storage::disk('submissions')->assertMissing($oldPath);
     }
 
     public function test_submission_file_metadata_reports_missing_storage_without_exposing_unsent_monitor_file(): void
@@ -2672,7 +2773,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'targets' => ['fm_qad_001'],
         ])->assertOk();
 
-        Storage::disk('submissions')->delete($storedPath);
+        $this->deleteSubmissionStoragePath($storedPath);
 
         $schoolHeadShow = $this->withToken($schoolHeadToken)->getJson("/api/indicators/submissions/{$submissionId}");
         $schoolHeadShow->assertOk()
@@ -2732,7 +2833,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $missingPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submissions')
             ->where('id', (int) $submissionId)
             ->value('bmef_file_path');
-        Storage::disk('submissions')->delete($missingPath);
+        $this->deleteSubmissionStoragePath($missingPath);
 
         $submit = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
         $submit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -2777,8 +2878,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('indicator_submission_id', (int) $submissionId)
             ->where('type', 'fm_qad_001')
             ->value('path');
-        Storage::disk('submissions')->assertExists($missingPath);
-        Storage::disk('submissions')->delete($missingPath);
+        $this->assertSubmissionStorageExists($missingPath);
+        $this->deleteSubmissionStoragePath($missingPath);
 
         $submit = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
         $submit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
@@ -2816,7 +2917,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $missingPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submissions')
             ->where('id', (int) $submissionId)
             ->value('bmef_file_path');
-        Storage::disk('submissions')->delete($missingPath);
+        $this->deleteSubmissionStoragePath($missingPath);
 
         $send = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
@@ -2864,7 +2965,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('indicator_submission_id', (int) $submissionId)
             ->where('type', 'fm_qad_001')
             ->value('path');
-        Storage::disk('submissions')->delete($missingPath);
+        $this->deleteSubmissionStoragePath($missingPath);
 
         $send = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['fm_qad_001'],
@@ -2908,7 +3009,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['bmef'],
         ])->assertOk();
-        Storage::disk('submissions')->delete($storedPath);
+        $this->deleteSubmissionStoragePath($storedPath);
 
         /** @var User $monitor */
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
@@ -2957,7 +3058,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['fm_qad_001'],
         ])->assertOk();
-        Storage::disk('submissions')->delete($storedPath);
+        $this->deleteSubmissionStoragePath($storedPath);
 
         /** @var User $monitor */
         $monitor = User::query()->where('email', 'cspamsmonitor@gmail.com')->firstOrFail();
@@ -3006,7 +3107,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->where('type', 'fm_qad_001')
             ->value('path');
         $this->assertNotSame('', $storedPath);
-        Storage::disk('local')->assertExists($storedPath);
+        $this->assertSubmissionStorageExists($storedPath);
         $this->assertDatabaseHas('indicator_submission_files', [
             'indicator_submission_id' => (int) $submissionId,
             'type' => 'fm_qad_001',
@@ -3036,7 +3137,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.fm_qad_002.originalFilename', 'fm-qad-002.pdf')
             ->assertJsonPath('data.files.fm_qad_002.path', null);
 
-        Storage::disk('local')->assertMissing($storedPath);
+        $this->assertSubmissionStorageMissing($storedPath);
         $this->assertDatabaseMissing('indicator_submission_files', [
             'indicator_submission_id' => (int) $submissionId,
             'type' => 'fm_qad_001',
@@ -3120,8 +3221,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertNotNull($submissionRow->bmef_original_filename);
         $this->assertNotNull($submissionRow->smea_file_path);
         $this->assertNotNull($submissionRow->smea_original_filename);
-        Storage::disk('local')->assertExists((string) $submissionRow->bmef_file_path);
-        Storage::disk('local')->assertExists((string) $submissionRow->smea_file_path);
+        $this->assertSame("database://indicator-submissions/{$submissionId}/bmef", $submissionRow->bmef_file_path);
+        $this->assertSame("database://indicator-submissions/{$submissionId}/smea", $submissionRow->smea_file_path);
+        $this->assertSubmissionStorageExists((string) $submissionRow->bmef_file_path);
+        $this->assertSubmissionStorageExists((string) $submissionRow->smea_file_path);
     }
 
     public function test_school_head_save_stays_draft_until_final_submit_makes_it_monitor_reviewable(): void
@@ -3616,6 +3719,51 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         Storage::fake('local');
 
         $this->uploadSubmissionFiles($token, $submissionId, ['bmef', 'smea']);
+    }
+
+    private function assertSubmissionStorageExists(string $path): void
+    {
+        if (app(SubmissionFileBlobStorage::class)->isDatabasePath($path)) {
+            $this->assertTrue(app(SubmissionFileBlobStorage::class)->existsForPath($path));
+
+            return;
+        }
+
+        Storage::disk((string) config('cspams.submission_file_disk', 'local'))->assertExists($path);
+    }
+
+    private function assertSubmissionStorageMissing(string $path): void
+    {
+        if (app(SubmissionFileBlobStorage::class)->isDatabasePath($path)) {
+            $this->assertFalse(app(SubmissionFileBlobStorage::class)->existsForPath($path));
+
+            return;
+        }
+
+        Storage::disk((string) config('cspams.submission_file_disk', 'local'))->assertMissing($path);
+    }
+
+    private function deleteSubmissionStoragePath(string $path): void
+    {
+        if (app(SubmissionFileBlobStorage::class)->isDatabasePath($path)) {
+            app(SubmissionFileBlobStorage::class)->deleteForPath($path);
+
+            return;
+        }
+
+        Storage::disk((string) config('cspams.submission_file_disk', 'local'))->delete($path);
+    }
+
+    private function assertBlobContent(string $path, string $expectedContent): IndicatorSubmissionFileBlob
+    {
+        $blob = app(SubmissionFileBlobStorage::class)->findForPath($path);
+
+        $this->assertNotNull($blob);
+        $this->assertSame(strlen($expectedContent), (int) $blob->size_bytes);
+        $this->assertSame(hash('sha256', $expectedContent), $blob->sha256);
+        $this->assertSame($expectedContent, app(SubmissionFileBlobStorage::class)->contentAsString($blob));
+
+        return $blob;
     }
 
     /**

@@ -6,11 +6,11 @@ return [
     | Submission File Upload Limit
     |--------------------------------------------------------------------------
     |
-    | Maximum upload size (in KB) for BMEF/SMEA files.
-    | Default keeps current behavior at 10MB.
+    | Maximum upload size (in KB) for indicator requirement files.
+    | Database-backed storage is intended for small requirement files.
     |
     */
-    'submission_file_max_kb' => (int) env('CSPAMS_SUBMISSION_FILE_MAX_KB', 10240),
+    'submission_file_max_kb' => (int) env('CSPAMS_SUBMISSION_FILE_MAX_KB', 2048),
     'submission_file_disk' => env('CSPAMS_SUBMISSION_FILE_DISK', 'local'),
 
     /*

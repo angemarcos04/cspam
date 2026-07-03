@@ -28,6 +28,7 @@ use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
+use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
@@ -45,7 +46,6 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\Response;
@@ -616,43 +616,29 @@ class IndicatorSubmissionController extends Controller
         }
 
         $existingPath = $this->filePathForType($submission, $fileType);
-
-        $extension = strtolower((string) $file->getClientOriginalExtension());
-        $timestamp = now()->format('YmdHis');
-        $filename = sprintf(
-            '%d_%d_%s_%s_%s.%s',
-            (int) $submission->school_id,
-            (int) $submission->academic_year_id,
-            $fileType,
-            $timestamp,
-            Str::lower(Str::random(8)),
-            $extension !== '' ? $extension : 'bin',
-        );
-        try {
-            $path = $file->storeAs('submissions', $filename, $this->submissionFileDiskName());
-        } catch (\Throwable) {
-            throw ValidationException::withMessages([
-                'file' => 'The uploaded file could not be persisted. Please try again or contact the administrator.',
-            ]);
-        }
-
-        if (! is_string($path) || trim($path) === '' || ! $this->submissionFilePathExists($path)) {
-            if (is_string($path) && trim($path) !== '' && $this->submissionFilePathExists($path)) {
-                $this->submissionFileDisk()->delete($path);
-            }
-
-            throw ValidationException::withMessages([
-                'file' => 'The uploaded file could not be persisted. Please try again or contact the administrator.',
-            ]);
-        }
+        $blobStorage = app(SubmissionFileBlobStorage::class);
+        $path = $blobStorage->makePath($submission, $fileType);
 
         $sizeBytes = max(0, (int) $file->getSize());
         $originalFilename = trim((string) $file->getClientOriginalName());
-        $storedFilename = $originalFilename !== '' ? $originalFilename : $filename;
+        $storedFilename = $originalFilename !== '' ? $originalFilename : "{$fileType}-upload.bin";
         $uploadedAt = now();
 
         try {
-            DB::transaction(function () use ($submission, $fileType, $path, $storedFilename, $sizeBytes, $uploadedAt): void {
+            DB::transaction(function () use (
+                $blobStorage,
+                $submission,
+                $fileType,
+                $file,
+                $path,
+                $storedFilename,
+                &$sizeBytes,
+                &$uploadedAt,
+            ): void {
+                $blob = $blobStorage->put($submission, $fileType, $file, $storedFilename);
+                $sizeBytes = (int) $blob->size_bytes;
+                $uploadedAt = $blob->uploaded_at ?? now();
+
                 if ($fileType === 'bmef') {
                     $submission->forceFill([
                         'bmef_file_path' => $path,
@@ -681,21 +667,26 @@ class IndicatorSubmissionController extends Controller
 
                 $this->removeSubmittedScopes($submission, [$fileType]);
             });
-        } catch (\Throwable $error) {
-            if ($this->submissionFilePathExists($path)) {
-                $this->submissionFileDisk()->delete($path);
+        } catch (\Throwable) {
+            if (! is_string($existingPath) || trim($existingPath) !== $path) {
+                $blobStorage->deleteForPath($path);
             }
 
-            throw $error;
+            throw ValidationException::withMessages([
+                'file' => 'The uploaded file could not be persisted. Please try again or contact the administrator.',
+            ]);
         }
 
         if (
             is_string($existingPath)
             && trim($existingPath) !== ''
             && $existingPath !== $path
-            && $this->submissionFilePathExists($existingPath)
         ) {
-            $this->submissionFileDisk()->delete($existingPath);
+            if ($blobStorage->isDatabasePath($existingPath)) {
+                $blobStorage->deleteForPath($existingPath);
+            } elseif ($this->submissionFilePathExists($existingPath)) {
+                $this->submissionFileDisk()->delete($existingPath);
+            }
         }
 
         app(FormSubmissionHistoryLogger::class)->log(
@@ -764,6 +755,10 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        if (app(SubmissionFileBlobStorage::class)->isDatabasePath($path)) {
+            return $this->databaseFileResponse($submission, $fileType, true);
+        }
+
         $fallbackFilename = basename($path);
         $downloadFilename = is_string($originalFilename) && trim($originalFilename) !== ''
             ? trim($originalFilename)
@@ -799,6 +794,10 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
+        if (app(SubmissionFileBlobStorage::class)->isDatabasePath($path)) {
+            return $this->databaseFileResponse($submission, $fileType, false);
+        }
+
         $absolutePath = $this->submissionFileDisk()->path($path);
         $filename = is_string($originalFilename) && trim($originalFilename) !== ''
             ? trim($originalFilename)
@@ -808,6 +807,31 @@ class IndicatorSubmissionController extends Controller
         return response()->file($absolutePath, [
             'Content-Type' => $mimeType,
             'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function databaseFileResponse(IndicatorSubmission $submission, string $fileType, bool $download)
+    {
+        $blobStorage = app(SubmissionFileBlobStorage::class);
+        $blob = $blobStorage->findForSubmission($submission, $fileType);
+        if (! $blob) {
+            abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
+        }
+
+        $filename = trim((string) ($blob->original_filename ?: $this->fileOriginalNameForType($submission, $fileType)));
+        if ($filename === '') {
+            $filename = $fileType . '.bin';
+        }
+
+        $mimeType = trim((string) $blob->mime_type);
+        if ($mimeType === '') {
+            $mimeType = 'application/octet-stream';
+        }
+
+        return response($blobStorage->contentAsString($blob), Response::HTTP_OK, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="' . addslashes($filename) . '"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -2012,11 +2036,6 @@ class IndicatorSubmissionController extends Controller
         return $submission->submissionFileOriginalNameForType($type);
     }
 
-    private function submissionFileDiskName(): string
-    {
-        return app(SubmissionFileStorage::class)->diskName();
-    }
-
     private function submissionFileDisk(): FilesystemAdapter
     {
         return app(SubmissionFileStorage::class)->disk();
@@ -2044,7 +2063,10 @@ class IndicatorSubmissionController extends Controller
     {
         $existingPath = $this->filePathForType($submission, $workspace);
         $deletedFile = false;
-        if ($this->submissionFilePathExists($existingPath)) {
+        $blobStorage = app(SubmissionFileBlobStorage::class);
+        if ($blobStorage->isDatabasePath($existingPath)) {
+            $deletedFile = $blobStorage->deleteForPath($existingPath);
+        } elseif ($this->submissionFilePathExists($existingPath)) {
             $deletedFile = $this->submissionFileDisk()->delete($existingPath);
         }
 
