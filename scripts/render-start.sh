@@ -35,6 +35,20 @@ php artisan migrate --force
 echo "Seeding required roles and permissions..."
 php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
 
+echo "Checking submission storage diagnostics..."
+if php artisan cspams:diagnose-submission-storage; then
+    echo "Submission storage diagnostics completed."
+else
+    echo "WARNING: submission storage diagnostics reported a problem. File uploads may fail. Check migrations and database configuration."
+fi
+
+echo "Auditing submission storage for missing uploaded files..."
+if php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"; then
+    echo "Submission storage audit completed."
+else
+    echo "WARNING: submission storage audit reported issues or failed. Check Render logs."
+fi
+
 if is_truthy "${CSPAMS_SEED_DEMO_DATA:-false}"; then
     echo "Seeding demo data..."
     php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force

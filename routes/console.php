@@ -6,6 +6,7 @@ use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use App\Support\Indicators\RollingIndicatorYearWindow;
+use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionStorageAudit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -205,6 +206,62 @@ Artisan::command('indicators:audit-school-head-data-integrity', function (): int
 
     return self::SUCCESS;
 })->purpose('Audit School Head ownership, submission, and package/file integrity anomalies.');
+
+Artisan::command('cspams:diagnose-submission-storage {--json : Output machine-readable JSON}', function (): int {
+    $safeKeys = [
+        'status',
+        'diskConfigured',
+        'diskName',
+        'driver',
+        'rootConfigured',
+        'rootExists',
+        'rootWritable',
+        'canWriteReadDelete',
+        'databaseBlobTableExists',
+        'databaseBlobReadable',
+        'databaseBlobReady',
+        'errorCode',
+    ];
+
+    try {
+        $rawDiagnostics = app(SubmissionFileStorage::class)->diagnostics();
+    } catch (\Throwable) {
+        $rawDiagnostics = [
+            'status' => 'failed',
+            'errorCode' => 'submission_storage_diagnostics_failed',
+        ];
+    }
+
+    $diagnostics = [];
+    foreach ($safeKeys as $key) {
+        $diagnostics[$key] = $rawDiagnostics[$key] ?? null;
+    }
+
+    if ($this->option('json')) {
+        $this->line((string) json_encode($diagnostics, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+    } else {
+        $formatValue = static function (mixed $value): string {
+            if (is_bool($value)) {
+                return $value ? 'yes' : 'no';
+            }
+
+            if ($value === null || $value === '') {
+                return 'none';
+            }
+
+            return is_scalar($value) ? (string) $value : 'none';
+        };
+
+        $this->info('Submission storage diagnostics');
+        foreach ($diagnostics as $key => $value) {
+            $this->line("  {$key}: " . $formatValue($value));
+        }
+    }
+
+    return ($diagnostics['status'] ?? null) === 'ok'
+        ? self::SUCCESS
+        : self::FAILURE;
+})->purpose('Print safe submission storage readiness diagnostics for Render startup logs.');
 
 Artisan::command(
     'cspams:audit-submission-storage {--json : Output machine-readable JSON} {--fail-on-missing : Return non-zero when re-upload is required} {--only-missing : Show only rows that require re-upload} {--limit=100 : Maximum rows to display}',

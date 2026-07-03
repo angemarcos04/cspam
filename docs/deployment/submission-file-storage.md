@@ -28,15 +28,36 @@ Use `5120` only if the team accepts the extra PostgreSQL storage cost. Database-
 
 ## Deployment Steps
 
-After deploying the backend, run:
+Render Shell is not required for normal deploy migrations or storage checks. The active Docker startup path is `scripts/render-start.sh` because the root `Dockerfile` ends with:
 
-```bash
-php artisan migrate --force
-php artisan optimize:clear
-php artisan cspams:audit-submission-storage
+```text
+CMD ["bash", "scripts/render-start.sh"]
 ```
 
-The readiness endpoint should report:
+On every backend deploy/start, `scripts/render-start.sh` runs startup maintenance before launching the app:
+
+```bash
+CACHE_STORE=file php artisan config:clear
+CACHE_STORE=file php artisan route:clear
+CACHE_STORE=file php artisan view:clear
+CACHE_STORE=file php artisan event:clear
+CACHE_STORE=file php artisan cache:clear
+CACHE_STORE=file php artisan optimize:clear
+php artisan migrate --force
+php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
+php artisan cspams:diagnose-submission-storage
+php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
+```
+
+Migration failure remains fatal. Submission-storage diagnostics and the missing-file audit are printed to Render logs but do not stop startup. Old missing uploaded files require School Head re-upload; they should not prevent the backend from booting.
+
+After pushing storage fixes, use Render:
+
+```text
+Manual Deploy -> Clear build cache & deploy
+```
+
+The Render logs should show `databaseBlobReady: yes`. The protected readiness endpoint should also report:
 
 ```text
 checks.submissionStorage.databaseBlobTableExists: true
@@ -55,7 +76,7 @@ php artisan cspams:audit-submission-storage --json
 php artisan cspams:audit-submission-storage --fail-on-missing
 ```
 
-The audit is read-only. It reports database blobs, legacy disk files, and missing storage without showing file contents, absolute server paths, or secrets.
+The audit is read-only. It reports database blobs, legacy disk files, and missing storage without showing file contents, absolute server paths, or secrets. Startup intentionally runs the audit without `--fail-on-missing`, so old missing files do not stop the app.
 
 Missing rows with `reupload_required` must be re-uploaded through the School Head workflow.
 
@@ -85,9 +106,12 @@ Monitor:
 
 Deployment:
 
-1. Deploy the backend.
-2. Run migrations.
-3. Run the storage audit.
-4. Upload a test file.
-5. Redeploy the backend.
-6. Confirm the test file still previews and downloads.
+1. Push the fix to `main`.
+2. In Render, run `Manual Deploy -> Clear build cache & deploy`.
+3. Check logs for `databaseBlobReady: yes`.
+4. Upload a small PDF under 500 KB.
+5. Refresh, then logout and login again.
+6. Send the scope or full package.
+7. Confirm Monitor preview and download work.
+8. Redeploy the backend.
+9. Confirm the same file still previews and downloads.

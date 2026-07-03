@@ -59,7 +59,26 @@ Real secrets must be set only in Render Environment Variables. Do not commit `.e
 
 ## Startup Behavior
 
-`scripts/render-start.sh` runs every time the container starts. It clears Laravel cached configuration, runs migrations, seeds required roles and permissions, checks mail delivery configuration, and launches the PHP server.
+`scripts/render-start.sh` runs every time the container starts. It is the active startup script because the root `Dockerfile` uses `CMD ["bash", "scripts/render-start.sh"]`; `docker/render-start.sh` is copied into the image but is not the active path unless the command is changed.
+
+Startup clears Laravel cached configuration, runs migrations, seeds required roles and permissions, prints safe submission-storage diagnostics, runs a non-fatal missing-file audit, checks mail delivery configuration, and launches the PHP server.
+
+The important startup commands are:
+
+```bash
+CACHE_STORE=file php artisan config:clear
+CACHE_STORE=file php artisan route:clear
+CACHE_STORE=file php artisan view:clear
+CACHE_STORE=file php artisan event:clear
+CACHE_STORE=file php artisan cache:clear
+CACHE_STORE=file php artisan optimize:clear
+php artisan migrate --force
+php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
+php artisan cspams:diagnose-submission-storage
+php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
+```
+
+Migration and required role seeding failures remain fatal. Submission-storage diagnostics and the missing-file audit are log-visible but non-fatal, so old missing upload records do not prevent the backend from booting.
 
 Demo data seeding is opt-in. Keep `CSPAMS_SEED_DEMO_DATA=false` in production so deploys do not recreate `schoolhead1@cspams.local`, `schoolhead2@cspams.local`, or `schoolhead3@cspams.local`.
 
@@ -127,21 +146,23 @@ CSPAMS_SUBMISSION_FILE_MAX_KB=2048
 
 Use `5120` only if the team accepts the database storage cost. Database-backed file storage is intended for small requirement files.
 
-After deploying the backend, run:
+Render Shell is not required for normal deploy migrations. On deploy/start, the active `scripts/render-start.sh` startup script runs:
 
 ```bash
 php artisan migrate --force
-php artisan optimize:clear
-php artisan cspams:audit-submission-storage
+php artisan cspams:diagnose-submission-storage
+php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
 ```
 
-With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.databaseBlobTableExists: true`, `databaseBlobReadable: true`, and `databaseBlobReady: true`:
+The audit is non-fatal and does not use `--fail-on-missing` during startup. Old missing files cannot be reconstructed from metadata; rows marked `reupload_required` must be re-uploaded by the School Head.
+
+After pushing this fix, run Render `Manual Deploy -> Clear build cache & deploy`. Check logs for `databaseBlobReady: yes`. With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.databaseBlobTableExists: true`, `databaseBlobReadable: true`, and `databaseBlobReady: true`:
 
 ```bash
 curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
 ```
 
-Smoke-test persistence after deploy: upload a report file, preview/download it, restart or redeploy the backend, then preview/download the same file again. Existing old disk-based files may already be missing if they were uploaded before the blob fix. Run `php artisan cspams:audit-submission-storage --only-missing` to identify records that require School Head re-upload.
+Smoke-test persistence after deploy: upload a small PDF under 500 KB, refresh, logout and login again, preview/download, send the scope or package, confirm Monitor preview/download works, redeploy the backend, then preview/download the same file again. Existing old disk-based files may already be missing if they were uploaded before the blob fix. The startup audit identifies records that require School Head re-upload.
 
 Files already lost from ephemeral storage cannot be reconstructed from database metadata alone. Re-upload those files through the School Head workflow.
 
