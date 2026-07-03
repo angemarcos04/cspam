@@ -490,7 +490,7 @@ function buildMonitorPackageRows(
       const fileViewUrl = canExposeFile ? (fileEntry?.viewUrl ?? null) : null;
       const fileDownloadUrl = canExposeFile ? (fileEntry?.downloadUrl ?? null) : null;
       const fileUnavailableReason = fileMissingFromStorage
-        ? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it."
+        ? "Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend."
         : null;
 
       return {
@@ -504,7 +504,7 @@ function buildMonitorPackageRows(
         detail: isReturnedReview
           ? "Returned by monitor. Waiting for School Head correction and resend."
           : fileMissingFromStorage
-            ? "Submitted file record exists, but the stored file is missing."
+            ? "Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend."
           : hasUploadedFile
             ? (fileEntry?.originalFilename ?? item.detail)
             : item.detail,

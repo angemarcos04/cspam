@@ -101,10 +101,10 @@ describe("buildMonitorDrawerYearDetail", () => {
 
     expect(bmefRow).toBeDefined();
     expect(bmefRow?.statusLabel).toBe("For Review");
-    expect(bmefRow?.detail).toBe("Submitted file record exists, but the stored file is missing.");
+    expect(bmefRow?.detail).toBe("Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.");
     expect(bmefRow?.available).toBe(false);
     expect(bmefRow?.missingFromStorage).toBe(true);
-    expect(bmefRow?.fileUnavailableReason).toBe("The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.");
+    expect(bmefRow?.fileUnavailableReason).toBe("Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.");
     expect(bmefRow?.viewUrl).toBeNull();
     expect(bmefRow?.downloadUrl).toBeNull();
     expect(bmefRow?.canReview).toBe(false);

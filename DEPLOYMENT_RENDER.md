@@ -117,32 +117,33 @@ Operational note: rolling academic-year maintenance is currently best-effort dur
 
 ## Submission File Persistent Storage
 
-School Head report uploads are stored on the configurable CSPAMS submission-file disk. On Render, attach a persistent disk and configure:
+Render Free does not persist local uploaded files. CSPAMS now stores new School Head requirement upload bytes in PostgreSQL using `database://indicator-submissions/{submission_id}/{file_type}` metadata paths. Do not store uploads in GitHub, frontend localStorage, public storage, or the Render local filesystem.
+
+Recommended production limit:
 
 ```env
-CSPAMS_SUBMISSION_FILE_DISK=submissions
-CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions
+CSPAMS_SUBMISSION_FILE_MAX_KB=2048
 ```
 
-Do not hardcode the path in code. The `submissions` disk reads this mount from the environment. The path must match the actual Render persistent disk mount. If the persistent disk is not mounted at `/var/data/cspams-submissions`, uploaded files cannot survive backend restarts.
+Use `5120` only if the team accepts the database storage cost. Database-backed file storage is intended for small requirement files.
 
-After changing either setting, restart or redeploy the backend and run:
+After deploying the backend, run:
 
 ```bash
+php artisan migrate --force
 php artisan optimize:clear
-php artisan config:clear
-php artisan cache:clear
+php artisan cspams:audit-submission-storage
 ```
 
-With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.status: ok`, `diskName: submissions`, and `canWriteReadDelete: true`:
+With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report `checks.submissionStorage.databaseBlobTableExists: true`, `databaseBlobReadable: true`, and `databaseBlobReady: true`:
 
 ```bash
 curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
 ```
 
-Smoke-test persistence after deploy: upload a report file, preview/download it, restart or redeploy the backend, then preview/download the same file again. If CSPAMS shows uploaded file metadata but preview/download is disabled with a storage-missing message, the database metadata is present but the physical file is missing from the configured disk. Check the Render persistent disk mount, `CSPAMS_SUBMISSION_STORAGE_PATH`, and whether files were removed outside CSPAMS.
+Smoke-test persistence after deploy: upload a report file, preview/download it, restart or redeploy the backend, then preview/download the same file again. Existing old disk-based files may already be missing if they were uploaded before the blob fix. Run `php artisan cspams:audit-submission-storage --only-missing` to identify records that require School Head re-upload.
 
-Files already lost from ephemeral storage cannot be reconstructed from database metadata alone. Re-upload the file through the School Head workflow or restore the physical file from backup after persistent storage is fixed.
+Files already lost from ephemeral storage cannot be reconstructed from database metadata alone. Re-upload those files through the School Head workflow.
 
 ## Notification Center Runtime Check
 

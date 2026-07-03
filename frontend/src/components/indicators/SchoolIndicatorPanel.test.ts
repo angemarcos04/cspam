@@ -110,7 +110,7 @@ describe("shouldRestorePersistedWorkspaceDraft", () => {
 describe("workspace draft guidance", () => {
   it("keeps file-part status language distinct from final package submission", () => {
     expect(workspaceFileDraftStatusLabel(true)).toBe("Uploaded");
-    expect(workspaceFileDraftStatusLabel(false)).toBe("Not Uploaded");
+    expect(workspaceFileDraftStatusLabel(false)).toBe("No file uploaded yet");
   });
 
   it("explains that sections and files can be persisted before final submit", () => {

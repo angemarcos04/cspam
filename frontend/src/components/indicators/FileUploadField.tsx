@@ -80,7 +80,7 @@ export function FileUploadField({
               : "border border-amber-300 bg-amber-50 text-amber-700"
           }`}
         >
-          {hasPendingFile ? "Ready to Save" : submitted ? isMissingFromStorage ? "Storage Missing" : "Uploaded" : "Not Uploaded"}
+          {hasPendingFile ? "Ready to Save" : submitted ? isMissingFromStorage ? "Storage Missing" : "Uploaded" : "No file uploaded yet"}
         </span>
       </div>
 
@@ -88,7 +88,7 @@ export function FileUploadField({
         <div className="rounded-xl border-2 border-dashed border-primary-200 bg-primary-50/40 px-4 py-8 text-center">
           <p className="text-sm font-semibold text-slate-700">
             {isMissingFromStorage
-              ? `${label} file metadata is saved, but the stored file is missing.`
+              ? "Storage missing - re-upload required."
               : `${label} file is uploaded to this draft package. You can view or download it anytime.`}
           </p>
           <p className="mt-1 text-xs text-slate-500">
@@ -97,7 +97,7 @@ export function FileUploadField({
           </p>
           {isMissingFromStorage ? (
             <p className="mt-2 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-              The saved file is missing from storage. Re-upload the file or ask the administrator to check persistent storage.
+              The saved file is missing from storage. Re-upload the file before sending or submitting this requirement.
             </p>
           ) : (
             <p className="mt-1 text-xs text-slate-500">
@@ -164,7 +164,7 @@ export function FileUploadField({
         </div>
       ) : !submitted ? (
         <div className="rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center">
-          <p className="text-sm font-semibold text-slate-700">{conciseLabel} not uploaded yet.</p>
+          <p className="text-sm font-semibold text-slate-700">No file uploaded yet.</p>
           <p className="mt-1 text-xs text-slate-500">Choose this file, then click Save. Final Submit sends the full package for review.</p>
           <button
             type="button"

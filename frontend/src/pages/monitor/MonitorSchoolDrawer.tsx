@@ -118,7 +118,7 @@ function disabledPackageActionTitle(row: MonitorDrawerPackageRow): string {
 
   if (row.kind === "file" && row.missingFromStorage) {
     return row.fileUnavailableReason
-      ?? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.";
+      ?? "Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.";
   }
 
   if (row.kind === "file" && !row.viewUrl && !row.downloadUrl) {
@@ -697,7 +697,7 @@ export function MonitorSchoolDrawer({
                                   {displayRow.kind === "file" && displayRow.missingFromStorage && (
                                     <p className="mt-2 rounded-sm border border-rose-200 bg-rose-50 px-2 py-1 text-xs font-medium text-rose-700">
                                       {displayRow.fileUnavailableReason
-                                        ?? "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it."}
+                                        ?? "Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend."}
                                     </p>
                                   )}
                                   {displayRow.reviewDecision === "returned" && displayRow.reviewNotes && (

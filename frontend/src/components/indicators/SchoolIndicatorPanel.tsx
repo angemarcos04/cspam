@@ -1016,8 +1016,8 @@ function workspaceSaveSectionLabel(section: WorkspaceSaveSection | null): string
   }
 }
 
-export function workspaceFileDraftStatusLabel(uploaded: boolean): "Uploaded" | "Not Uploaded" {
-  return uploaded ? "Uploaded" : "Not Uploaded";
+export function workspaceFileDraftStatusLabel(uploaded: boolean): "Uploaded" | "No file uploaded yet" {
+  return uploaded ? "Uploaded" : "No file uploaded yet";
 }
 
 export function workspaceDraftGuidanceCopy(): string {
@@ -5920,10 +5920,10 @@ function SchoolIndicatorPanelComponent({
           return;
         }
 
-        if (file.size > 10 * 1024 * 1024) {
+        if (file.size > 2 * 1024 * 1024) {
           setUploadErrorByType((current) => ({
             ...current,
-            [type]: "File size must not exceed 10MB.",
+            [type]: "File size must not exceed 2 MB.",
           }));
           return;
         }
@@ -6037,11 +6037,11 @@ function SchoolIndicatorPanelComponent({
         return;
       }
 
-      if (selectedFile.size > 10 * 1024 * 1024) {
+      if (selectedFile.size > 2 * 1024 * 1024) {
         setPendingUploadFileByType((current) => ({ ...current, [type]: null }));
         setUploadErrorByType((current) => ({
           ...current,
-          [type]: "File size must not exceed 10MB.",
+          [type]: "File size must not exceed 2 MB.",
         }));
         return;
       }

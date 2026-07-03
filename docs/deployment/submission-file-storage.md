@@ -1,70 +1,93 @@
 # Submission File Storage
 
-CSPAMS stores uploaded report-file metadata in the database, but the physical
-PDF/DOCX/XLSX files must live on persistent storage. In production, especially
-on Render-style deployments, writing to an ephemeral local filesystem can leave
-the database row intact while the file disappears after a restart or redeploy.
+CSPAMS stores School Head requirement upload bytes in PostgreSQL so files survive Render Free restarts and redeploys. New uploads use metadata paths like:
 
-## Environment
+```text
+database://indicator-submissions/{submission_id}/{file_type}
+```
 
-Use the dedicated submission-file disk:
+The existing metadata columns remain in place for frontend compatibility:
+
+- `indicator_submissions` stores BMEF and SMEA metadata.
+- `indicator_submission_files` stores FM-QAD and other non-core file metadata.
+- `indicator_submission_file_blobs` stores the actual PDF/DOCX/XLSX bytes.
+
+Legacy disk paths are still readable when the old disk file still exists. Files already lost from Render ephemeral storage cannot be reconstructed from metadata and must be re-uploaded by the School Head.
+
+## Production Settings
+
+Render Free does not persist local uploaded files. Do not use GitHub, frontend localStorage, public storage, or the Render local filesystem for uploads.
+
+Recommended production upload limit:
 
 ```env
-CSPAMS_SUBMISSION_FILE_DISK=submissions
-CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions
+CSPAMS_SUBMISSION_FILE_MAX_KB=2048
 ```
 
-`CSPAMS_SUBMISSION_FILE_DISK` must match the Laravel filesystem disk CSPAMS uses
-for submission files. `CSPAMS_SUBMISSION_STORAGE_PATH` must point to the mounted
-persistent disk in production. For Render, attach a persistent disk to the
-backend service and make sure the mount path is exactly
-`/var/data/cspams-submissions` if you use the value above. Do not hardcode the
-mount path in application code.
+Use `5120` only if the team accepts the extra PostgreSQL storage cost. Database-backed storage is intended for small capstone requirement files.
 
-After changing storage environment values, clear cached Laravel configuration:
+## Deployment Steps
+
+After deploying the backend, run:
 
 ```bash
+php artisan migrate --force
 php artisan optimize:clear
-php artisan config:clear
-php artisan cache:clear
+php artisan cspams:audit-submission-storage
 ```
 
-With `CSPAMS_DIAGNOSTICS_TOKEN` configured, verify the protected readiness probe
-before users upload files:
+The readiness endpoint should report:
+
+```text
+checks.submissionStorage.databaseBlobTableExists: true
+checks.submissionStorage.databaseBlobReadable: true
+checks.submissionStorage.databaseBlobReady: true
+```
+
+## Storage Audit
+
+Run the audit command after deploys and when diagnosing old uploads:
 
 ```bash
-curl -i "https://cspams.onrender.com/api/ops/readiness?token=$CSPAMS_DIAGNOSTICS_TOKEN"
+php artisan cspams:audit-submission-storage
+php artisan cspams:audit-submission-storage --only-missing
+php artisan cspams:audit-submission-storage --json
+php artisan cspams:audit-submission-storage --fail-on-missing
 ```
 
-The response should include `checks.submissionStorage.status: ok`,
-`diskName: submissions`, and `canWriteReadDelete: true`. The readiness endpoint
-does not expose the absolute storage path, uploaded filenames, or file contents.
+The audit is read-only. It reports database blobs, legacy disk files, and missing storage without showing file contents, absolute server paths, or secrets.
 
-## Smoke Test
+Missing rows with `reupload_required` must be re-uploaded through the School Head workflow.
 
-1. Deploy with the persistent disk mounted.
-2. Set `CSPAMS_SUBMISSION_FILE_DISK=submissions`.
-3. Set `CSPAMS_SUBMISSION_STORAGE_PATH=/var/data/cspams-submissions`.
-4. Confirm the path matches the actual Render persistent disk mount.
+## Manual QA Checklist
+
+School Head:
+
+1. Login as School Head.
+2. Create or bootstrap an indicator submission.
+3. Upload BMEF.
+4. Upload SMEA.
+5. For a private school, upload FM-QAD-001.
+6. Refresh the page.
+7. Logout and login again.
+8. Confirm files remain uploaded and available.
+9. Send a scope or submit the package.
+
+Monitor:
+
+1. Login as Monitor.
+2. Confirm unsent draft files are not reviewable.
+3. After School Head sends or submits, confirm files are visible.
+4. Preview the file.
+5. Download the file.
+6. Verify or return the scope.
+7. Confirm a returned replaced file must be resent.
+
+Deployment:
+
+1. Deploy the backend.
+2. Run migrations.
+3. Run the storage audit.
+4. Upload a test file.
 5. Redeploy the backend.
-6. Clear cached config with `php artisan optimize:clear`, `php artisan config:clear`, and `php artisan cache:clear`.
-7. Check protected readiness and confirm submission storage is writable.
-8. Log in as School Head.
-9. Upload a report file.
-10. Preview/download the file.
-11. Restart or redeploy the backend.
-12. Preview/download the same file again.
-13. Confirm it still works.
-14. If DB metadata remains but preview/download fails, the storage path is still wrong or the old file was already lost.
-
-## Missing Existing Files
-
-If CSPAMS shows a submitted file record but preview/download is disabled with a
-storage-missing warning, the database metadata exists but the physical file is
-not present on the configured disk. CSPAMS intentionally reports that honestly:
-the file is not reviewable, monitor verification is blocked, and preview or
-download returns `404`.
-
-Files already lost from ephemeral storage cannot be reconstructed from database
-metadata alone. Re-upload the file through the School Head workflow or restore
-the physical file from an external backup after persistent storage is fixed.
+6. Confirm the test file still previews and downloads.

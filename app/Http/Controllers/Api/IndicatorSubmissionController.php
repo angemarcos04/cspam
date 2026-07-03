@@ -599,7 +599,7 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $maxKb = max(1, (int) config('cspams.submission_file_max_kb', 10240));
+        $maxKb = max(1, (int) config('cspams.submission_file_max_kb', 2048));
 
         $validated = $request->validate([
             'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
@@ -667,7 +667,9 @@ class IndicatorSubmissionController extends Controller
 
                 $this->removeSubmittedScopes($submission, [$fileType]);
             });
-        } catch (\Throwable) {
+        } catch (\Throwable $e) {
+            report($e);
+
             if (! is_string($existingPath) || trim($existingPath) !== $path) {
                 $blobStorage->deleteForPath($path);
             }
@@ -759,10 +761,7 @@ class IndicatorSubmissionController extends Controller
             return $this->databaseFileResponse($submission, $fileType, true);
         }
 
-        $fallbackFilename = basename($path);
-        $downloadFilename = is_string($originalFilename) && trim($originalFilename) !== ''
-            ? trim($originalFilename)
-            : $fallbackFilename;
+        $downloadFilename = $this->safeDownloadFilename($originalFilename, basename((string) $path));
 
         return $this->submissionFileDisk()->download($path, $downloadFilename);
     }
@@ -799,14 +798,12 @@ class IndicatorSubmissionController extends Controller
         }
 
         $absolutePath = $this->submissionFileDisk()->path($path);
-        $filename = is_string($originalFilename) && trim($originalFilename) !== ''
-            ? trim($originalFilename)
-            : basename($path);
+        $filename = $this->safeDownloadFilename($originalFilename, basename((string) $path));
         $mimeType = $this->submissionFileDisk()->mimeType($path) ?: 'application/octet-stream';
 
         return response()->file($absolutePath, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . addslashes($filename) . '"',
+            'Content-Disposition' => 'inline; filename="' . $filename . '"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -819,10 +816,10 @@ class IndicatorSubmissionController extends Controller
             abort(Response::HTTP_NOT_FOUND, 'Requested file was not found.');
         }
 
-        $filename = trim((string) ($blob->original_filename ?: $this->fileOriginalNameForType($submission, $fileType)));
-        if ($filename === '') {
-            $filename = $fileType . '.bin';
-        }
+        $filename = $this->safeDownloadFilename(
+            $blob->original_filename ?: $this->fileOriginalNameForType($submission, $fileType),
+            $fileType . '.bin',
+        );
 
         $mimeType = trim((string) $blob->mime_type);
         if ($mimeType === '') {
@@ -831,9 +828,36 @@ class IndicatorSubmissionController extends Controller
 
         return response($blobStorage->contentAsString($blob), Response::HTTP_OK, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="' . addslashes($filename) . '"',
+            'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="' . $filename . '"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function safeDownloadFilename(?string $filename, string $fallback): string
+    {
+        $fallback = $this->sanitizeResponseFilename($fallback);
+        if ($fallback === '') {
+            $fallback = 'download.bin';
+        }
+
+        $candidate = $this->sanitizeResponseFilename($filename);
+
+        return $candidate !== '' ? $candidate : $fallback;
+    }
+
+    private function sanitizeResponseFilename(?string $filename): string
+    {
+        $sanitized = trim((string) ($filename ?? ''));
+        if ($sanitized === '') {
+            return '';
+        }
+
+        $sanitized = preg_replace('/[\x00-\x1F\x7F]+/', '', $sanitized) ?? '';
+        $sanitized = str_replace(['/', '\\'], '-', $sanitized);
+        $sanitized = str_replace('"', '', $sanitized);
+        $sanitized = preg_replace('/\s+/', ' ', $sanitized) ?? '';
+
+        return trim($sanitized);
     }
 
     public function submit(Request $request, IndicatorSubmission $submission): JsonResponse

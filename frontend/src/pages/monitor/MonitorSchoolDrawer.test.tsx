@@ -380,7 +380,7 @@ describe("MonitorSchoolDrawer", () => {
           detail: "fm-qad-001.pdf",
           available: false,
           missingFromStorage: true,
-          fileUnavailableReason: "The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.",
+          fileUnavailableReason: "Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.",
           viewUrl: null,
           downloadUrl: null,
           actionLabel: null,
@@ -394,8 +394,8 @@ describe("MonitorSchoolDrawer", () => {
     const verifyButton = screen.getByRole("button", { name: "Verify" }) as HTMLButtonElement;
     const returnButton = screen.getByRole("button", { name: "Return" }) as HTMLButtonElement;
     expect(viewButton.disabled).toBe(true);
-    expect(viewButton.title).toBe("The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.");
-    expect(screen.getByText("The submitted file record exists, but the stored file is missing. Ask the school to re-upload and resend it.")).toBeTruthy();
+    expect(viewButton.title).toBe("Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.");
+    expect(screen.getByText("Submitted file record exists, but stored file is missing. Ask the School Head to re-upload and resend.")).toBeTruthy();
     expect(verifyButton.disabled).toBe(true);
     expect(returnButton.disabled).toBe(true);
     expect(screen.queryByRole("button", { name: "Download" })).toBeNull();

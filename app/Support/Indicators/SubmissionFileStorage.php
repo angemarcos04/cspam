@@ -4,6 +4,7 @@ namespace App\Support\Indicators;
 
 use App\Models\IndicatorSubmission;
 use Illuminate\Filesystem\FilesystemAdapter;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
@@ -36,12 +37,21 @@ class SubmissionFileStorage
         $rootExists = $isLocalDriver ? is_dir($root) : null;
         $rootWritable = $isLocalDriver && $rootExists === true ? is_writable($root) : null;
         $databaseBlobTableExists = false;
+        $databaseBlobReadable = false;
+        $databaseBlobErrorCode = null;
         try {
             $databaseBlobTableExists = Schema::hasTable('indicator_submission_file_blobs');
+            if ($databaseBlobTableExists) {
+                DB::table('indicator_submission_file_blobs')
+                    ->whereRaw('1 = 0')
+                    ->get();
+                $databaseBlobReadable = true;
+            }
         } catch (\Throwable) {
-            $databaseBlobTableExists = false;
+            $databaseBlobReadable = false;
+            $databaseBlobErrorCode = 'database_blob_probe_failed';
         }
-        $databaseBlobReady = $databaseBlobTableExists;
+        $databaseBlobReady = $databaseBlobTableExists && $databaseBlobReadable;
 
         $canWriteReadDelete = false;
         $writeReadDeleteError = null;
@@ -69,8 +79,9 @@ class SubmissionFileStorage
             'rootWritable' => $rootWritable,
             'canWriteReadDelete' => $canWriteReadDelete,
             'databaseBlobTableExists' => $databaseBlobTableExists,
+            'databaseBlobReadable' => $databaseBlobReadable,
             'databaseBlobReady' => $databaseBlobReady,
-            'errorCode' => $writeReadDeleteError,
+            'errorCode' => $databaseBlobErrorCode ?? $writeReadDeleteError,
         ];
     }
 

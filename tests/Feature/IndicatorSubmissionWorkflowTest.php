@@ -23,6 +23,7 @@ use Database\Seeders\DemoDataSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\Response;
@@ -2507,12 +2508,128 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/fm_qad_001");
         $view->assertOk();
         $this->assertStringContainsString('inline;', (string) $view->headers->get('content-disposition'));
-        $this->assertSame($legacyContent, $view->getContent());
+        $this->assertResponseBodyMatches($view, $legacyContent);
 
         $download = $this->withToken($token)->get("/api/submissions/{$submissionId}/download/fm_qad_001");
         $download->assertOk();
         $this->assertStringContainsString('attachment;', (string) $download->headers->get('content-disposition'));
-        $this->assertSame($legacyContent, $download->getContent());
+        $this->assertResponseBodyMatches($download, $legacyContent);
+    }
+
+    public function test_file_responses_sanitize_weird_filenames_for_content_disposition(): void
+    {
+        [$token, $submissionId] = $this->createStorageAuditSubmission();
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'normal.pdf', 'application/pdf')
+            ->assertOk();
+
+        $weirdFilename = "bad/\"name\r\n.pdf";
+        IndicatorSubmission::query()
+            ->whereKey((int) $submissionId)
+            ->update(['bmef_original_filename' => $weirdFilename]);
+        IndicatorSubmissionFileBlob::query()
+            ->where('indicator_submission_id', (int) $submissionId)
+            ->where('type', 'bmef')
+            ->update(['original_filename' => $weirdFilename]);
+
+        $view = $this->withToken($token)->get("/api/submissions/{$submissionId}/view/bmef");
+        $view->assertOk();
+        $viewDisposition = (string) $view->headers->get('content-disposition');
+        $this->assertStringContainsString('inline;', $viewDisposition);
+        $this->assertStringContainsString('bad-name.pdf', $viewDisposition);
+        $this->assertStringNotContainsString("\r", $viewDisposition);
+        $this->assertStringNotContainsString("\n", $viewDisposition);
+        $this->assertStringNotContainsString('"bad/"name', $viewDisposition);
+
+        $download = $this->withToken($token)->get("/api/submissions/{$submissionId}/download/bmef");
+        $download->assertOk();
+        $downloadDisposition = (string) $download->headers->get('content-disposition');
+        $this->assertStringContainsString('attachment;', $downloadDisposition);
+        $this->assertStringContainsString('bad-name.pdf', $downloadDisposition);
+        $this->assertStringNotContainsString("\r", $downloadDisposition);
+        $this->assertStringNotContainsString("\n", $downloadDisposition);
+        $this->assertStringNotContainsString('"bad/"name', $downloadDisposition);
+    }
+
+    public function test_submission_storage_audit_command_reports_database_blob_ok(): void
+    {
+        [$token, $submissionId] = $this->createStorageAuditSubmission();
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        [$exitCode, $audit, $output] = $this->callSubmissionStorageAudit(['--fail-on-missing' => true]);
+
+        $this->assertSame(0, $exitCode, $output);
+        $this->assertSame(0, (int) data_get($audit, 'summary.reuploadRequired'));
+        $this->assertAuditRow($audit, (int) $submissionId, 'bmef', 'ok_database_blob', 'none', true);
+    }
+
+    public function test_submission_storage_audit_command_reports_missing_database_blob(): void
+    {
+        [$token, $submissionId] = $this->createStorageAuditSubmission();
+
+        $this->uploadSubmissionDocument($token, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')
+            ->assertOk();
+
+        $path = (string) IndicatorSubmission::query()
+            ->whereKey((int) $submissionId)
+            ->value('bmef_file_path');
+        $this->deleteSubmissionStoragePath($path);
+
+        [$exitCode, $audit, $output] = $this->callSubmissionStorageAudit(['--fail-on-missing' => true]);
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertSame(1, (int) data_get($audit, 'summary.reuploadRequired'));
+        $this->assertAuditRow($audit, (int) $submissionId, 'bmef', 'missing_database_blob', 'reupload_required', false);
+    }
+
+    public function test_submission_storage_audit_command_reports_legacy_disk_ok(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        [, $submissionId] = $this->createStorageAuditSubmission();
+
+        $legacyPath = 'submissions/legacy-ok.pdf';
+        Storage::disk('submissions')->put($legacyPath, '%PDF legacy ok');
+        IndicatorSubmission::query()->findOrFail((int) $submissionId)
+            ->submissionFiles()
+            ->create([
+                'type' => 'fm_qad_001',
+                'path' => $legacyPath,
+                'original_filename' => 'legacy-ok.pdf',
+                'size_bytes' => strlen('%PDF legacy ok'),
+                'uploaded_at' => now(),
+            ]);
+
+        [$exitCode, $audit, $output] = $this->callSubmissionStorageAudit(['--fail-on-missing' => true]);
+
+        $this->assertSame(0, $exitCode, $output);
+        $this->assertSame(0, (int) data_get($audit, 'summary.reuploadRequired'));
+        $this->assertAuditRow($audit, (int) $submissionId, 'fm_qad_001', 'ok_legacy_disk', 'legacy_disk_still_available', true);
+    }
+
+    public function test_submission_storage_audit_command_reports_missing_legacy_disk_and_fail_on_missing(): void
+    {
+        config()->set('cspams.submission_file_disk', 'submissions');
+        Storage::fake('submissions');
+        [, $submissionId] = $this->createStorageAuditSubmission();
+
+        IndicatorSubmission::query()->findOrFail((int) $submissionId)
+            ->submissionFiles()
+            ->create([
+                'type' => 'fm_qad_001',
+                'path' => 'submissions/missing.pdf',
+                'original_filename' => 'missing.pdf',
+                'size_bytes' => 123,
+                'uploaded_at' => now(),
+            ]);
+
+        [$exitCode, $audit, $output] = $this->callSubmissionStorageAudit(['--fail-on-missing' => true]);
+
+        $this->assertSame(1, $exitCode, $output);
+        $this->assertSame(1, (int) data_get($audit, 'summary.reuploadRequired'));
+        $this->assertAuditRow($audit, (int) $submissionId, 'fm_qad_001', 'missing_legacy_disk', 'reupload_required', false);
     }
 
     public function test_submission_file_upload_stores_database_blob_and_reset_deletes_that_blob(): void
@@ -2640,7 +2757,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ])->assertCreated();
         $submissionId = (string) $created->json('data.id');
 
-        $oldFile = UploadedFile::fake()->create('old-fm-qad-001.pdf', 64, 'application/pdf');
+        $oldFile = UploadedFile::fake()->createWithContent('old-fm-qad-001.pdf', '%PDF-1.4 old fm-qad bytes');
         $oldContent = (string) file_get_contents((string) $oldFile->getRealPath());
         $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
@@ -2653,7 +2770,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $oldBlob = $this->assertBlobContent($oldPath, $oldContent);
 
         $this->travel(1)->seconds();
-        $newFile = UploadedFile::fake()->create('new-fm-qad-001.pdf', 65, 'application/pdf');
+        $newFile = UploadedFile::fake()->createWithContent('new-fm-qad-001.pdf', '%PDF-1.4 new fm-qad bytes');
         $newContent = (string) file_get_contents((string) $newFile->getRealPath());
         $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
@@ -3719,6 +3836,105 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         Storage::fake('local');
 
         $this->uploadSubmissionFiles($token, $submissionId, ['bmef', 'smea']);
+    }
+
+    /**
+     * @return array{0: string, 1: string}
+     */
+    private function createStorageAuditSubmission(): array
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $token = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($token)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+
+        IndicatorSubmission::query()->update([
+            'bmef_file_path' => null,
+            'bmef_original_filename' => null,
+            'bmef_uploaded_at' => null,
+            'bmef_file_size' => null,
+            'smea_file_path' => null,
+            'smea_original_filename' => null,
+            'smea_uploaded_at' => null,
+            'smea_file_size' => null,
+        ]);
+        \Illuminate\Support\Facades\DB::table('indicator_submission_files')->delete();
+        IndicatorSubmissionFileBlob::query()->delete();
+
+        return [$token, (string) $created->json('data.id')];
+    }
+
+    /**
+     * @param array<string, mixed> $options
+     *
+     * @return array{0: int, 1: array<string, mixed>, 2: string}
+     */
+    private function callSubmissionStorageAudit(array $options = []): array
+    {
+        $exitCode = Artisan::call('cspams:audit-submission-storage', [
+            '--json' => true,
+            ...$options,
+        ]);
+        $output = Artisan::output();
+        $audit = json_decode($output, true);
+
+        $this->assertIsArray($audit, $output);
+
+        return [$exitCode, $audit, $output];
+    }
+
+    /**
+     * @param array<string, mixed> $audit
+     */
+    private function assertAuditRow(
+        array $audit,
+        int $submissionId,
+        string $type,
+        string $status,
+        string $action,
+        bool $exists,
+    ): void {
+        $row = collect($audit['rows'] ?? [])
+            ->first(static fn (mixed $row): bool => is_array($row)
+                && (int) ($row['submission_id'] ?? 0) === $submissionId
+                && ($row['type'] ?? null) === $type);
+
+        $this->assertIsArray($row, json_encode($audit, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '');
+        $this->assertSame($status, $row['status'] ?? null);
+        $this->assertSame($action, $row['action'] ?? null);
+        $this->assertSame($exists, (bool) ($row['exists'] ?? null));
+    }
+
+    private function assertResponseBodyMatches(mixed $response, string $expectedContent): void
+    {
+        $content = $response->getContent();
+        if ($content !== false) {
+            $this->assertSame($expectedContent, $content);
+
+            return;
+        }
+
+        $baseResponse = $response->baseResponse ?? null;
+        if (is_object($baseResponse) && method_exists($baseResponse, 'getFile')) {
+            $this->assertSame($expectedContent, (string) file_get_contents($baseResponse->getFile()->getPathname()));
+
+            return;
+        }
+
+        if ($baseResponse instanceof \Symfony\Component\HttpFoundation\StreamedResponse && method_exists($response, 'streamedContent')) {
+            $this->assertSame($expectedContent, $response->streamedContent());
+
+            return;
+        }
+
+        $this->fail('Response did not expose body content or a response file.');
     }
 
     private function assertSubmissionStorageExists(string $path): void

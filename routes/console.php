@@ -6,6 +6,7 @@ use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use App\Support\Indicators\RollingIndicatorYearWindow;
+use App\Support\Indicators\SubmissionStorageAudit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -204,6 +205,55 @@ Artisan::command('indicators:audit-school-head-data-integrity', function (): int
 
     return self::SUCCESS;
 })->purpose('Audit School Head ownership, submission, and package/file integrity anomalies.');
+
+Artisan::command(
+    'cspams:audit-submission-storage {--json : Output machine-readable JSON} {--fail-on-missing : Return non-zero when re-upload is required} {--only-missing : Show only rows that require re-upload} {--limit=100 : Maximum rows to display}',
+    function (): int {
+        $limit = max(1, (int) $this->option('limit'));
+        $report = app(SubmissionStorageAudit::class)->run(
+            onlyMissing: (bool) $this->option('only-missing'),
+            limit: $limit,
+        );
+        $summary = $report['summary'];
+        $rows = $report['rows'];
+
+        if ($this->option('json')) {
+            $this->line((string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        } else {
+            $this->info('Submission storage audit');
+            $this->line('  metadata rows scanned: ' . $summary['totalMetadataRows']);
+            $this->line('  rows displayed: ' . $summary['displayedRows']);
+            $this->line('  re-upload required: ' . $summary['reuploadRequired']);
+
+            if ($rows === []) {
+                $this->line('No matching submission file metadata rows found.');
+            } else {
+                $this->table(
+                    ['submission_id', 'school_id', 'academic_year_id', 'type', 'path_kind', 'exists', 'status', 'original_filename', 'action'],
+                    array_map(static fn (array $row): array => [
+                        $row['submission_id'],
+                        $row['school_id'],
+                        $row['academic_year_id'],
+                        $row['type'],
+                        $row['path_kind'],
+                        $row['exists'] ? 'yes' : 'no',
+                        $row['status'],
+                        $row['original_filename'] ?? '',
+                        $row['action'],
+                    ], $rows),
+                );
+            }
+
+            if ((int) $summary['reuploadRequired'] > 0) {
+                $this->warn('One or more metadata rows point to missing storage. The School Head must re-upload those files.');
+            }
+        }
+
+        return (bool) $this->option('fail-on-missing') && (int) $summary['reuploadRequired'] > 0
+            ? self::FAILURE
+            : self::SUCCESS;
+    },
+)->purpose('Audit indicator submission file metadata against database blobs and legacy disk storage.');
 
 Artisan::command('cspams:purge-demo-data {--force : Required to run the purge} {--with-schools : Also archive known demo school records}', function (): int {
     if (! $this->option('force')) {
