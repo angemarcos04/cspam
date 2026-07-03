@@ -143,7 +143,7 @@ const WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS = 3;
 const WORKSPACE_DETAIL_HYDRATION_RETRY_MS = 350;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_MS = 1_500;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS = 5;
-const VERIFIED_SCOPE_LOCK_MESSAGE = "This file or indicator has been verified.";
+const VERIFIED_SCOPE_LOCK_MESSAGE = "Locked after monitor verification.";
 const VERIFIED_PACKAGE_LOCK_MESSAGE = "This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.";
 
 function waitForWorkspaceDetailHydrationRetry(attempt: number): Promise<void> {
@@ -3636,7 +3636,7 @@ function SchoolIndicatorPanelComponent({
         : "This requirement";
 
     return activeScopeReview.decision === "verified"
-      ? `${scopeLabel} has been verified by the Division Monitor.`
+      ? `Verified by Monitor: ${scopeLabel}.`
       : `${scopeLabel} was returned by the Division Monitor.`;
   }, [activeCategory, activeScopeId, activeScopeReview, activeTab]);
   const isActiveCategoryLocked = Boolean(activeCategory && (isFormLocked || isCurrentScopeVerified));

@@ -6,6 +6,7 @@ import {
   resolveDashboardLastSyncedAt,
   resolveInitialSchoolHeadReportAcademicYearId,
   resolveInitialSubmittedReportAcademicYearId,
+  resolveLatestScopeReviewDecision,
   resolveCurrentReportIndicatorByGroupAKey,
   resolveHydratedCurrentReportSubmissionCandidate,
   resolveSelectedYearCurrentReportContextSubmissions,
@@ -266,6 +267,67 @@ describe("buildDashboardViewYearStorageKey", () => {
   it("returns an empty key when either the user or school context is missing", () => {
     expect(buildDashboardViewYearStorageKey(null, "103811")).toBe("");
     expect(buildDashboardViewYearStorageKey(25, "")).toBe("");
+  });
+});
+
+describe("resolveLatestScopeReviewDecision", () => {
+  it("returns the latest normalized matching review decision", () => {
+    const result = resolveLatestScopeReviewDecision(
+      submission({
+        scopeReviews: [
+          {
+            id: "older-returned",
+            scopeType: " file ",
+            scopeId: " FM_QAD_001 ",
+            decision: "returned",
+            notes: null,
+            reviewedAt: "2026-07-03T00:00:00.000Z",
+            updatedAt: "2026-07-03T00:00:00.000Z",
+          },
+          {
+            id: "latest-verified",
+            scopeType: "file",
+            scopeId: "fm_qad_001",
+            decision: "verified",
+            notes: null,
+            reviewedAt: "2026-07-04T00:00:00.000Z",
+            updatedAt: "2026-07-04T00:00:00.000Z",
+          },
+        ],
+      }),
+      "file",
+      "fm_qad_001",
+    );
+
+    expect(result).toBe("verified");
+  });
+
+  it("returns unverified for the latest unverify review and null when no review matches", () => {
+    const reviewedSubmission = submission({
+      scopeReviews: [
+        {
+          id: "verified",
+          scopeType: "section",
+          scopeId: "key_performance_indicators",
+          decision: "verified",
+          notes: null,
+          reviewedAt: "2026-07-04T00:00:00.000Z",
+          updatedAt: "2026-07-04T00:00:00.000Z",
+        },
+        {
+          id: "unverified",
+          scopeType: "section",
+          scopeId: "key_performance_indicators",
+          decision: "unverified",
+          notes: null,
+          reviewedAt: null,
+          updatedAt: "2026-07-04T01:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(resolveLatestScopeReviewDecision(reviewedSubmission, "section", "key_performance_indicators")).toBe("unverified");
+    expect(resolveLatestScopeReviewDecision(reviewedSubmission, "file", "bmef")).toBeNull();
   });
 });
 

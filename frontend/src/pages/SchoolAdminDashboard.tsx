@@ -59,6 +59,7 @@ import type {
   IndicatorSubmissionFileEntry,
   IndicatorSubmissionFileType,
   IndicatorSubmissionItem,
+  IndicatorSubmissionScopeReview,
   SchoolRecord,
   SessionUser,
 } from "@/types";
@@ -213,6 +214,85 @@ export function formatComplianceStatusLabel(value: unknown): string {
   }
 
   return formatDisplayValue(value);
+}
+
+type ScopeReviewDecision = "verified" | "returned" | "unverified";
+
+function normalizeScopeReviewDecision(value: unknown): ScopeReviewDecision | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (normalized === "verified" || normalized === "returned" || normalized === "unverified") {
+    return normalized;
+  }
+
+  return null;
+}
+
+function scopeReviewTimeValue(review: IndicatorSubmissionScopeReview): number {
+  const reviewedAt = Date.parse(String(review.reviewedAt ?? ""));
+  if (Number.isFinite(reviewedAt)) {
+    return reviewedAt;
+  }
+
+  const updatedAt = Date.parse(String(review.updatedAt ?? ""));
+  return Number.isFinite(updatedAt) ? updatedAt : 0;
+}
+
+export function resolveLatestScopeReviewDecision(
+  submission: IndicatorSubmission | null | undefined,
+  scopeType: "file" | "section",
+  scopeId: string,
+): ScopeReviewDecision | null {
+  const normalizedScopeType = scopeType.trim().toLowerCase();
+  const normalizedScopeId = scopeId.trim().toLowerCase();
+  if (!normalizedScopeType || !normalizedScopeId || !Array.isArray(submission?.scopeReviews)) {
+    return null;
+  }
+
+  let latestDecision: ScopeReviewDecision | null = null;
+  let latestTime = Number.NEGATIVE_INFINITY;
+  let latestIndex = -1;
+  submission.scopeReviews.forEach((review, index) => {
+    const reviewScopeType = String(review?.scopeType ?? "").trim().toLowerCase();
+    const reviewScopeId = String(review?.scopeId ?? "").trim().toLowerCase();
+    if (reviewScopeType !== normalizedScopeType || reviewScopeId !== normalizedScopeId) {
+      return;
+    }
+
+    const decision = normalizeScopeReviewDecision(review?.decision);
+    if (!decision) {
+      return;
+    }
+
+    const time = scopeReviewTimeValue(review);
+    if (time > latestTime || (time === latestTime && index > latestIndex)) {
+      latestDecision = decision;
+      latestTime = time;
+      latestIndex = index;
+    }
+  });
+
+  return latestDecision;
+}
+
+function ScopeDecisionBadge({ decision }: { decision: ScopeReviewDecision | null }) {
+  if (decision !== "verified" && decision !== "returned") {
+    return null;
+  }
+
+  const isVerified = decision === "verified";
+
+  return (
+    <span
+      aria-label={`Monitor review status: ${isVerified ? "Verified" : "Returned"}`}
+      className={`inline-flex shrink-0 items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+        isVerified
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-amber-200 bg-amber-50 text-amber-700"
+      }`}
+    >
+      {isVerified ? "Verified" : "Returned"}
+    </span>
+  );
 }
 
 function selectedYearValueIsPresent(value: unknown): boolean {
@@ -1548,6 +1628,16 @@ export function SchoolAdminDashboard() {
     () => buildSchoolHeadCurrentReportSourceContext(groupAReportView.submission, selectedReportYearLabel),
     [groupAReportView.submission, selectedReportYearLabel],
   );
+  const schoolAchievementReviewDecision = resolveLatestScopeReviewDecision(
+    groupAReportView.submission,
+    "section",
+    "school_achievements_learning_outcomes",
+  );
+  const kpiReviewDecision = resolveLatestScopeReviewDecision(
+    groupAReportView.submission,
+    "section",
+    "key_performance_indicators",
+  );
   /* ── Refresh ── */
   const runDashboardRefresh = useCallback(
     async (options: RefreshOptions = {}) => runRefreshBatches(
@@ -2079,11 +2169,13 @@ export function SchoolAdminDashboard() {
                   const reportFile = visibleSubmittedReportFileEntries[definition.type] ?? null;
                   const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
                   const buttonLabel = `View ${definition.shortLabel} Report`;
+                  const decision = resolveLatestScopeReviewDecision(groupAReportView.submission, "file", definition.type);
 
                   return (
                     <article key={definition.type} className="rounded-sm border border-slate-200 bg-white px-6 py-5">
                       <div className="flex items-center justify-between gap-2">
                         <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel} Report</h3>
+                        <ScopeDecisionBadge decision={decision} />
                       </div>
 
                       <dl className="mt-4 space-y-2">
@@ -2128,11 +2220,13 @@ export function SchoolAdminDashboard() {
                       const reportFile = secondarySubmittedReportFileEntries[definition.type] ?? null;
                       const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
                       const buttonLabel = `View ${definition.shortLabel} Report`;
+                      const decision = resolveLatestScopeReviewDecision(groupAReportView.submission, "file", definition.type);
 
                       return (
                         <article key={`secondary-${definition.type}`} className="rounded-sm border border-amber-200 bg-white px-6 py-5">
                           <div className="flex items-center justify-between gap-2">
                             <h3 className="text-sm font-bold uppercase tracking-wide text-amber-900">{definition.shortLabel} Report</h3>
+                            <ScopeDecisionBadge decision={decision} />
                           </div>
 
                           <dl className="mt-4 space-y-2">
@@ -2226,7 +2320,10 @@ export function SchoolAdminDashboard() {
                 {/* School's Achievement Table */}
                 <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
                   <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                    <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-800">School&apos;s Achievement (SY {selectedReportYearLabel})</h3>
+                      <ScopeDecisionBadge decision={schoolAchievementReviewDecision} />
+                    </div>
                   </div>
                   <table className="w-full text-[13px] text-slate-900">
                     <thead>
@@ -2255,7 +2352,10 @@ export function SchoolAdminDashboard() {
                 {/* Key Performance Indicators Table */}
                 <div className="border border-slate-200 rounded-sm bg-white overflow-hidden">
                   <div className="bg-slate-50 px-4 py-2 border-b border-slate-200">
-                    <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h3 className="text-sm font-semibold text-slate-800">Key Performance Indicators (SY {selectedReportYearLabel})</h3>
+                      <ScopeDecisionBadge decision={kpiReviewDecision} />
+                    </div>
                   </div>
                   <table className="w-full text-[13px] text-slate-900">
                     <thead>

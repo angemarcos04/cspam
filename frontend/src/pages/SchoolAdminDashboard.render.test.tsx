@@ -2020,6 +2020,44 @@ describe("SchoolAdminDashboard submitted report view", () => {
           viewUrl: null,
         },
       },
+      scopeReviews: [
+        {
+          id: "review-file-verified",
+          scopeType: "file",
+          scopeId: "fm_qad_001",
+          decision: "verified",
+          notes: null,
+          reviewedAt: "2026-07-04T00:00:00.000Z",
+          updatedAt: "2026-07-04T00:00:00.000Z",
+        },
+        {
+          id: "review-file-returned",
+          scopeType: "file",
+          scopeId: "fm_qad_002",
+          decision: "returned",
+          notes: "Please replace this file.",
+          reviewedAt: "2026-07-04T00:05:00.000Z",
+          updatedAt: "2026-07-04T00:05:00.000Z",
+        },
+        {
+          id: "review-school-achievement",
+          scopeType: "section",
+          scopeId: "school_achievements_learning_outcomes",
+          decision: "verified",
+          notes: null,
+          reviewedAt: "2026-07-04T00:10:00.000Z",
+          updatedAt: "2026-07-04T00:10:00.000Z",
+        },
+        {
+          id: "review-kpi",
+          scopeType: "section",
+          scopeId: "key_performance_indicators",
+          decision: "verified",
+          notes: null,
+          reviewedAt: "2026-07-04T00:15:00.000Z",
+          updatedAt: "2026-07-04T00:15:00.000Z",
+        },
+      ],
     });
 
     useAuthMock.mockReturnValue({
@@ -2067,7 +2105,22 @@ describe("SchoolAdminDashboard submitted report view", () => {
     render(<SchoolAdminDashboard />);
 
     const viewFmQadOne = await screen.findByRole("button", { name: /View FM-QAD-001 Report/i });
-    expect((screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement).disabled).toBe(true);
+    const viewFmQadTwo = screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement;
+    expect(viewFmQadTwo.disabled).toBe(true);
+    const fmQadOneCard = viewFmQadOne.closest("article");
+    const fmQadTwoCard = viewFmQadTwo.closest("article");
+    expect(fmQadOneCard).not.toBeNull();
+    expect(fmQadTwoCard).not.toBeNull();
+    expect(within(fmQadOneCard as HTMLElement).getByText("Verified")).not.toBeNull();
+    expect(within(fmQadTwoCard as HTMLElement).getByText("Returned")).not.toBeNull();
+    expect((viewFmQadOne as HTMLButtonElement).disabled).toBe(false);
+    const schoolAchievementHeader = screen.getByText(/School's Achievement \(SY 2025-2026\)/i).closest("div");
+    const kpiHeader = screen.getByText(/Key Performance Indicators \(SY 2025-2026\)/i).closest("div");
+    expect(schoolAchievementHeader).not.toBeNull();
+    expect(kpiHeader).not.toBeNull();
+    expect(within(schoolAchievementHeader as HTMLElement).getByText("Verified")).not.toBeNull();
+    expect(within(kpiHeader as HTMLElement).getByText("Verified")).not.toBeNull();
+    expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
     expect(screen.queryByText("BMEF Report")).toBeNull();
     expect(screen.queryByText("SMEA Report")).toBeNull();
 

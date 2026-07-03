@@ -884,7 +884,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
-    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Locked after monitor verification.")).length).toBeGreaterThan(0);
     expect(screen.getByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).not.toBeNull();
 
     const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
@@ -923,7 +923,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     }
     fireEvent.click(fileTab);
 
-    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Locked after monitor verification.")).length).toBeGreaterThan(0);
     const viewFileButton = await screen.findByRole("button", { name: /View FM-QAD-001.*File/i }) as HTMLButtonElement;
     const downloadButton = await screen.findByRole("button", { name: /Download FM-QAD-001.*report/i }) as HTMLButtonElement;
     expect(viewFileButton.disabled).toBe(false);
@@ -961,7 +961,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     }
     fireEvent.click(fileTab);
 
-    expect(await screen.findByText("The saved file is missing from storage. Re-upload the file or ask the administrator to check persistent storage.")).toBeTruthy();
+    expect(await screen.findByText("The saved file is missing from storage. Re-upload the file before sending or submitting this requirement.")).toBeTruthy();
     expect(screen.getByText(/fm-qad-001\.pdf/)).toBeTruthy();
 
     const viewFileButton = await screen.findByRole("button", { name: /View FM-QAD-001.*File/i }) as HTMLButtonElement;
@@ -1007,13 +1007,13 @@ describe("SchoolIndicatorPanel batch submit", () => {
       throw new Error("Expected FM-QAD-001 workspace tab.");
     }
     fireEvent.click(fileTab);
-    expect((await screen.findAllByText("This file or indicator has been verified.")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Locked after monitor verification.")).length).toBeGreaterThan(0);
 
     mockIndicatorPanelData([unverifiedSubmission]);
     view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     await waitFor(() => {
-      expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
+      expect(screen.queryByText("Locked after monitor verification.")).toBeNull();
     });
     expect(screen.queryByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).toBeNull();
     const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
@@ -1050,7 +1050,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     fireEvent.click(fileTab);
 
     await screen.findByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.");
-    expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
+    expect(screen.queryByText("Locked after monitor verification.")).toBeNull();
 
     const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
     const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
