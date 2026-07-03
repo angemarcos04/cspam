@@ -16,6 +16,8 @@
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.8",
     "laravel-echo": "^2.3.0",
     "lucide-react": "^0.468.0",
     "pusher-js": "^8.4.0",

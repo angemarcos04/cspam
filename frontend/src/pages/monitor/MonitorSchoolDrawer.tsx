@@ -6,6 +6,7 @@ import { useIndicatorData } from "@/context/IndicatorData";
 import { apiRequestVoid, COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError } from "@/lib/api";
 import { MonitorAuditTrail } from "@/pages/monitor/MonitorAuditTrail";
 import { MonitorSchoolManagementPanel } from "@/pages/monitor/MonitorSchoolManagementPanel";
+import { exportTargetsMetPdf } from "@/pages/monitor/exportTargetsMetPdf";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 import type {
@@ -290,6 +291,7 @@ export function MonitorSchoolDrawer({
   const { downloadSubmissionFile, reviewSubmissionScope } = useIndicatorData();
   const [scopeReviewSavingKey, setScopeReviewSavingKey] = useState<string | null>(null);
   const [scopeReviewError, setScopeReviewError] = useState<string>("");
+  const [targetsMetExportError, setTargetsMetExportError] = useState("");
   const [returnReviewRow, setReturnReviewRow] = useState<MonitorDrawerPackageRow | null>(null);
   const [returnReviewNotes, setReturnReviewNotes] = useState("");
   const [includeReturnNote, setIncludeReturnNote] = useState(false);
@@ -327,10 +329,25 @@ export function MonitorSchoolDrawer({
   const { formatDateTime } = formatting;
   const manageSchoolUpdate = updateRecord ?? (async () => undefined);
   const showManagementToast = onManagementToast ?? (() => undefined);
+  const hasTargetsMetRows = Boolean(
+    schoolDrawerYearDetail
+      && (
+        schoolDrawerYearDetail.schoolAchievementRows.length > 0
+        || schoolDrawerYearDetail.kpiRows.length > 0
+      ),
+  );
+  const canExportTargetsMetPdf = activeSchoolDrawerTab === "history"
+    && Boolean(schoolDetail)
+    && !isSchoolDrawerSubmissionsLoading
+    && hasTargetsMetRows;
 
   useEffect(() => {
     setLocalScopeReviewOverrides({});
   }, [isOpen, selectedSchoolDrawerYear, schoolDetail?.schoolKey]);
+
+  useEffect(() => {
+    setTargetsMetExportError("");
+  }, [activeSchoolDrawerTab, selectedSchoolDrawerYear, schoolDetail?.schoolKey]);
 
   const closeFilePreview = () => {
     revokeBlobUrl(activeFilePreviewUrl);
@@ -502,6 +519,25 @@ export function MonitorSchoolDrawer({
     window.setTimeout(() => {
       document.getElementById(sectionId)?.scrollIntoView({ behavior: "auto", block: "start" });
     }, 0);
+  };
+
+  const handleExportTargetsMetPdf = () => {
+    if (!schoolDetail || !schoolDrawerYearDetail || !canExportTargetsMetPdf) {
+      return;
+    }
+
+    setTargetsMetExportError("");
+    try {
+      exportTargetsMetPdf({
+        schoolDetail,
+        academicYearLabel: schoolDrawerYearDetail.selectedYearLabel,
+        schoolAchievementRows: schoolDrawerYearDetail.schoolAchievementRows,
+        kpiRows: schoolDrawerYearDetail.kpiRows,
+      });
+    } catch (error) {
+      console.error("Unable to export TARGETS-MET PDF.", error);
+      setTargetsMetExportError("Unable to export TARGETS-MET PDF. Please try again.");
+    }
   };
 
   return (
@@ -780,11 +816,28 @@ export function MonitorSchoolDrawer({
 
                   <div className="mt-3 overflow-hidden rounded-sm border border-slate-200 bg-white">
                     <div className="border-b border-slate-200 bg-slate-50 px-4 py-3">
-                      <div className="flex flex-col gap-1">
-                        <span className="inline-block border-l-[3px] border-primary-600 pl-3 text-base font-semibold text-slate-900">
-                          TARGETS-MET
-                        </span>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex flex-col gap-1">
+                          <span className="inline-block border-l-[3px] border-primary-600 pl-3 text-base font-semibold text-slate-900">
+                            TARGETS-MET
+                          </span>
+                        </div>
+                        {canExportTargetsMetPdf && (
+                          <button
+                            type="button"
+                            onClick={handleExportTargetsMetPdf}
+                            className="inline-flex w-fit items-center gap-1.5 rounded-sm border border-primary-200 bg-white px-3 py-1.5 text-xs font-semibold text-primary-700 shadow-sm transition hover:border-primary-300 hover:bg-primary-50"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            Export PDF
+                          </button>
+                        )}
                       </div>
+                      {targetsMetExportError && (
+                        <div className="mt-3 rounded-sm border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                          {targetsMetExportError}
+                        </div>
+                      )}
                     </div>
 
                     {isSchoolDrawerSubmissionsLoading ? (

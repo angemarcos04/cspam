@@ -4,6 +4,7 @@ import { MonitorSchoolDrawer } from "@/pages/monitor/MonitorSchoolDrawer";
 
 const downloadSubmissionFileMock = vi.hoisted(() => vi.fn());
 const reviewSubmissionScopeMock = vi.hoisted(() => vi.fn());
+const exportTargetsMetPdfMock = vi.hoisted(() => vi.fn());
 
 vi.mock("@/context/Auth", () => ({
   useAuth: () => ({
@@ -18,10 +19,15 @@ vi.mock("@/context/IndicatorData", () => ({
   }),
 }));
 
+vi.mock("@/pages/monitor/exportTargetsMetPdf", () => ({
+  exportTargetsMetPdf: exportTargetsMetPdfMock,
+}));
+
 describe("MonitorSchoolDrawer", () => {
   afterEach(() => {
     downloadSubmissionFileMock.mockReset();
     reviewSubmissionScopeMock.mockReset();
+    exportTargetsMetPdfMock.mockReset();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
     cleanup();
@@ -118,6 +124,72 @@ describe("MonitorSchoolDrawer", () => {
       },
     };
   }
+
+  it("exports visible TARGETS-MET rows from the history tab", () => {
+    const baseProps = reviewableDrawerProps({
+      id: "school_achievements_learning_outcomes",
+      submissionId: "sub-1",
+      label: "School Achievements",
+      kind: "section",
+      statusLabel: "For Review",
+      tone: "info",
+      submittedAt: "2026-06-14T06:39:00.000Z",
+      detail: "Section values are available for this year.",
+      viewUrl: null,
+      downloadUrl: null,
+      actionLabel: null,
+      actionTarget: "school_achievements",
+      canReview: true,
+    });
+    const schoolAchievementRows = [
+      { key: "school_head_name", label: "NAME OF SCHOOL HEAD", value: "Dr. Maria Santos" },
+      { key: "total_enrolment", label: "TOTAL NUMBER OF ENROLMENT", value: "500" },
+    ];
+    const kpiRows = [
+      { key: "net_enrollment_rate", label: "Net Enrollment Rate (NER)", target: "95%", actual: "96%", status: "Met" },
+    ];
+    const props = {
+      ...baseProps,
+      viewState: {
+        ...baseProps.viewState,
+        activeSchoolDrawerTab: "history" as const,
+      },
+      data: {
+        ...baseProps.data,
+        schoolDrawerYearDetail: {
+          ...baseProps.data.schoolDrawerYearDetail!,
+          schoolAchievementRows,
+          kpiRows,
+        },
+      },
+    };
+
+    const { rerender } = render(<MonitorSchoolDrawer {...props} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Export PDF/i }));
+    expect(exportTargetsMetPdfMock).toHaveBeenCalledWith({
+      schoolDetail: props.data.schoolDetail,
+      academicYearLabel: "2025-2026",
+      schoolAchievementRows,
+      kpiRows,
+    });
+
+    rerender(
+      <MonitorSchoolDrawer
+        {...props}
+        data={{
+          ...props.data,
+          schoolDrawerYearDetail: {
+            ...props.data.schoolDrawerYearDetail!,
+            schoolAchievementRows: [],
+            kpiRows: [],
+          },
+        }}
+      />,
+    );
+
+    expect(screen.queryByRole("button", { name: /Export PDF/i })).toBeNull();
+  });
 
   it("keeps submissions as the main page and history as secondary reference", async () => {
     const setActiveSchoolDrawerTab = vi.fn();
