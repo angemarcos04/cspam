@@ -237,17 +237,17 @@ export function Login() {
       }
     } else {
       if (!password) {
-        setError("Enter your passcode.");
+        setError("Enter your password.");
         return;
       }
 
       if (requiresPasswordReset && (!newPassword || !confirmPassword)) {
-        setError("Enter and confirm your new passcode.");
+        setError("Enter and confirm your new password.");
         return;
       }
 
       if (requiresPasswordReset && newPassword !== confirmPassword) {
-        setError("New passcode and confirmation do not match.");
+        setError("New password and confirmation do not match.");
         return;
       }
     }
@@ -325,7 +325,7 @@ export function Login() {
         if (requiresReset) {
           clearMfaState();
           setRequiresPasswordReset(true);
-          setError("Passcode reset required. Set a new passcode to continue.");
+          setError("Password reset required. Set a new password to continue.");
         } else if (requiresSetup) {
           clearMfaState();
           clearResetState();
@@ -460,7 +460,7 @@ export function Login() {
 
               <div>
                 <label htmlFor="passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                  {requiresPasswordReset ? "Current Passcode" : "Passcode"}
+                  {requiresPasswordReset ? "Current Password" : "Password"}
                 </label>
                 <div className="relative">
                   <input
@@ -482,16 +482,16 @@ export function Login() {
                     onClick={() => setShowPasscode((current) => !current)}
                     disabled={isMfaChallengeActive}
                     className="absolute right-2 top-1/2 -translate-y-1/2 rounded-none p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
-                    aria-label={showPasscode ? "Hide passcode" : "Show passcode"}
+                    aria-label={showPasscode ? "Hide password" : "Show password"}
                   >
                     {showPasscode ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
                 </div>
-                <p className="mt-1.5 text-xs text-slate-500">Enter Passcode</p>
+                <p className="mt-1.5 text-xs text-slate-500">Enter Password</p>
                 {activeRole === "monitor" && !pendingMfa && (
                   <div className="mt-2 flex justify-end">
                     <Link to={forgotPasswordHref} className="text-xs font-semibold text-primary-700 hover:text-primary-800">
-                      {requiresPasswordReset ? "Can't access current passcode? Email reset" : "Forgot password?"}
+                      {requiresPasswordReset ? "Can't access current password? Email reset" : "Forgot password?"}
                     </Link>
                   </div>
                 )}
@@ -548,7 +548,7 @@ export function Login() {
                 <>
                   <div>
                     <label htmlFor="new-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      New Passcode
+                      New Password
                     </label>
                     <input
                       id="new-passcode"
@@ -560,14 +560,14 @@ export function Login() {
                         clearAuthError();
                         setError("");
                       }}
-                      placeholder="Create a new passcode"
+                      placeholder="Create a new password"
                       className={formInputClass}
                     />
                     <p className="mt-1.5 text-xs text-slate-500">Minimum 10 characters with letters, numbers, and symbols.</p>
                   </div>
                   <div>
                     <label htmlFor="confirm-passcode" className="mb-1.5 block text-sm font-semibold text-slate-700">
-                      Confirm New Passcode
+                      Confirm New Password
                     </label>
                     <input
                       id="confirm-passcode"
@@ -579,7 +579,7 @@ export function Login() {
                         clearAuthError();
                         setError("");
                       }}
-                      placeholder="Confirm your new passcode"
+                      placeholder="Confirm your new password"
                       className={formInputClass}
                     />
                   </div>
@@ -598,12 +598,12 @@ export function Login() {
                   ? pendingMfa
                     ? "Verifying..."
                     : requiresPasswordReset
-                      ? "Updating Passcode..."
+                      ? "Updating Password..."
                       : "Signing In..."
                   : pendingMfa
                     ? "Verify and Sign In"
                     : requiresPasswordReset
-                      ? "Update Passcode and Sign In"
+                      ? "Update Password and Sign In"
                       : roleMeta.submit}
                 {!isBusy && <ArrowRight className="h-4 w-4" />}
               </button>

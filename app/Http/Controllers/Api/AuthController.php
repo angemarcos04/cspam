@@ -78,7 +78,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or passcode.'
+                ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(
@@ -271,7 +271,7 @@ class AuthController extends Controller
             );
 
             $message = $role === UserRoleResolver::SCHOOL_HEAD
-                ? 'Invalid school code or passcode.'
+                ? 'Invalid school code or password.'
                 : 'Invalid credentials for the selected role.';
 
             return response()->json(

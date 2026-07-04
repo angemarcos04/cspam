@@ -43,19 +43,19 @@ describe("Login", () => {
     );
 
     expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
-    expect(screen.getByLabelText("Passcode").getAttribute("placeholder")).toBeNull();
+    expect(screen.getByLabelText("Password").getAttribute("placeholder")).toBeNull();
     expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
-    expect(screen.getByText("Enter Passcode")).toBeTruthy();
+    expect(screen.getByText("Enter Password")).toBeTruthy();
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
 
     expect(screen.getByLabelText("Login ID").getAttribute("placeholder")).toBeNull();
-    expect(screen.getByLabelText("Passcode").getAttribute("placeholder")).toBeNull();
+    expect(screen.getByLabelText("Password").getAttribute("placeholder")).toBeNull();
     expect(screen.queryByPlaceholderText("Enter school code or monitor email")).toBeNull();
-    expect(screen.getByText("Enter Passcode")).toBeTruthy();
+    expect(screen.getByText("Enter Password")).toBeTruthy();
   });
 
-  it("clears stale School Head credentials and hides passcode when switching to Division Monitor", () => {
+  it("clears stale School Head credentials and hides password when switching to Division Monitor", () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Login />
@@ -63,15 +63,15 @@ describe("Login", () => {
     );
 
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "SchoolHead@123" } });
-    fireEvent.click(screen.getAllByRole("button", { name: /show passcode/i })[0]!);
-    expect((screen.getByLabelText("Passcode") as HTMLInputElement).type).toBe("text");
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "SchoolHead@123" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /show password/i })[0]!);
+    expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe("text");
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
 
     expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Passcode") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Passcode") as HTMLInputElement).type).toBe("password");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).type).toBe("password");
   });
 
   it("clears stale Division Monitor credentials when switching to School Head", () => {
@@ -83,12 +83,12 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "monitor@cspams.local" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Monitor@123" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Monitor@123" } });
 
     fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
 
     expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Passcode") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("");
   });
 
   it("keeps School Head recovery contact-monitor only with no reset link", () => {
@@ -102,18 +102,18 @@ describe("Login", () => {
     expect(screen.queryByRole("link", { name: /reset/i })).toBeNull();
   });
 
-  it("toggles passcode visibility and shows forgot-password only for monitor sign-in", () => {
+  it("toggles password visibility and shows forgot-password only for monitor sign-in", () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Login />
       </MemoryRouter>,
     );
 
-    const passcodeInput = screen.getByLabelText("Passcode");
-    expect(passcodeInput.getAttribute("type")).toBe("password");
+    const passwordInput = screen.getByLabelText("Password");
+    expect(passwordInput.getAttribute("type")).toBe("password");
 
-    fireEvent.click(screen.getAllByRole("button", { name: /show passcode/i })[0]!);
-    expect(passcodeInput.getAttribute("type")).toBe("text");
+    fireEvent.click(screen.getAllByRole("button", { name: /show password/i })[0]!);
+    expect(passwordInput.getAttribute("type")).toBe("text");
 
     expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
 
@@ -162,7 +162,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     expect(screen.getByRole("link", { name: /forgot password/i })).toBeTruthy();
 
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
@@ -182,7 +182,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     await waitFor(() => {
@@ -205,7 +205,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     expect(
@@ -224,7 +224,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     expect(await screen.findByText(SERVICE_UNAVAILABLE_MESSAGE)).toBeTruthy();
@@ -249,7 +249,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     expect(
@@ -277,7 +277,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     const codeInput = await screen.findByLabelText("Verification Code");
@@ -325,7 +325,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     const codeInput = await screen.findByLabelText("Verification Code");
@@ -377,7 +377,7 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "cspamsmonitor@gmail.com" } });
-    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Demo@123456" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
     fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
 
     const codeInput = await screen.findByLabelText("Verification Code");

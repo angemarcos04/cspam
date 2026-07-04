@@ -713,7 +713,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $oldLogin->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid school code or passcode.');
+            ->assertJsonPath('message', 'Invalid school code or password.');
 
         $tempLogin = $this->postJson('/api/auth/login', [
             'role' => 'school_head',
@@ -1251,7 +1251,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $loginNew->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
-            ->assertJsonPath('message', 'Invalid school code or passcode.');
+            ->assertJsonPath('message', 'Invalid school code or password.');
     }
 
     public function test_remove_account_and_school_permanently_deletes_school_and_preserves_reason(): void
