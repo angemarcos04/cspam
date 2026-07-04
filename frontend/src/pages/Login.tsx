@@ -118,6 +118,17 @@ export function Login() {
     setResendMessage("");
   };
 
+  const resetRoleSpecificLoginState = (nextRole: LoginRole) => {
+    setActiveRole(nextRole);
+    setLoginId("");
+    setPassword("");
+    setShowPasscode(false);
+    clearAuthError();
+    setError("");
+    clearResetState();
+    clearMfaState();
+  };
+
   useEffect(() => {
     if (!authError) {
       return;
@@ -314,7 +325,7 @@ export function Login() {
         if (requiresReset) {
           clearMfaState();
           setRequiresPasswordReset(true);
-          setError("Password reset required. Set a new passcode to continue.");
+          setError("Passcode reset required. Set a new passcode to continue.");
         } else if (requiresSetup) {
           clearMfaState();
           clearResetState();
@@ -384,13 +395,7 @@ export function Login() {
                 <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveRole("school_head");
-                    clearAuthError();
-                    setError("");
-                    clearResetState();
-                    clearMfaState();
-                  }}
+                  onClick={() => resetRoleSpecificLoginState("school_head")}
                   disabled={isMfaChallengeActive}
                   className={`rounded-none border px-3 py-3 text-left transition sm:px-4 sm:py-4 ${
                     activeRole === "school_head"
@@ -406,13 +411,7 @@ export function Login() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setActiveRole("monitor");
-                    clearAuthError();
-                    setError("");
-                    clearResetState();
-                    clearMfaState();
-                  }}
+                  onClick={() => resetRoleSpecificLoginState("monitor")}
                   disabled={isMfaChallengeActive}
                   className={`rounded-none border px-3 py-3 text-left transition sm:px-4 sm:py-4 ${
                     activeRole === "monitor"
@@ -587,7 +586,7 @@ export function Login() {
                 </>
               )}
 
-              {error && <p className="rounded-none border border-primary-200 bg-primary-50 px-3.5 py-2.5 text-sm text-primary-700">{error}</p>}
+              {error && <p className="rounded-none border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800">{error}</p>}
 
               <button
                 type="submit"

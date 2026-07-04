@@ -205,7 +205,7 @@ class CspamsLogin extends BaseLogin
     private function throwFailedLoginException(string $role): never
     {
         $message = $role === UserRoleResolver::SCHOOL_HEAD
-            ? 'Invalid school code or password.'
+            ? 'Invalid school code or passcode.'
             : 'Invalid credentials for the selected role.';
 
         throw ValidationException::withMessages([

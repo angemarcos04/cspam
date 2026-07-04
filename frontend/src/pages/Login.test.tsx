@@ -55,6 +55,53 @@ describe("Login", () => {
     expect(screen.getByText("Enter Passcode")).toBeTruthy();
   });
 
+  it("clears stale School Head credentials and hides passcode when switching to Division Monitor", () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "SchoolHead@123" } });
+    fireEvent.click(screen.getAllByRole("button", { name: /show passcode/i })[0]!);
+    expect((screen.getByLabelText("Passcode") as HTMLInputElement).type).toBe("text");
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+
+    expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Passcode") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Passcode") as HTMLInputElement).type).toBe("password");
+  });
+
+  it("clears stale Division Monitor credentials when switching to School Head", () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "monitor@cspams.local" } });
+    fireEvent.change(screen.getByLabelText("Passcode"), { target: { value: "Monitor@123" } });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
+
+    expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Passcode") as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps School Head recovery contact-monitor only with no reset link", () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
+    expect(screen.queryByRole("link", { name: /reset/i })).toBeNull();
+  });
+
   it("toggles passcode visibility and shows forgot-password only for monitor sign-in", () => {
     render(
       <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
@@ -80,6 +127,21 @@ describe("Login", () => {
 
     fireEvent.click(screen.getAllByRole("button", { name: /school head/i })[0]!);
     expect(screen.queryByRole("link", { name: /forgot password/i })).toBeNull();
+  });
+
+  it("renders validation errors with warning styling", async () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.submit(screen.getAllByRole("button", { name: /sign in/i })[0]!.closest("form")!);
+
+    const errorMessage = await screen.findByText("Enter your 6-digit school code.");
+    expect(errorMessage.className).toContain("border-amber-200");
+    expect(errorMessage.className).toContain("bg-amber-50");
+    expect(errorMessage.className).toContain("text-amber-800");
   });
 
   it("hides monitor forgot-password while MFA is pending", async () => {
