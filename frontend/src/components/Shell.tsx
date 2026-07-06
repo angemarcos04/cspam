@@ -23,6 +23,7 @@ export function Shell({ title, subtitle, children, actions, showWorkspaceLabel =
 
   const roleLabel = role === "school_head" ? "School Head" : "Division Monitor";
   const appTagline = "Centralized School Performance and Monitoring System ";
+  const displayTitle = title === "School Head Dashboard" ? "School Dashboard" : title;
 
   const handleSignOut = async () => {
     if (isLoggingOut) return;
@@ -144,7 +145,7 @@ export function Shell({ title, subtitle, children, actions, showWorkspaceLabel =
                   {roleLabel} Workspace
                 </p>
               )}
-              <h1 className="mt-1 text-lg font-extrabold text-white sm:mt-2 sm:text-2xl">{title}</h1>
+              <h1 className="mt-1 text-lg font-extrabold text-white sm:mt-2 sm:text-2xl">{displayTitle}</h1>
               <p className="mt-1 line-clamp-1 text-[11px] text-primary-100 sm:text-sm">{subtitle}</p>
             </div>
 
