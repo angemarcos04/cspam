@@ -1926,7 +1926,11 @@ describe("SchoolAdminDashboard submitted report view", () => {
 
     render(<SchoolAdminDashboard />);
 
-    fireEvent.click(await screen.findByRole("button", { name: /View BMEF Report/i }));
+    const bmefCardTitle = await screen.findByText("Basic Education Monitoring and Evaluation Framework (BEMEF)");
+    const bmefCard = bmefCardTitle.closest("article");
+    expect(bmefCard).not.toBeNull();
+    expect(screen.getByText("School Monitoring, Evaluation, and Adjustment (SMEA)")).not.toBeNull();
+    fireEvent.click(within(bmefCard as HTMLElement).getByRole("button", { name: "View file" }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalled();
@@ -2092,8 +2096,10 @@ describe("SchoolAdminDashboard submitted report view", () => {
 
     render(<SchoolAdminDashboard />);
 
-    const viewFmQadOne = await screen.findByRole("button", { name: /View FM-QAD-001 Report/i });
-    const viewFmQadTwo = screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement;
+    const fmQadOneTitle = await screen.findByText("FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School");
+    const fmQadTwoTitle = screen.getByText("FM-QAD-002 Qualitative Evaluation Processing Sheet for Recognition of Private Schools");
+    const viewFmQadOne = within(fmQadOneTitle.closest("article") as HTMLElement).getByRole("button", { name: "View file" });
+    const viewFmQadTwo = within(fmQadTwoTitle.closest("article") as HTMLElement).getByRole("button", { name: "View file" }) as HTMLButtonElement;
     expect(viewFmQadTwo.disabled).toBe(true);
     const fmQadOneCard = viewFmQadOne.closest("article");
     const fmQadTwoCard = viewFmQadTwo.closest("article");
@@ -2111,6 +2117,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.queryByText("This file or indicator has been verified.")).toBeNull();
     expect(screen.queryByText("BMEF Report")).toBeNull();
     expect(screen.queryByText("SMEA Report")).toBeNull();
+    expect(screen.queryByText("FM-QAD-001 Report")).toBeNull();
 
     fireEvent.click(viewFmQadOne);
 
@@ -2261,8 +2268,12 @@ describe("SchoolAdminDashboard submitted report view", () => {
       expect(fetchSubmission).toHaveBeenCalledWith("private-file-only-101");
     });
     expect(await screen.findByText("fm-qad-001.pdf")).not.toBeNull();
-    expect((screen.getByRole("button", { name: /View FM-QAD-001 Report/i }) as HTMLButtonElement).disabled).toBe(false);
-    expect((screen.getByRole("button", { name: /View FM-QAD-002 Report/i }) as HTMLButtonElement).disabled).toBe(true);
+    const fmQadOneCard = screen.getByText("FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School").closest("article");
+    const fmQadTwoCard = screen.getByText("FM-QAD-002 Qualitative Evaluation Processing Sheet for Recognition of Private Schools").closest("article");
+    expect(fmQadOneCard).not.toBeNull();
+    expect(fmQadTwoCard).not.toBeNull();
+    expect((within(fmQadOneCard as HTMLElement).getByRole("button", { name: "View file" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((within(fmQadTwoCard as HTMLElement).getByRole("button", { name: "View file" }) as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("keeps the newest saved report file card across save and login cycles", async () => {
@@ -2408,7 +2419,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("latest-fm-qad-001.pdf")).not.toBeNull();
     });
-    expect((screen.getByRole("button", { name: /View FM-QAD-001 Report/i }) as HTMLButtonElement).disabled).toBe(false);
+    const firstFmQadOneCard = screen.getByText("FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School").closest("article");
+    expect(firstFmQadOneCard).not.toBeNull();
+    expect((within(firstFmQadOneCard as HTMLElement).getByRole("button", { name: "View file" }) as HTMLButtonElement).disabled).toBe(false);
 
     firstLogin.unmount();
     schoolIndicatorPanelPropsMock = null;
@@ -2425,7 +2438,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     await waitFor(() => {
       expect(screen.getByText("latest-fm-qad-001.pdf")).not.toBeNull();
     });
-    expect((screen.getByRole("button", { name: /View FM-QAD-001 Report/i }) as HTMLButtonElement).disabled).toBe(false);
+    const secondFmQadOneCard = screen.getByText("FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School").closest("article");
+    expect(secondFmQadOneCard).not.toBeNull();
+    expect((within(secondFmQadOneCard as HTMLElement).getByRole("button", { name: "View file" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("uses Ctrl+R to refresh School Head dashboard data instead of forcing a browser reload", async () => {

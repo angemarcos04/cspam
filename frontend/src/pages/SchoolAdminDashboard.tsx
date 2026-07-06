@@ -67,6 +67,25 @@ import type {
 export const DASHBOARD_VIEW_YEAR_STORAGE_KEY_PREFIX = "cspams:school-admin-dashboard:view-year";
 const DASHBOARD_VIEW_YEAR_MANUAL_STORAGE_KEY_SUFFIX = ":manual";
 
+const REPORT_VIEW_FILE_LABELS: Partial<Record<IndicatorSubmissionFileType, string>> = {
+  bmef: "Basic Education Monitoring and Evaluation Framework (BEMEF)",
+  smea: "School Monitoring, Evaluation, and Adjustment (SMEA)",
+  fm_qad_001: "FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School",
+  fm_qad_002: "FM-QAD-002 Qualitative Evaluation Processing Sheet for Recognition of Private Schools",
+  fm_qad_003: "FM-QAD-003 Qualitative Evaluation Processing Sheet for Renewal Permit & Government Recognition",
+  fm_qad_004: "FM-QAD-004 Qualitative Evaluation Processing Sheet for SHS",
+  fm_qad_008: "FM-QAD-008 Checklist for Application for SPED",
+  fm_qad_009: "FM-QAD-009 Checklist for Application for the Issuance of Special Order",
+  fm_qad_010: "FM-QAD-010 Checklist for Application for Tuition Fee Increase",
+  fm_qad_011: "FM-QAD-011 Processing Sheet for Application for Additional Strand in SHS",
+  fm_qad_034: "FM-QAD-034 Requirements for the Opening of Science Class",
+  fm_qad_041: "FM-QAD-041 Request for Confirmation of School Fees",
+};
+
+function resolveReportViewFileLabel(type: IndicatorSubmissionFileType, fallback: string): string {
+  return REPORT_VIEW_FILE_LABELS[type] ?? fallback;
+}
+
 export function buildSchoolAdminRefreshBatches(
   refreshRecords: (options?: RefreshOptions) => Promise<unknown>,
   refreshSubmissions: (options?: RefreshOptions) => Promise<unknown>,
@@ -2146,17 +2165,18 @@ export function SchoolAdminDashboard() {
                 {visibleSubmittedReportFiles.map((definition) => {
                   const reportFile = visibleSubmittedReportFileEntries[definition.type] ?? null;
                   const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
-                  const buttonLabel = `View ${definition.shortLabel} Report`;
+                  const reportViewFileLabel = resolveReportViewFileLabel(definition.type, definition.label);
+                  const buttonLabel = "View file";
                   const decision = resolveLatestScopeReviewDecision(groupAReportView.submission, "file", definition.type);
 
                   return (
-                    <article key={definition.type} className="rounded-sm border border-slate-200 bg-white px-6 py-5">
-                      <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-sm font-bold uppercase tracking-wide text-slate-700">{definition.shortLabel} Report</h3>
+                    <article key={definition.type} className="flex h-full min-h-[185px] flex-col rounded-sm border border-slate-200 bg-white px-6 py-5">
+                      <div className="flex min-h-[3.75rem] items-start justify-between gap-2">
+                        <h3 className="text-[12px] font-bold uppercase leading-snug tracking-wide text-slate-700">{reportViewFileLabel}</h3>
                         <ScopeDecisionBadge decision={decision} />
                       </div>
 
-                      <dl className="mt-4 space-y-2">
+                      <dl className="mt-3 space-y-2">
                         <div className="flex items-start gap-2">
                           <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
                           <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
@@ -2169,7 +2189,7 @@ export function SchoolAdminDashboard() {
                         </div>
                       </dl>
 
-                      <div className="mt-4">
+                      <div className="mt-auto pt-4">
                         <button
                           type="button"
                           onClick={hasFile ? () => openReportModal(definition.type) : undefined}
@@ -2197,17 +2217,18 @@ export function SchoolAdminDashboard() {
                     {secondarySubmittedReportFiles.map((definition) => {
                       const reportFile = secondarySubmittedReportFileEntries[definition.type] ?? null;
                       const hasFile = Boolean(reportFile?.uploaded && reportFile?.originalFilename);
-                      const buttonLabel = `View ${definition.shortLabel} Report`;
+                      const reportViewFileLabel = resolveReportViewFileLabel(definition.type, definition.label);
+                      const buttonLabel = "View file";
                       const decision = resolveLatestScopeReviewDecision(groupAReportView.submission, "file", definition.type);
 
                       return (
-                        <article key={`secondary-${definition.type}`} className="rounded-sm border border-amber-200 bg-white px-6 py-5">
-                          <div className="flex items-center justify-between gap-2">
-                            <h3 className="text-sm font-bold uppercase tracking-wide text-amber-900">{definition.shortLabel} Report</h3>
+                        <article key={`secondary-${definition.type}`} className="flex h-full min-h-[185px] flex-col rounded-sm border border-amber-200 bg-white px-6 py-5">
+                          <div className="flex min-h-[3.75rem] items-start justify-between gap-2">
+                            <h3 className="text-[12px] font-bold uppercase leading-snug tracking-wide text-amber-900">{reportViewFileLabel}</h3>
                             <ScopeDecisionBadge decision={decision} />
                           </div>
 
-                          <dl className="mt-4 space-y-2">
+                          <dl className="mt-3 space-y-2">
                             <div className="flex items-start gap-2">
                               <dt className="w-24 shrink-0 text-xs font-medium text-slate-500">File</dt>
                               <dd className="truncate text-sm font-normal text-slate-900">{reportFile?.originalFilename ?? "- (none)"}</dd>
@@ -2220,7 +2241,7 @@ export function SchoolAdminDashboard() {
                             </div>
                           </dl>
 
-                          <div className="mt-4">
+                          <div className="mt-auto pt-4">
                             <button
                               type="button"
                               onClick={hasFile ? () => openReportModal(definition.type) : undefined}
