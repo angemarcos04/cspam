@@ -417,6 +417,16 @@ th {
   font-family: var(--font-sans);
 }
 
+#file-reports article button {
+  font-size: 0 !important;
+}
+
+#file-reports article button::after {
+  content: "View file";
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .school-head-dashboard h1,
 .school-head-dashboard h2,
 .school-head-dashboard h3,
