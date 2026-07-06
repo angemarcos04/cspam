@@ -78,12 +78,12 @@
       <section id="bmef" ref="bmefSectionRef" class="mt-12 scroll-mt-40 space-y-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Section 2</p>
-          <h2 class="mt-1 text-2xl font-bold text-slate-900">BMEF Upload</h2>
+          <h2 class="mt-1 text-2xl font-bold text-slate-900">BEMEF Upload</h2>
         </div>
 
         <UploadCard
-          title="BMEF Document Upload"
-          description="Upload the completed BMEF file for the selected package."
+          title="BEMEF Document Upload"
+          description="Upload the completed BEMEF file for the selected package."
           :submitted="bmef.submitted"
           :uploading="bmef.uploading"
           :disabled="bmef.disabled"
@@ -99,11 +99,11 @@
       <section id="smea" ref="smeaSectionRef" class="mt-12 scroll-mt-40 space-y-4">
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Section 3</p>
-          <h2 class="mt-1 text-2xl font-bold text-slate-900">SMEA Upload</h2>
+          <h2 class="mt-1 text-2xl font-bold text-slate-900">School Monitoring, Evaluation, and Adjustment (SMEA) Upload</h2>
         </div>
 
         <UploadCard
-          title="SMEA Document Upload"
+          title="School Monitoring, Evaluation, and Adjustment (SMEA) Document Upload"
           description="Upload the completed SMEA file for the selected package."
           :submitted="smea.submitted"
           :uploading="smea.uploading"
