@@ -62,9 +62,9 @@ const bmefStatusLabel = computed(() => (props.bmefSubmitted ? "Submitted" : "Not
 const smeaStatusLabel = computed(() => (props.smeaSubmitted ? "Submitted" : "Not Submitted"));
 
 const bmefStatusHelp = computed(() =>
-  props.bmefSubmitted ? "Latest BMEF file is ready for review." : "Upload BMEF file to complete this section.",
+  props.bmefSubmitted ? "Latest BMEF file is ready for review." : "Upload BMEF document to complete this section.",
 );
 const smeaStatusHelp = computed(() =>
-  props.smeaSubmitted ? "Latest SMEA file is ready for review." : "Upload SMEA file to complete this section.",
+  props.smeaSubmitted ? "Latest SMEA file is ready for review." : "Upload SMEA document to complete this section.",
 );
 </script>
