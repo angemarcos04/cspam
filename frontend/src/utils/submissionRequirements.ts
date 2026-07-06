@@ -19,6 +19,36 @@ export interface SubmissionRequirementProfile {
   createSchoolHint: string;
 }
 
+const SUBMITTED_REPORT_VIEW_LABELS: Partial<Record<IndicatorSubmissionFileType, string>> = {
+  bmef: "Basic Education Monitoring and Evaluation Framework (BEMEF)",
+  smea: "School Monitoring, Evaluation, and Adjustment (SMEA)",
+  fm_qad_001: "FM-QAD-001 Qualitative Evaluation Processing Sheet for Establishment of Private School",
+  fm_qad_002: "FM-QAD-002 Qualitative Evaluation Processing Sheet for Recognition of Private Schools",
+  fm_qad_003: "FM-QAD-003 Qualitative Evaluation Processing Sheet for Renewal Permit & Government Recognition",
+  fm_qad_004: "FM-QAD-004 Qualitative Evaluation Processing Sheet for SHS",
+  fm_qad_008: "FM-QAD-008 Checklist for Application for SPED",
+  fm_qad_009: "FM-QAD-009 Checklist for Application for the Issuance of Special Order",
+  fm_qad_010: "FM-QAD-010 Checklist for Application for Tuition Fee Increase",
+  fm_qad_011: "FM-QAD-011 Processing Sheet for Application for Additional Strand in SHS",
+  fm_qad_034: "FM-QAD-034 Requirements for the Opening of Science Class",
+  fm_qad_041: "FM-QAD-041 Request for Confirmation of School Fees",
+};
+
+function withSubmittedReportViewLabels(definitions: SubmissionFileTabDefinition[]): SubmissionFileTabDefinition[] {
+  return definitions.map((definition) => {
+    const reportViewLabel = SUBMITTED_REPORT_VIEW_LABELS[definition.type];
+    if (!reportViewLabel) {
+      return definition;
+    }
+
+    return {
+      ...definition,
+      label: reportViewLabel,
+      shortLabel: reportViewLabel,
+    };
+  });
+}
+
 export function resolveSubmissionRequirementProfile(
   schoolType: string | null | undefined,
 ): SubmissionRequirementProfile {
@@ -284,7 +314,9 @@ export function resolveSubmittedReportVisibleFileDefinitions(options: {
       : defaultRequiredSubmissionFileTypesForSchoolType(options.schoolType),
   );
 
-  return SUBMISSION_FILE_DEFINITIONS.filter((definition) => requiredTypes.has(definition.type));
+  return withSubmittedReportViewLabels(
+    SUBMISSION_FILE_DEFINITIONS.filter((definition) => requiredTypes.has(definition.type)),
+  );
 }
 
 export function resolveActiveWorkspaceVisibleFileDefinitions(options: {
@@ -315,7 +347,9 @@ export function resolveSecondarySubmittedReportFileDefinitions(options: {
   );
   const uploadedTypes = new Set<IndicatorSubmissionFileType>(options.uploadedFileTypes ?? []);
 
-  return SUBMISSION_FILE_DEFINITIONS.filter((definition) => (
-    uploadedTypes.has(definition.type) && !requiredTypes.has(definition.type)
-  ));
+  return withSubmittedReportViewLabels(
+    SUBMISSION_FILE_DEFINITIONS.filter((definition) => (
+      uploadedTypes.has(definition.type) && !requiredTypes.has(definition.type)
+    )),
+  );
 }
