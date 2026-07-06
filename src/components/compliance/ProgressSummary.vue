@@ -14,7 +14,7 @@
     </button>
 
     <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">BMEF</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Basic Education Monitoring and Evaluation Framework (BEMEF)</p>
       <p class="mt-5 text-4xl font-black leading-none text-slate-900">{{ bmefStatusLabel }}</p>
       <p class="mt-2 text-sm font-medium text-slate-600">{{ bmefStatusHelp }}</p>
       <button
@@ -27,7 +27,7 @@
     </div>
 
     <div class="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
-      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">SMEA</p>
+      <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">School Monitoring, Evaluation, and Adjustment (SMEA)</p>
       <p class="mt-5 text-4xl font-black leading-none text-slate-900">{{ smeaStatusLabel }}</p>
       <p class="mt-2 text-sm font-medium text-slate-600">{{ smeaStatusHelp }}</p>
       <button
@@ -62,7 +62,7 @@ const bmefStatusLabel = computed(() => (props.bmefSubmitted ? "Submitted" : "Not
 const smeaStatusLabel = computed(() => (props.smeaSubmitted ? "Submitted" : "Not Submitted"));
 
 const bmefStatusHelp = computed(() =>
-  props.bmefSubmitted ? "Latest BMEF file is ready for review." : "Upload BMEF document to complete this section.",
+  props.bmefSubmitted ? "Latest BEMEF file is ready for review." : "Upload BEMEF document to complete this section.",
 );
 const smeaStatusHelp = computed(() =>
   props.smeaSubmitted ? "Latest SMEA file is ready for review." : "Upload SMEA document to complete this section.",
