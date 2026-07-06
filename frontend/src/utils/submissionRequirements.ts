@@ -28,14 +28,14 @@ export function resolveSubmissionRequirementProfile(
     return {
       schoolType: "private",
       requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => !SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
-      createSchoolHint: "Private School Head workspace uses FM-QAD uploads only. Basic Education Monitoring and Evaluation Framework (BEMEF) and School Monitoring, Evaluation, and Adjustment (SMEA) are not part of the active package.",
+      createSchoolHint: "Private School Head workspace uses FM-QAD uploads only. BMEF and SMEA are not part of the active package.",
     };
   }
 
   return {
     schoolType: "public",
     requiredFileTypes: SUBMISSION_FILE_TYPES.filter((type) => SUBMISSION_FILE_DEFINITION_BY_TYPE[type].core),
-    createSchoolHint: "Public School Head workspace uses Basic Education Monitoring and Evaluation Framework (BEMEF) and School Monitoring, Evaluation, and Adjustment (SMEA) as the active package requirements.",
+    createSchoolHint: "Public School Head workspace uses BMEF and SMEA as the active package requirements.",
   };
 }
 
