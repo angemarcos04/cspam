@@ -11,16 +11,16 @@ export interface SubmissionFileTabDefinition {
 export const SUBMISSION_FILE_DEFINITIONS: SubmissionFileTabDefinition[] = [
   {
     type: "bmef",
-    label: "BMEF",
-    shortLabel: "BMEF",
-    description: "Basic Education Monitoring and Evaluation Framework report.",
+    label: "Basic Education Monitoring and Evaluation Framework (BEMEF)",
+    shortLabel: "BEMEF",
+    description: "Basic Education Monitoring and Evaluation Framework (BEMEF) report.",
     core: true,
   },
   {
     type: "smea",
-    label: "SMEA",
+    label: "School Monitoring, Evaluation, and Adjustment (SMEA)",
     shortLabel: "SMEA",
-    description: "School Monitoring, Evaluation, and Adjustment report.",
+    description: "School Monitoring, Evaluation, and Adjustment (SMEA) report.",
     core: true,
   },
   {
