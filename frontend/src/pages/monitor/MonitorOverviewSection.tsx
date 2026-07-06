@@ -91,7 +91,7 @@ export function MonitorOverviewSection({
             <div className="grid gap-4 xl:grid-cols-[1.4fr_1fr]">
               <div id="monitor-sync-alerts" className={`rounded-sm border border-slate-200 bg-white p-5 ${sectionFocusClass("monitor-sync-alerts")}`}>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">BMEF Sync Snapshot</h2>
+                  <h2 className="text-sm font-bold uppercase tracking-wide text-slate-700">BEMEF Sync Snapshot</h2>
                   <span className="text-xs text-slate-500">
                     {targetsMet?.generatedAt ? `Generated ${new Date(targetsMet.generatedAt).toLocaleTimeString()}` : "Waiting for data"}
                   </span>
