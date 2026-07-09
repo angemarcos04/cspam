@@ -201,7 +201,40 @@ describe("SchoolIndicatorPanel optional note removal", () => {
 
     expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Final Package: Draft/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Workspace readiness progress" })).length).toBeGreaterThan(0);
+  });
+
+  it("shows submitted final package status separately from readiness", async () => {
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("submitted-package"),
+        status: "submitted",
+        statusLabel: "Submitted",
+        submittedAt: "2026-05-19T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Final Package: Submitted to Monitor/)).length).toBeGreaterThan(0);
+  });
+
+  it("shows validated final package status separately from readiness", async () => {
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("validated-package"),
+        status: "validated",
+        statusLabel: "Validated",
+        submittedAt: "2026-05-19T10:00:00.000Z",
+      },
+    ]);
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findAllByText(/Final Package: Validated/)).length).toBeGreaterThan(0);
   });
 
   it("follows the academic year selected by the parent dashboard", async () => {

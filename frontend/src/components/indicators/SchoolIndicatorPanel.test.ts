@@ -11,6 +11,7 @@ import {
   resolveBatchSubmitScopeIds,
   resolveEditableWorkspaceSubmission,
   resolveMetricFromIndicatorInWorkspace,
+  resolveOptimisticSubmittedByTypeState,
   getSubmissionFreshnessScore,
   resolvePreferredWorkspaceSubmission,
   resolveEffectiveWorkspaceSubmission,
@@ -20,8 +21,20 @@ import {
   workspaceDraftGuidanceCopy,
   workspaceFileDraftStatusLabel,
 } from "@/components/indicators/SchoolIndicatorPanel";
+import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import { buildSubmissionUploadedFileFingerprint } from "@/utils/submissionRequirements";
-import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionItem } from "@/types";
+import type { IndicatorMetric, IndicatorSubmission, IndicatorSubmissionFileType, IndicatorSubmissionItem } from "@/types";
+
+function buildSubmittedByTypeState(
+  trueTypes: IndicatorSubmissionFileType[] = [],
+): Record<IndicatorSubmissionFileType, boolean> {
+  const trueTypeSet = new Set(trueTypes);
+
+  return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((state, type) => {
+    state[type] = trueTypeSet.has(type);
+    return state;
+  }, {} as Record<IndicatorSubmissionFileType, boolean>);
+}
 
 describe("buildWorkspaceAutosavePayloadOptions", () => {
   it("keeps routine autosave incremental instead of promoting it to a full workspace replace", () => {
@@ -29,6 +42,65 @@ describe("buildWorkspaceAutosavePayloadOptions", () => {
       allowIncomplete: true,
       includeAllEntries: false,
     });
+  });
+});
+
+describe("resolveOptimisticSubmittedByTypeState", () => {
+  it("keeps optimistic true file readiness when same-submission server state is stale false", () => {
+    const result = resolveOptimisticSubmittedByTypeState({
+      submissionChanged: false,
+      current: buildSubmittedByTypeState(["fm_qad_001"]),
+      server: buildSubmittedByTypeState(),
+    });
+
+    expect(result.fm_qad_001).toBe(true);
+  });
+
+  it("accepts same-submission server true file readiness when current optimistic state is false", () => {
+    const result = resolveOptimisticSubmittedByTypeState({
+      submissionChanged: false,
+      current: buildSubmittedByTypeState(),
+      server: buildSubmittedByTypeState(["fm_qad_001"]),
+    });
+
+    expect(result.fm_qad_001).toBe(true);
+  });
+
+  it("keeps a same-submission file false when neither optimistic nor server state has it ready", () => {
+    const result = resolveOptimisticSubmittedByTypeState({
+      submissionChanged: false,
+      current: buildSubmittedByTypeState(),
+      server: buildSubmittedByTypeState(),
+    });
+
+    expect(result.fm_qad_001).toBe(false);
+  });
+
+  it("resets to the exact server state when the active submission changes", () => {
+    const server = buildSubmittedByTypeState(["bmef"]);
+    const result = resolveOptimisticSubmittedByTypeState({
+      submissionChanged: true,
+      current: buildSubmittedByTypeState(["fm_qad_001"]),
+      server,
+    });
+
+    expect(result).toBe(server);
+    expect(result.bmef).toBe(true);
+    expect(result.fm_qad_001).toBe(false);
+  });
+
+  it("preserves explicit file reset state when the same-submission server state is also false", () => {
+    const result = resolveOptimisticSubmittedByTypeState({
+      submissionChanged: false,
+      current: {
+        ...buildSubmittedByTypeState(["bmef"]),
+        fm_qad_001: false,
+      },
+      server: buildSubmittedByTypeState(),
+    });
+
+    expect(result.bmef).toBe(true);
+    expect(result.fm_qad_001).toBe(false);
   });
 });
 

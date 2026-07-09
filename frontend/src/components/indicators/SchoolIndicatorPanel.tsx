@@ -216,6 +216,21 @@ export function buildStrictSubmittedByType(
   }, {} as Record<IndicatorSubmissionFileType, boolean>);
 }
 
+export function resolveOptimisticSubmittedByTypeState(params: {
+  submissionChanged: boolean;
+  current: Record<IndicatorSubmissionFileType, boolean>;
+  server: Record<IndicatorSubmissionFileType, boolean>;
+}): Record<IndicatorSubmissionFileType, boolean> {
+  if (params.submissionChanged) {
+    return params.server;
+  }
+
+  return SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((next, type) => {
+    next[type] = Boolean(params.current[type] || params.server[type]);
+    return next;
+  }, {} as Record<IndicatorSubmissionFileType, boolean>);
+}
+
 export function buildWorkspaceAutosavePayloadOptions() {
   return {
     allowIncomplete: true,
@@ -1029,6 +1044,26 @@ export function resolveUnifiedSendActionMode(
   selectedBatchScopeIds: string[],
 ): "batch" | "active" {
   return selectedBatchScopeIds.length > 0 ? "batch" : "active";
+}
+
+export function resolveFinalPackageStatusLabel(params: {
+  workspaceMode: GroupBWorkspaceMode;
+  status: string | null | undefined;
+}): string {
+  if (params.workspaceMode === "read_only_year") {
+    return "Read-only";
+  }
+
+  switch (String(params.status ?? "").toLowerCase()) {
+    case "validated":
+      return "Validated";
+    case "submitted":
+      return "Submitted to Monitor";
+    case "returned":
+      return "Returned";
+    default:
+      return "Draft";
+  }
 }
 
 interface WorkspaceProgressSummaryInput {
@@ -3699,6 +3734,10 @@ function SchoolIndicatorPanelComponent({
     if (workspaceMode === "read_only_year") return "Read-only";
     return "Draft";
   }, [workspaceMode]);
+  const finalPackageStatusLabel = useMemo(
+    () => resolveFinalPackageStatusLabel({ workspaceMode, status: activeFormStatus }),
+    [activeFormStatus, workspaceMode],
+  );
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowSectionSaveAction = canShowSaveAndSubmitActions && Boolean(activeCategory || activeUploadType);
   const canShowEditAction = workspaceMode === "submitted_locked";
@@ -3844,16 +3883,13 @@ function SchoolIndicatorPanelComponent({
     const submissionChanged = previousActiveFormSubmissionIdRef.current !== activeFormSubmissionId;
     previousActiveFormSubmissionIdRef.current = activeFormSubmissionId;
 
-    if (submissionChanged) {
-      setOptimisticSubmittedByType(serverSubmittedByType);
-    } else {
-      setOptimisticSubmittedByType((current) =>
-        SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((next, type) => {
-          next[type] = Boolean(current[type] || serverSubmittedByType[type]);
-          return next;
-        }, {} as Record<IndicatorSubmissionFileType, boolean>),
-      );
-    }
+    setOptimisticSubmittedByType((current) =>
+      resolveOptimisticSubmittedByTypeState({
+        submissionChanged,
+        current,
+        server: serverSubmittedByType,
+      }),
+    );
 
     if (!isFormSubmitted) {
       setIsSubmittedEditMode(false);
@@ -6345,6 +6381,9 @@ function SchoolIndicatorPanelComponent({
                 {workspaceProgressSummary.totalScopeCount > 0
                   ? ` | Ready items: ${workspaceProgressSummary.readyScopeCount}/${workspaceProgressSummary.totalScopeCount} | Sent to Monitor: ${workspaceProgressSummary.submittedScopeCount}/${workspaceProgressSummary.totalScopeCount} | Incomplete: ${workspaceProgressSummary.incompleteScopeCount}`
                   : ""}
+              </p>
+              <p className="mt-1 text-right text-[11px] font-semibold text-slate-600">
+                Final Package: {finalPackageStatusLabel}
               </p>
               <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
                 <div
