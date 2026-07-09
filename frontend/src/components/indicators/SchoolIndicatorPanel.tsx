@@ -3837,20 +3837,30 @@ function SchoolIndicatorPanelComponent({
   useEffect(() => {
     setSelectedBatchScopeIds((current) => current.filter((scopeId) => batchSelectableScopeIds.includes(scopeId)));
   }, [batchSelectableScopeIds]);
-  const workspaceProgressToneClass = useMemo(() => {
-    if (workspaceProgressSummary.readyPercent >= 80) return "bg-emerald-500";
-    if (workspaceProgressSummary.readyPercent >= 50) return "bg-amber-500";
-    return "bg-rose-500";
-  }, [workspaceProgressSummary.readyPercent]);
-  const workspaceSentPercent = workspaceProgressSummary.totalScopeCount > 0
+  const displayProgressTotal = workspaceProgressSummary.totalScopeCount;
+  const isFinalPackageSubmittedDisplay = workspaceMode === "submitted_locked" && isFormSubmitted;
+  const displayProgressCount = isFinalPackageSubmittedDisplay
+    ? workspaceProgressSummary.submittedScopeCount
+    : workspaceProgressSummary.readyScopeCount;
+  const displayProgressPercent = displayProgressTotal > 0
     ? Math.min(
       100,
       Math.max(
         0,
-        Math.round((workspaceProgressSummary.submittedScopeCount / workspaceProgressSummary.totalScopeCount) * 100),
+        Math.round((displayProgressCount / displayProgressTotal) * 100),
       ),
     )
     : 0;
+  const displayProgressLabel = isFinalPackageSubmittedDisplay ? "Package Submission" : "Workspace Readiness";
+  const displayProgressNoun = isFinalPackageSubmittedDisplay ? "items sent" : "items ready";
+  const displayIncompleteScopeCount = isFinalPackageSubmittedDisplay
+    ? Math.max(0, displayProgressTotal - workspaceProgressSummary.submittedScopeCount)
+    : workspaceProgressSummary.incompleteScopeCount;
+  const displayProgressToneClass = useMemo(() => {
+    if (displayProgressPercent >= 80) return "bg-emerald-500";
+    if (displayProgressPercent >= 50) return "bg-amber-500";
+    return "bg-rose-500";
+  }, [displayProgressPercent]);
   const getCategoryRailStatusLabel = useCallback(
     (progress: { total: number; complete: number } | null): string => {
       if (workspaceMode === "submitted_locked") return "Submitted";
@@ -6388,12 +6398,12 @@ function SchoolIndicatorPanelComponent({
             */}
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
-                Workspace Readiness: {workspaceProgressSummary.readyScopeCount}/{workspaceProgressSummary.totalScopeCount} items ready
+                {displayProgressLabel}: {displayProgressCount}/{displayProgressTotal} {displayProgressNoun}
               </p>
               <p className="mt-1 text-right text-[11px] font-medium text-slate-500">
                 Indicators: {completeIndicators}/{totalIndicators} complete
-                {workspaceProgressSummary.totalScopeCount > 0
-                  ? ` | Ready items: ${workspaceProgressSummary.readyScopeCount}/${workspaceProgressSummary.totalScopeCount} | Sent to Monitor: ${workspaceProgressSummary.submittedScopeCount}/${workspaceProgressSummary.totalScopeCount} | Incomplete: ${workspaceProgressSummary.incompleteScopeCount}`
+                {displayProgressTotal > 0
+                  ? ` | Ready items: ${workspaceProgressSummary.readyScopeCount}/${displayProgressTotal} | Sent to Monitor: ${workspaceProgressSummary.submittedScopeCount}/${displayProgressTotal} | Incomplete: ${displayIncompleteScopeCount}`
                   : ""}
               </p>
               <p className="mt-1 text-right text-[11px] font-semibold text-slate-600">
@@ -6401,24 +6411,13 @@ function SchoolIndicatorPanelComponent({
               </p>
               <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
                 <div
-                  className={`h-1.5 rounded-full transition-[width] duration-300 ${workspaceProgressToneClass}`}
-                  style={{ width: `${workspaceProgressSummary.readyPercent}%` }}
+                  className={`h-1.5 rounded-full transition-[width] duration-300 ${displayProgressToneClass}`}
+                  style={{ width: `${displayProgressPercent}%` }}
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={workspaceProgressSummary.readyPercent}
-                  aria-label="Workspace readiness progress"
-                />
-              </div>
-              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-200">
-                <div
-                  className="h-1.5 rounded-full bg-primary-500 transition-[width] duration-300"
-                  style={{ width: `${workspaceSentPercent}%` }}
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={workspaceSentPercent}
-                  aria-label="Sent to Monitor progress"
+                  aria-valuenow={displayProgressPercent}
+                  aria-label={`${displayProgressLabel} progress`}
                 />
               </div>
               {workspaceMode === "read_only_year" && (

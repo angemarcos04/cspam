@@ -1,10 +1,16 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
+import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 
 const useAuthMock = vi.fn();
 const useIndicatorDataMock = vi.fn();
+const privateWorkspaceScopeIds = [
+  "school_achievements_learning_outcomes",
+  "key_performance_indicators",
+  ...SUBMISSION_FILE_TYPES.filter((type) => type !== "bmef" && type !== "smea"),
+];
 
 vi.mock("@/context/Auth", () => ({
   useAuth: () => useAuthMock(),
@@ -202,8 +208,8 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Final Package: Draft/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByRole("progressbar", { name: "Workspace readiness progress" })).length).toBeGreaterThan(0);
-    expect((await screen.findAllByRole("progressbar", { name: "Sent to Monitor progress" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("progressbar", { name: "Workspace Readiness progress" })).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("progressbar", { name: "Sent to Monitor progress" })).toBeNull();
   });
 
   it("shows returned final package status separately from readiness", async () => {
@@ -227,14 +233,25 @@ describe("SchoolIndicatorPanel optional note removal", () => {
         status: "submitted",
         statusLabel: "Submitted",
         submittedAt: "2026-05-19T10:00:00.000Z",
+        scopeProgress: {
+          requiredScopeIds: privateWorkspaceScopeIds,
+          submittedScopeIds: privateWorkspaceScopeIds,
+          pendingScopeIds: [],
+          submittedRequiredScopeCount: privateWorkspaceScopeIds.length,
+          totalRequiredScopeCount: privateWorkspaceScopeIds.length,
+        },
       },
     ]);
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
-    expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Sent to Monitor: 12\/12/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Incomplete: 0/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Final Package: Submitted to Monitor/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("progressbar", { name: "Package Submission progress" })).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("progressbar", { name: "Sent to Monitor progress" })).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: "Workspace Readiness progress" })).toBeNull();
   });
 
   it("shows validated final package status separately from readiness", async () => {
@@ -244,11 +261,19 @@ describe("SchoolIndicatorPanel optional note removal", () => {
         status: "validated",
         statusLabel: "Validated",
         submittedAt: "2026-05-19T10:00:00.000Z",
+        scopeProgress: {
+          requiredScopeIds: privateWorkspaceScopeIds,
+          submittedScopeIds: privateWorkspaceScopeIds,
+          pendingScopeIds: [],
+          submittedRequiredScopeCount: privateWorkspaceScopeIds.length,
+          totalRequiredScopeCount: privateWorkspaceScopeIds.length,
+        },
       },
     ]);
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
+    expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Final Package: Validated/)).length).toBeGreaterThan(0);
   });
 
