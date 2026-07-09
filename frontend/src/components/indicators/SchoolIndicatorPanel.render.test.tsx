@@ -206,13 +206,16 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Final Package: Draft/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Workspace Readiness progress" })).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Indicators:/)).toBeNull();
+    expect(screen.queryByText(/Ready items:/)).toBeNull();
+    expect(screen.queryByText(/Sent to Monitor:/)).toBeNull();
+    expect(screen.queryByText(/Incomplete:/)).toBeNull();
+    expect(screen.queryByText(/Final Package:/)).toBeNull();
     expect(screen.queryByRole("progressbar", { name: "Sent to Monitor progress" })).toBeNull();
   });
 
-  it("shows returned final package status separately from readiness", async () => {
+  it("hides returned final package status text from the progress area", async () => {
     mockIndicatorPanelData([
       {
         ...buildHydratedSubmission("returned-package"),
@@ -223,10 +226,11 @@ describe("SchoolIndicatorPanel optional note removal", () => {
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
-    expect((await screen.findAllByText(/Final Package: Returned/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Final Package:/)).toBeNull();
   });
 
-  it("shows submitted final package status separately from readiness", async () => {
+  it("uses package submission progress for submitted packages without showing secondary status text", async () => {
     mockIndicatorPanelData([
       {
         ...buildHydratedSubmission("submitted-package"),
@@ -246,15 +250,17 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Sent to Monitor: 12\/12/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Incomplete: 0/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Final Package: Submitted to Monitor/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Package Submission progress" })).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Indicators:/)).toBeNull();
+    expect(screen.queryByText(/Ready items:/)).toBeNull();
+    expect(screen.queryByText(/Sent to Monitor:/)).toBeNull();
+    expect(screen.queryByText(/Incomplete:/)).toBeNull();
+    expect(screen.queryByText(/Final Package:/)).toBeNull();
     expect(screen.queryByRole("progressbar", { name: "Sent to Monitor progress" })).toBeNull();
     expect(screen.queryByRole("progressbar", { name: "Workspace Readiness progress" })).toBeNull();
   });
 
-  it("shows validated final package status separately from readiness", async () => {
+  it("uses package submission progress for validated packages without showing final package text", async () => {
     mockIndicatorPanelData([
       {
         ...buildHydratedSubmission("validated-package"),
@@ -274,7 +280,7 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
-    expect((await screen.findAllByText(/Final Package: Validated/)).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Final Package:/)).toBeNull();
   });
 
   it("follows the academic year selected by the parent dashboard", async () => {

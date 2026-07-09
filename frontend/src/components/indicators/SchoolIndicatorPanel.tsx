@@ -2303,11 +2303,6 @@ function SchoolIndicatorPanelComponent({
 
     return map;
   }, [categoryMetrics, metricCompletionById]);
-  const totalIndicators = orderedComplianceMetrics.length;
-  const completeIndicators = useMemo(
-    () => orderedComplianceMetrics.reduce((count, metric) => count + Number(metricCompletionById.get(metric.id) ?? false), 0),
-    [metricCompletionById, orderedComplianceMetrics],
-  );
   const missingFieldTargets = useMemo(() => {
     const targets: MissingFieldTarget[] = [];
 
@@ -3739,10 +3734,6 @@ function SchoolIndicatorPanelComponent({
     if (workspaceMode === "read_only_year") return "Read-only";
     return "Draft";
   }, [workspaceMode]);
-  const finalPackageStatusLabel = useMemo(
-    () => resolveFinalPackageStatusLabel({ workspaceMode, status: activeFormStatus }),
-    [activeFormStatus, workspaceMode],
-  );
   const canShowSaveAndSubmitActions = workspaceMode === "blank" || workspaceMode === "draft" || workspaceMode === "submitted_editing";
   const canShowSectionSaveAction = canShowSaveAndSubmitActions && Boolean(activeCategory || activeUploadType);
   const canShowEditAction = workspaceMode === "submitted_locked";
@@ -3853,9 +3844,6 @@ function SchoolIndicatorPanelComponent({
     : 0;
   const displayProgressLabel = isFinalPackageSubmittedDisplay ? "Package Submission" : "Workspace Readiness";
   const displayProgressNoun = isFinalPackageSubmittedDisplay ? "items sent" : "items ready";
-  const displayIncompleteScopeCount = isFinalPackageSubmittedDisplay
-    ? Math.max(0, displayProgressTotal - workspaceProgressSummary.submittedScopeCount)
-    : workspaceProgressSummary.incompleteScopeCount;
   const displayProgressToneClass = useMemo(() => {
     if (displayProgressPercent >= 80) return "bg-emerald-500";
     if (displayProgressPercent >= 50) return "bg-amber-500";
@@ -6399,15 +6387,6 @@ function SchoolIndicatorPanelComponent({
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
                 {displayProgressLabel}: {displayProgressCount}/{displayProgressTotal} {displayProgressNoun}
-              </p>
-              <p className="mt-1 text-right text-[11px] font-medium text-slate-500">
-                Indicators: {completeIndicators}/{totalIndicators} complete
-                {displayProgressTotal > 0
-                  ? ` | Ready items: ${workspaceProgressSummary.readyScopeCount}/${displayProgressTotal} | Sent to Monitor: ${workspaceProgressSummary.submittedScopeCount}/${displayProgressTotal} | Incomplete: ${displayIncompleteScopeCount}`
-                  : ""}
-              </p>
-              <p className="mt-1 text-right text-[11px] font-semibold text-slate-600">
-                Final Package: {finalPackageStatusLabel}
               </p>
               <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">
                 <div
