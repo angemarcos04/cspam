@@ -260,6 +260,37 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     expect(screen.queryByRole("progressbar", { name: "Workspace Readiness progress" })).toBeNull();
   });
 
+  it("returns to workspace readiness progress while editing a submitted package", async () => {
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("submitted-edit-package"),
+        status: "submitted",
+        statusLabel: "Submitted",
+        submittedAt: "2026-05-19T10:00:00.000Z",
+        scopeProgress: {
+          requiredScopeIds: privateWorkspaceScopeIds,
+          submittedScopeIds: privateWorkspaceScopeIds,
+          pendingScopeIds: [],
+          submittedRequiredScopeCount: privateWorkspaceScopeIds.length,
+          totalRequiredScopeCount: privateWorkspaceScopeIds.length,
+        },
+      },
+    ]);
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit Submitted Report" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Yes" }));
+
+    expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("progressbar", { name: "Workspace Readiness progress" })).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/Package Submission:/)).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: "Package Submission progress" })).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: "Sent to Monitor progress" })).toBeNull();
+  });
+
   it("uses package submission progress for validated packages without showing final package text", async () => {
     mockIndicatorPanelData([
       {
