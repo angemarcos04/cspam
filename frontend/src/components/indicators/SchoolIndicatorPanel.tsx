@@ -1054,7 +1054,12 @@ export function resolveFinalPackageStatusLabel(params: {
     return "Read-only";
   }
 
-  switch (String(params.status ?? "").toLowerCase()) {
+  const normalizedStatus = String(params.status ?? "").trim().toLowerCase();
+
+  switch (normalizedStatus) {
+    case "":
+    case "draft":
+      return "Draft";
     case "validated":
       return "Validated";
     case "submitted":
@@ -1062,7 +1067,7 @@ export function resolveFinalPackageStatusLabel(params: {
     case "returned":
       return "Returned";
     default:
-      return "Draft";
+      return "Unknown";
   }
 }
 
@@ -3837,6 +3842,15 @@ function SchoolIndicatorPanelComponent({
     if (workspaceProgressSummary.readyPercent >= 50) return "bg-amber-500";
     return "bg-rose-500";
   }, [workspaceProgressSummary.readyPercent]);
+  const workspaceSentPercent = workspaceProgressSummary.totalScopeCount > 0
+    ? Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round((workspaceProgressSummary.submittedScopeCount / workspaceProgressSummary.totalScopeCount) * 100),
+      ),
+    )
+    : 0;
   const getCategoryRailStatusLabel = useCallback(
     (progress: { total: number; complete: number } | null): string => {
       if (workspaceMode === "submitted_locked") return "Submitted";
@@ -6394,6 +6408,17 @@ function SchoolIndicatorPanelComponent({
                   aria-valuemax={100}
                   aria-valuenow={workspaceProgressSummary.readyPercent}
                   aria-label="Workspace readiness progress"
+                />
+              </div>
+              <div className="mt-1.5 h-1.5 w-full rounded-full bg-slate-200">
+                <div
+                  className="h-1.5 rounded-full bg-primary-500 transition-[width] duration-300"
+                  style={{ width: `${workspaceSentPercent}%` }}
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={workspaceSentPercent}
+                  aria-label="Sent to Monitor progress"
                 />
               </div>
               {workspaceMode === "read_only_year" && (

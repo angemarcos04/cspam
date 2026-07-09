@@ -203,6 +203,21 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByText(/Final Package: Draft/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Workspace readiness progress" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByRole("progressbar", { name: "Sent to Monitor progress" })).length).toBeGreaterThan(0);
+  });
+
+  it("shows returned final package status separately from readiness", async () => {
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("returned-package"),
+        status: "returned",
+        statusLabel: "Returned",
+      },
+    ]);
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findAllByText(/Final Package: Returned/)).length).toBeGreaterThan(0);
   });
 
   it("shows submitted final package status separately from readiness", async () => {

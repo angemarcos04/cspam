@@ -10,6 +10,7 @@ import {
   buildWorkspaceFileSubmissionByType,
   resolveBatchSubmitScopeIds,
   resolveEditableWorkspaceSubmission,
+  resolveFinalPackageStatusLabel,
   resolveMetricFromIndicatorInWorkspace,
   resolveOptimisticSubmittedByTypeState,
   getSubmissionFreshnessScore,
@@ -101,6 +102,23 @@ describe("resolveOptimisticSubmittedByTypeState", () => {
 
     expect(result.bmef).toBe(true);
     expect(result.fm_qad_001).toBe(false);
+  });
+});
+
+describe("resolveFinalPackageStatusLabel", () => {
+  it("labels known final package statuses without changing workflow meaning", () => {
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "draft" })).toBe("Draft");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "returned" })).toBe("Returned");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "submitted_locked", status: "submitted" })).toBe("Submitted to Monitor");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "submitted_locked", status: "validated" })).toBe("Validated");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "read_only_year", status: "draft" })).toBe("Read-only");
+  });
+
+  it("treats empty status as draft but does not mislabel unknown future statuses", () => {
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: null })).toBe("Draft");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: undefined })).toBe("Draft");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "" })).toBe("Draft");
+    expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "under_review" })).toBe("Unknown");
   });
 });
 
