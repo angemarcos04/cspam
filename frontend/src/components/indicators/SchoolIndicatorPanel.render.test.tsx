@@ -199,7 +199,8 @@ describe("SchoolIndicatorPanel optional note removal", () => {
   it("labels the top progress area as readiness instead of submitted progress", async () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
-    expect((await screen.findAllByText(/Ready for Submit:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Workspace Readiness:/)).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/Sent to Monitor:/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Workspace readiness progress" })).length).toBeGreaterThan(0);
   });
 

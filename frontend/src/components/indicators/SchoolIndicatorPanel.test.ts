@@ -14,6 +14,7 @@ import {
   getSubmissionFreshnessScore,
   resolvePreferredWorkspaceSubmission,
   resolveEffectiveWorkspaceSubmission,
+  resolveWorkspaceMetricCompletion,
   shouldRestorePersistedWorkspaceDraft,
   shouldReplaceInScopeWorkspaceSubmission,
   workspaceDraftGuidanceCopy,
@@ -193,6 +194,106 @@ describe("buildWorkspaceProgressSummary", () => {
       "fm_qad_001",
     ]);
     expect(summary.readyUnsubmittedScopeIds).toEqual([]);
+  });
+
+  it("deduplicates visible scopes and ignores unknown submitted scopes so progress cannot exceed 100%", () => {
+    const summary = buildWorkspaceProgressSummary({
+      categoryProgressById: new Map([
+        ["school_achievements_learning_outcomes", { total: 43, complete: 43 }],
+      ]),
+      categoryIds: [
+        "school_achievements_learning_outcomes",
+        "school_achievements_learning_outcomes",
+      ],
+      fileTypes: ["fm_qad_001", "fm_qad_001"],
+      uploadedFileTypes: {
+        bmef: false,
+        smea: false,
+        fm_qad_001: true,
+        fm_qad_002: false,
+        fm_qad_003: false,
+        fm_qad_004: false,
+        fm_qad_008: false,
+        fm_qad_009: false,
+        fm_qad_010: false,
+        fm_qad_011: false,
+        fm_qad_034: false,
+        fm_qad_041: false,
+      },
+      submittedScopeIds: [
+        "school_achievements_learning_outcomes",
+        "school_achievements_learning_outcomes",
+        "unknown_scope",
+      ],
+    });
+
+    expect(summary.totalScopeCount).toBe(2);
+    expect(summary.readyScopeCount).toBe(2);
+    expect(summary.submittedScopeCount).toBe(1);
+    expect(summary.incompleteScopeCount).toBe(0);
+    expect(summary.readyPercent).toBe(100);
+    expect(summary.readyScopeIds).toEqual([
+      "school_achievements_learning_outcomes",
+      "fm_qad_001",
+    ]);
+    expect(summary.submittedScopeIds).toEqual(["school_achievements_learning_outcomes"]);
+    expect(summary.readyUnsubmittedScopeIds).toEqual(["fm_qad_001"]);
+  });
+});
+
+describe("resolveWorkspaceMetricCompletion", () => {
+  it("does not mark a metric complete when the workspace year has not resolved", () => {
+    const metric = buildMetric({
+      dataType: "yearly_matrix",
+      inputSchema: {
+        years: ["2025-2026"],
+      },
+    });
+
+    expect(
+      resolveWorkspaceMetricCompletion({
+        metric,
+        entry: {
+          targetMatrix: { "2025-2026": "10" },
+          actualMatrix: { "2025-2026": "10" },
+        },
+        workspaceSchoolYears: [],
+        requiredSchoolYearSet: new Set<string>(),
+      }),
+    ).toBe(false);
+  });
+
+  it("marks a metric complete only when required resolved-year values exist", () => {
+    const metric = buildMetric({
+      dataType: "yearly_matrix",
+      inputSchema: {
+        years: ["2025-2026"],
+      },
+    });
+
+    expect(
+      resolveWorkspaceMetricCompletion({
+        metric,
+        entry: {
+          targetMatrix: { "2025-2026": "" },
+          actualMatrix: { "2025-2026": "" },
+        },
+        workspaceSchoolYears: ["2025-2026"],
+        requiredSchoolYearSet: new Set(["2025-2026"]),
+      }),
+    ).toBe(false);
+
+    expect(
+      resolveWorkspaceMetricCompletion({
+        metric,
+        entry: {
+          targetMatrix: { "2025-2026": "10" },
+          actualMatrix: { "2025-2026": "" },
+        },
+        workspaceSchoolYears: ["2025-2026"],
+        requiredSchoolYearSet: new Set(["2025-2026"]),
+      }),
+    ).toBe(true);
   });
 });
 

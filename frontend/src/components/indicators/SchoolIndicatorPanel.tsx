@@ -63,6 +63,7 @@ type MetricEntryState = Record<
   }
 >;
 type MetricEntryValue = MetricEntryState[string];
+type MetricCompletionEntryValue = Pick<MetricEntryValue, "targetMatrix" | "actualMatrix">;
 
 interface ComplianceCategory {
   id: string;
@@ -1071,25 +1072,29 @@ export function buildWorkspaceProgressSummary({
   uploadedFileTypes,
   submittedScopeIds,
 }: WorkspaceProgressSummaryInput): WorkspaceProgressSummary {
-  const readyScopeIds = [
+  const allScopeIds = Array.from(new Set([...categoryIds, ...fileTypes]));
+  const submittedVisibleScopeIds = Array.from(new Set(submittedScopeIds))
+    .filter((scopeId) => allScopeIds.includes(scopeId));
+  const readyScopeIds = Array.from(new Set([
     ...categoryIds.filter((categoryId) => {
       const progress = categoryProgressById.get(categoryId);
       return Boolean(progress && progress.total > 0 && progress.complete >= progress.total);
     }),
     ...fileTypes.filter((type) => uploadedFileTypes[type]),
-  ];
-  const allScopeIds = [...categoryIds, ...fileTypes];
-  const submittedVisibleScopeIds = submittedScopeIds.filter((scopeId) => allScopeIds.includes(scopeId));
+  ])).filter((scopeId) => allScopeIds.includes(scopeId));
   const readyUnsubmittedScopeIds = readyScopeIds.filter((scopeId) => !submittedVisibleScopeIds.includes(scopeId));
   const totalScopeCount = allScopeIds.length;
-  const readyScopeCount = readyScopeIds.length;
+  const readyScopeCount = Math.min(readyScopeIds.length, totalScopeCount);
+  const submittedScopeCount = Math.min(submittedVisibleScopeIds.length, totalScopeCount);
 
   return {
     totalScopeCount,
     readyScopeCount,
     incompleteScopeCount: Math.max(totalScopeCount - readyScopeCount, 0),
-    submittedScopeCount: submittedVisibleScopeIds.length,
-    readyPercent: totalScopeCount > 0 ? Math.round((readyScopeCount / totalScopeCount) * 100) : 0,
+    submittedScopeCount,
+    readyPercent: totalScopeCount > 0
+      ? Math.min(100, Math.max(0, Math.round((readyScopeCount / totalScopeCount) * 100)))
+      : 0,
     readyScopeIds,
     submittedScopeIds: submittedVisibleScopeIds,
     readyUnsubmittedScopeIds,
@@ -1163,6 +1168,38 @@ function buildDefaultEntry(metric: IndicatorMetric): MetricEntryValue {
     actualMatrix,
     remarks: "",
   };
+}
+
+export function resolveWorkspaceMetricCompletion(params: {
+  metric: IndicatorMetric;
+  entry: MetricCompletionEntryValue;
+  workspaceSchoolYears: string[];
+  requiredSchoolYearSet: ReadonlySet<string>;
+}): boolean {
+  const hasResolvedWorkspaceYear = params.workspaceSchoolYears.length > 0 && params.requiredSchoolYearSet.size > 0;
+
+  if (metricIsAutoCalculated(params.metric) || metricUsesSyncedLockedTotals(params.metric)) {
+    return hasResolvedWorkspaceYear;
+  }
+
+  const scopedYears = resolveMetricYearsInScope(params.metric, params.workspaceSchoolYears);
+  const requiredYears = scopedYears.filter((year) => params.requiredSchoolYearSet.has(year));
+  const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(params.metric.code));
+
+  return (
+    hasResolvedWorkspaceYear &&
+    requiredYears.length > 0 &&
+    requiredYears.every((year) => {
+      const targetValue = String(params.entry.targetMatrix[year] ?? "").trim();
+      const actualValue = String(params.entry.actualMatrix[year] ?? "").trim();
+
+      if (requiresTargetActual) {
+        return targetValue.length > 0 && actualValue.length > 0;
+      }
+
+      return actualValue.length > 0 || targetValue.length > 0;
+    })
+  );
 }
 
 function buildInitialMetricEntries(metrics: IndicatorMetric[], current: MetricEntryState): MetricEntryState {
@@ -2202,29 +2239,12 @@ function SchoolIndicatorPanelComponent({
 
     for (const metric of orderedComplianceMetrics) {
       const current = metricEntries[metric.id] ?? buildDefaultEntry(metric);
-      const scopedYears = resolveMetricYearsInScope(metric, workspaceSchoolYears);
-      const requiredYears = scopedYears.filter((year) => requiredSchoolYearSet.has(year));
-      if (metricIsAutoCalculated(metric) || metricUsesSyncedLockedTotals(metric)) {
-        map.set(metric.id, true);
-        continue;
-      }
-
-      const requiresTargetActual = TARGET_ACTUAL_METRIC_CODES.has(normalizeMetricCode(metric.code));
-
-      const isComplete =
-        requiredYears.length === 0 ||
-        requiredYears.every((year) => {
-          const targetValue = String(current.targetMatrix[year] ?? "").trim();
-          const actualValue = String(current.actualMatrix[year] ?? "").trim();
-
-          if (requiresTargetActual) {
-            return targetValue.length > 0 && actualValue.length > 0;
-          }
-
-          return actualValue.length > 0 || targetValue.length > 0;
-        });
-
-      map.set(metric.id, isComplete);
+      map.set(metric.id, resolveWorkspaceMetricCompletion({
+        metric,
+        entry: current,
+        workspaceSchoolYears,
+        requiredSchoolYearSet,
+      }));
     }
 
     return map;
@@ -3460,6 +3480,7 @@ function SchoolIndicatorPanelComponent({
   const activeFormSubmission = latestActiveWorkspaceSubmission;
   const activeFormSubmissionId = activeFormSubmission?.id ?? null;
   const activeWorkspaceSubmissionId = activeWorkspaceSubmission?.id ?? null;
+  const previousActiveFormSubmissionIdRef = useRef<string | null>(null);
   const activeFormStatus = String(activeFormSubmission?.status ?? "").toLowerCase();
   const isFormSubmitted = isSubmittedWorkflowStatus(activeFormStatus);
   const serverSubmittedByType = useMemo(
@@ -3820,7 +3841,19 @@ function SchoolIndicatorPanelComponent({
     ? categoryProgressById.get(activeCategory.id) ?? { total: activeCategory.metrics.length, complete: 0 }
     : { total: 0, complete: 0 };
   useEffect(() => {
-    setOptimisticSubmittedByType(serverSubmittedByType);
+    const submissionChanged = previousActiveFormSubmissionIdRef.current !== activeFormSubmissionId;
+    previousActiveFormSubmissionIdRef.current = activeFormSubmissionId;
+
+    if (submissionChanged) {
+      setOptimisticSubmittedByType(serverSubmittedByType);
+    } else {
+      setOptimisticSubmittedByType((current) =>
+        SUBMISSION_FILE_TYPES.reduce<Record<IndicatorSubmissionFileType, boolean>>((next, type) => {
+          next[type] = Boolean(current[type] || serverSubmittedByType[type]);
+          return next;
+        }, {} as Record<IndicatorSubmissionFileType, boolean>),
+      );
+    }
 
     if (!isFormSubmitted) {
       setIsSubmittedEditMode(false);
@@ -6305,12 +6338,12 @@ function SchoolIndicatorPanelComponent({
             */}
             <div className="w-full md:w-[320px]">
               <p className="text-right text-lg font-bold leading-none text-slate-900">
-                Ready for Submit: {workspaceProgressSummary.readyScopeCount}/{workspaceProgressSummary.totalScopeCount} workspace items
+                Workspace Readiness: {workspaceProgressSummary.readyScopeCount}/{workspaceProgressSummary.totalScopeCount} items ready
               </p>
               <p className="mt-1 text-right text-[11px] font-medium text-slate-500">
                 Indicators: {completeIndicators}/{totalIndicators} complete
                 {workspaceProgressSummary.totalScopeCount > 0
-                  ? ` | Ready for submit: ${workspaceProgressSummary.readyScopeCount}/${workspaceProgressSummary.totalScopeCount} | Sent: ${workspaceProgressSummary.submittedScopeCount}/${workspaceProgressSummary.totalScopeCount} | Incomplete: ${workspaceProgressSummary.incompleteScopeCount}`
+                  ? ` | Ready items: ${workspaceProgressSummary.readyScopeCount}/${workspaceProgressSummary.totalScopeCount} | Sent to Monitor: ${workspaceProgressSummary.submittedScopeCount}/${workspaceProgressSummary.totalScopeCount} | Incomplete: ${workspaceProgressSummary.incompleteScopeCount}`
                   : ""}
               </p>
               <div className="mt-2 h-1.5 w-full rounded-full bg-slate-200">

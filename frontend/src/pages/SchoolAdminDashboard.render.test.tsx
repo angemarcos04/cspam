@@ -1056,7 +1056,7 @@ describe("SchoolAdminDashboard submitted report view", () => {
     expect(screen.queryByText("Reference table structure only. Saved values appear here after save or final submit.")).toBeNull();
   });
 
-  it("aligns TARGETS-MET immediately when a save callback belongs to a newer year and no manual year is selected", async () => {
+  it("keeps the selected academic year stable when a workspace callback belongs to another year", async () => {
     const finalized = buildSubmission({
       id: "finalized-old-year",
       academicYear: { id: "year-1", name: "2025-2026" },
@@ -1144,10 +1144,9 @@ describe("SchoolAdminDashboard submitted report view", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("3,030")).not.toBeNull();
+      expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-1");
     });
-    expect(screen.getByText("TARGETS-MET")).not.toBeNull();
-    expect(screen.getByTestId("workspace-panel").getAttribute("data-selected-academic-year-id")).toBe("year-2");
+    expect(screen.queryByText("3,030")).toBeNull();
   });
 
   it("selects the latest saved draft academic year on fresh login and aligns the workspace", async () => {

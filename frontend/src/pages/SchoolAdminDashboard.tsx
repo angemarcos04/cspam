@@ -1853,11 +1853,7 @@ export function SchoolAdminDashboard() {
     }
 
     if (effectiveAcademicYearId && submissionAcademicYearId !== effectiveAcademicYearId) {
-      if (hasManualDashboardYearSelectionRef.current) {
-        return;
-      }
-      setDashboardViewAcademicYearId(submissionAcademicYearId);
-      lastLoadedYearKeyRef.current = "";
+      return;
     }
 
     if (!effectiveAcademicYearId) {
