@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE,
   buildWorkspaceProgressSummary,
   buildResetEntryForMetric,
   buildReportFileSubmissionByType,
+  confirmAcademicYearSwitchWithUnsavedChanges,
   resolveUnifiedSendActionMode,
   resolveWorkspaceResetBehavior,
   buildStrictSubmittedByType,
@@ -43,6 +45,29 @@ describe("buildWorkspaceAutosavePayloadOptions", () => {
       allowIncomplete: true,
       includeAllEntries: false,
     });
+  });
+});
+
+describe("confirmAcademicYearSwitchWithUnsavedChanges", () => {
+  it("allows clean academic year switches without prompting", () => {
+    const confirmFn = vi.fn();
+
+    expect(confirmAcademicYearSwitchWithUnsavedChanges(false, confirmFn)).toBe(true);
+    expect(confirmFn).not.toHaveBeenCalled();
+  });
+
+  it("allows dirty academic year switches when the user confirms", () => {
+    const confirmFn = vi.fn().mockReturnValue(true);
+
+    expect(confirmAcademicYearSwitchWithUnsavedChanges(true, confirmFn)).toBe(true);
+    expect(confirmFn).toHaveBeenCalledWith(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
+  });
+
+  it("blocks dirty academic year switches when the user cancels", () => {
+    const confirmFn = vi.fn().mockReturnValue(false);
+
+    expect(confirmAcademicYearSwitchWithUnsavedChanges(true, confirmFn)).toBe(false);
+    expect(confirmFn).toHaveBeenCalledWith(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
   });
 });
 

@@ -144,6 +144,14 @@ const WORKSPACE_DETAIL_MAX_FAILED_ATTEMPTS = 3;
 const WORKSPACE_DETAIL_HYDRATION_RETRY_MS = 350;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_MS = 1_500;
 const WORKSPACE_DETAIL_BACKGROUND_RETRY_ATTEMPTS = 5;
+export const ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE = "You have unsaved workspace changes. Switch academic year and discard local edits?";
+
+export function confirmAcademicYearSwitchWithUnsavedChanges(
+  hasUnsavedChanges: boolean,
+  confirmFn: (message: string) => boolean,
+): boolean {
+  return !hasUnsavedChanges || confirmFn(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
+}
 const VERIFIED_SCOPE_LOCK_MESSAGE = "Locked after monitor verification.";
 const VERIFIED_PACKAGE_LOCK_MESSAGE = "This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.";
 
@@ -1933,6 +1941,7 @@ function SchoolIndicatorPanelComponent({
   const workspaceYearRequestRef = useRef(0);
   const workspaceFingerprintRef = useRef("");
   const metricEntriesRef = useRef<MetricEntryState>({});
+  const hasLocalWorkspaceEditsRef = useRef(false);
   const categoryRailRef = useRef<HTMLDivElement | null>(null);
   const indicatorTableRef = useRef<HTMLDivElement | null>(null);
   const fileUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -2742,6 +2751,7 @@ function SchoolIndicatorPanelComponent({
     setIsAutosavingDraft(false);
     setRestoreBannerDismissed(options.dismissRestoreBanner ?? false);
     lastAutosaveFingerprintRef.current = "";
+    hasLocalWorkspaceEditsRef.current = false;
   }, []);
   const clearWorkspaceTransitionIntents = useCallback(() => {
     submittedEditPreserveContextRef.current = null;
@@ -3292,6 +3302,7 @@ function SchoolIndicatorPanelComponent({
     setActiveWorkspaceSubmission(submission);
     setEditingSubmissionId(submission?.id ?? null);
     setMetricEntries(nextEntries);
+    hasLocalWorkspaceEditsRef.current = false;
     setServerAutosaveAt(submission?.updatedAt ?? null);
     setAutosaveError("");
     setSubmitError("");
@@ -4010,6 +4021,7 @@ function SchoolIndicatorPanelComponent({
   }, [slideIndicatorTable]);
   const setMetricMatrixValue = useCallback(
     (metric: IndicatorMetric, year: string, mode: "single" | "target" | "actual", value: string) => {
+      hasLocalWorkspaceEditsRef.current = true;
       setMetricEntries((entries) => {
         const previous = entries[metric.id] ?? buildDefaultEntry(metric);
         const nextEntry: MetricEntryValue = {
@@ -4789,6 +4801,10 @@ function SchoolIndicatorPanelComponent({
   }, [activeAcademicYearId, metricEntries, missingCountByCategory, missingFieldTargets, orderedComplianceMetrics, reportingPeriod, requiredSchoolYearSet, workspaceSchoolYears]);
 
   const hasUnsavedWorkspaceChanges = useMemo(() => {
+    if (pendingUploadFileTypes.length > 0) {
+      return true;
+    }
+
     const activeSubmission = (
       latestActiveWorkspaceSubmission && isSubmissionInAcademicYear(latestActiveWorkspaceSubmission, activeAcademicYearId)
         ? latestActiveWorkspaceSubmission
@@ -4814,6 +4830,7 @@ function SchoolIndicatorPanelComponent({
     isSubmissionInAcademicYear,
     latestActiveWorkspaceSubmission,
     metricEntries,
+    pendingUploadFileTypes.length,
   ]);
   useEffect(() => {
     hasUnsavedWorkspaceChangesRef.current = hasUnsavedWorkspaceChanges;
@@ -6128,6 +6145,7 @@ function SchoolIndicatorPanelComponent({
         return;
       }
 
+      hasLocalWorkspaceEditsRef.current = true;
       setPendingUploadFileByType((current) => ({ ...current, [type]: selectedFile }));
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
       setSaveMessage(`${SUBMISSION_FILE_DEFINITION_BY_TYPE[type].shortLabel} selected. Click Save to update the Report View.`);
@@ -6152,10 +6170,21 @@ function SchoolIndicatorPanelComponent({
     await handleSaveFileUpload(type, pendingFile);
   }, [handleSaveFileUpload, pendingUploadFileByType]);
   const handleAcademicYearChange = useCallback((nextAcademicYearId: string) => {
+    if (nextAcademicYearId === activeAcademicYearId) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined"
+      && !confirmAcademicYearSwitchWithUnsavedChanges(
+        hasUnsavedWorkspaceChanges || hasLocalWorkspaceEditsRef.current,
+        window.confirm.bind(window),
+      )
+    ) {
+      return;
+    }
+
     void runGroupBAction("Switch academic year", async () => {
-      if (nextAcademicYearId === activeAcademicYearId) {
-        return;
-      }
       hasUserSelectedAcademicYearRef.current = true;
       await runCriticalWorkspaceTransition({
         dismissRestoreBanner: true,
@@ -6166,7 +6195,7 @@ function SchoolIndicatorPanelComponent({
         },
       });
     });
-  }, [activeAcademicYearId, onAcademicYearChange, runCriticalWorkspaceTransition, runGroupBAction]);
+  }, [activeAcademicYearId, hasUnsavedWorkspaceChanges, onAcademicYearChange, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const resolveFileSourceSubmission = useCallback(
     (type: IndicatorSubmissionFileType): { submission: IndicatorSubmission | null; error: string | null } => {

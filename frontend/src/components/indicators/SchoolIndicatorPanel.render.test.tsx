@@ -203,6 +203,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
 });
 
 describe("SchoolIndicatorPanel optional note removal", () => {
