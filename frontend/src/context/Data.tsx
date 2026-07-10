@@ -1656,13 +1656,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           }
         }
 
-        const eventType = String(payload?.eventType ?? "").trim();
-        const forceIndicatorSync = entity === "indicators" && [
-          "indicators.scopes_submitted",
-          "indicators.scope_verified",
-          "indicators.scope_unverified",
-          "indicators.scope_returned",
-        ].includes(eventType);
+        const forceIndicatorSync = entity === "indicators";
 
         scheduleSync(220, forceIndicatorSync);
         return;

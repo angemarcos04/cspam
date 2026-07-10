@@ -210,7 +210,7 @@ describe("DataProvider school record sync recovery", () => {
     expect(subscribeSharedSyncPolling).toHaveBeenCalled();
   });
 
-  it("forces record refresh after monitor-visible indicator realtime events", async () => {
+  it("forces record refresh after full-package indicator submissions", async () => {
     const apiRequestRawMock = vi.mocked(apiRequestRaw);
 
     apiRequestRawMock
@@ -295,7 +295,7 @@ describe("DataProvider school record sync recovery", () => {
     await act(async () => {
       syncListener?.("realtime", {
         entity: "indicators",
-        eventType: "indicators.scopes_submitted",
+        eventType: "indicators.submitted",
         submissionId: "submission-77",
         schoolCode: "401777",
       });

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "@/context/Auth";
 import { apiRequest, displayMessageForApiError } from "@/lib/api";
 import type { RefreshOptions } from "@/lib/runRefreshBatches";
+import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import type { MonitorSchoolRequirementSummary } from "@/pages/monitor/MonitorSchoolRecordsList";
 import type {
   QueueLane,
@@ -198,6 +199,48 @@ export function useMonitorReviewInbox({
 
     void refresh();
   }, [enabled, refresh, perPage]);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
+    let refreshTimer: number | null = null;
+
+    const clearRefreshTimer = () => {
+      if (refreshTimer !== null) {
+        window.clearTimeout(refreshTimer);
+        refreshTimer = null;
+      }
+    };
+
+    const scheduleRefresh = (delayMs: number) => {
+      clearRefreshTimer();
+      refreshTimer = window.setTimeout(() => {
+        refreshTimer = null;
+        void refresh({ force: true });
+      }, delayMs);
+    };
+
+    const unsubscribe = subscribeSharedSyncPolling((trigger, payload) => {
+      if (trigger === "realtime") {
+        const entity = String(payload?.entity ?? "").trim();
+        if (entity !== "indicators" && entity !== "dashboard") {
+          return;
+        }
+
+        scheduleRefresh(250);
+        return;
+      }
+
+      scheduleRefresh(0);
+    });
+
+    return () => {
+      unsubscribe();
+      clearRefreshTimer();
+    };
+  }, [enabled, refresh]);
 
   return {
     rows,
