@@ -164,8 +164,13 @@ interface LoadSubmissionsForYearOptions {
 
 type IndicatorRealtimePayload = {
   entity?: string;
+  eventType?: string;
   submissionId?: string;
   academicYearId?: string;
+  status?: string;
+  schoolId?: string;
+  schoolCode?: string;
+  touchedScopes?: string[];
 };
 
 export type IndicatorRealtimeSyncPlan = "ignore" | "hydrate" | "sync";
@@ -222,6 +227,22 @@ const POST_MUTATION_AUTO_SYNC_GRACE_MS = 5_000;
 const SUBMISSION_SNAPSHOT_PER_PAGE = 100;
 const DEFAULT_LIST_PER_PAGE = 25;
 const MAX_LIST_PER_PAGE = 100;
+const SCHOOL_HEAD_LOCAL_ECHO_EVENT_TYPES = new Set([
+  "indicators.generated",
+  "indicators.bootstrapped",
+  "indicators.updated",
+  "indicators.file_uploaded",
+  "indicators.workspace_reset",
+  "indicators.submitted",
+  "indicators.scopes_submitted",
+]);
+const MONITOR_REVIEW_EVENT_TYPES = new Set([
+  "indicators.validated",
+  "indicators.returned",
+  "indicators.scope_verified",
+  "indicators.scope_unverified",
+  "indicators.scope_returned",
+]);
 
 function normalizeEtag(value: string | null): string {
   return (value || "").replace(/^W\//, "").replace(/"/g, "");
@@ -254,6 +275,20 @@ function toPositiveInt(value: unknown, fallback: number): number {
 
 function normalizeFilterValue(value: string | number | null | undefined): string {
   return value === null || value === undefined ? "" : String(value).trim();
+}
+
+function normalizeIndicatorEventType(payload?: IndicatorRealtimePayload): string {
+  return String(payload?.eventType ?? "").trim();
+}
+
+export function isMonitorReviewIndicatorEvent(payload?: IndicatorRealtimePayload): boolean {
+  return payload?.entity === "indicators"
+    && MONITOR_REVIEW_EVENT_TYPES.has(normalizeIndicatorEventType(payload));
+}
+
+export function isSchoolHeadLocalEchoEvent(payload?: IndicatorRealtimePayload): boolean {
+  return payload?.entity === "indicators"
+    && SCHOOL_HEAD_LOCAL_ECHO_EVENT_TYPES.has(normalizeIndicatorEventType(payload));
 }
 
 export function resolveIndicatorRealtimeSyncPlan(
@@ -1071,6 +1106,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const manualMutationInFlightRef = useRef(false);
   const lastLocalMutationAtRef = useRef(0);
   const lastLocalIndicatorMutationEchoRef = useRef<LocalIndicatorMutationEcho | null>(null);
+  const missedRealtimeIndicatorUpdateRef = useRef(false);
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -1099,6 +1135,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setError("");
     setLastSyncedAt(null);
     lastLocalIndicatorMutationEchoRef.current = null;
+    missedRealtimeIndicatorUpdateRef.current = false;
   }, [sessionKey]);
 
   const handleApiError = useCallback(
@@ -1451,12 +1488,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(new Date().toISOString());
   }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
 
-  const shouldSuppressRealtimeIndicatorEcho = useCallback((payload?: {
-    entity?: string;
-    submissionId?: string;
-    academicYearId?: string;
-  }): boolean => {
-    if (payload?.entity !== "indicators") {
+  const shouldSuppressRealtimeIndicatorEcho = useCallback((payload?: IndicatorRealtimePayload): boolean => {
+    if (!isSchoolHeadLocalEchoEvent(payload)) {
       return false;
     }
 
@@ -1470,8 +1503,8 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       return false;
     }
 
-    const submissionId = String(payload.submissionId ?? "").trim();
-    const academicYearId = String(payload.academicYearId ?? "").trim();
+    const submissionId = String(payload?.submissionId ?? "").trim();
+    const academicYearId = String(payload?.academicYearId ?? "").trim();
 
     return (
       submissionId !== ""
@@ -2001,16 +2034,39 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     }, AUTO_SYNC_INTERVAL_MS);
 
     const syncOnFocus = () => {
+      if (missedRealtimeIndicatorUpdateRef.current) {
+        missedRealtimeIndicatorUpdateRef.current = false;
+        void syncSubmissions(true, true);
+        return;
+      }
+
       if (shouldSkipBackgroundSync()) {
         return;
       }
       void syncSubmissions(true);
     };
     const syncOnRealtime = (event: Event) => {
+      const payload = (event as CustomEvent<IndicatorRealtimePayload>).detail;
       if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        if (payload?.entity === "indicators") {
+          missedRealtimeIndicatorUpdateRef.current = true;
+        }
         return;
       }
-      const payload = (event as CustomEvent<IndicatorRealtimePayload>).detail;
+      const submissionId = normalizeFilterValue(payload?.submissionId);
+
+      if (isMonitorReviewIndicatorEvent(payload)) {
+        if (!submissionId) {
+          void syncSubmissions(true, true);
+          return;
+        }
+
+        void fetchSubmission(submissionId).catch(() => {
+          void syncSubmissions(true, true);
+        });
+        return;
+      }
+
       const syncPlan = resolveIndicatorRealtimeSyncPlan(
         payload,
         shouldSuppressRealtimeIndicatorEcho(payload),
@@ -2021,7 +2077,6 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       }
 
       if (syncPlan === "hydrate") {
-        const submissionId = normalizeFilterValue(payload?.submissionId);
         if (!submissionId) {
           return;
         }

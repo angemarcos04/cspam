@@ -3,6 +3,8 @@ import {
   buildIndicatorDataSessionKey,
   collectPaginatedSubmissionRows,
   filterSchoolHeadScopedSubmissions,
+  isMonitorReviewIndicatorEvent,
+  isSchoolHeadLocalEchoEvent,
   materializeSubmissionFromLightweightPayload,
   mergeSubmissionPreservingDetails,
   patchSubmissionWithLightweightPayload,
@@ -646,6 +648,36 @@ describe("resolveIndicatorRealtimeSyncPlan", () => {
       entity: "students",
       submissionId: "sub-1",
     })).toBe("ignore");
+  });
+});
+
+describe("indicator realtime event classification", () => {
+  it.each([
+    "indicators.validated",
+    "indicators.returned",
+    "indicators.scope_verified",
+    "indicators.scope_unverified",
+    "indicators.scope_returned",
+  ])("classifies %s as a monitor review event", (eventType) => {
+    const payload = { entity: "indicators", eventType };
+
+    expect(isMonitorReviewIndicatorEvent(payload)).toBe(true);
+    expect(isSchoolHeadLocalEchoEvent(payload)).toBe(false);
+  });
+
+  it.each([
+    "indicators.generated",
+    "indicators.bootstrapped",
+    "indicators.updated",
+    "indicators.file_uploaded",
+    "indicators.workspace_reset",
+    "indicators.submitted",
+    "indicators.scopes_submitted",
+  ])("classifies %s as a School Head local echo event", (eventType) => {
+    const payload = { entity: "indicators", eventType };
+
+    expect(isSchoolHeadLocalEchoEvent(payload)).toBe(true);
+    expect(isMonitorReviewIndicatorEvent(payload)).toBe(false);
   });
 });
 
