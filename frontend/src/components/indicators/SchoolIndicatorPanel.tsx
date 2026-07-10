@@ -3279,6 +3279,8 @@ function SchoolIndicatorPanelComponent({
       markRecentlyMaterializedWorkspaceSubmission(submission);
       setActiveWorkspaceSubmission(submission);
       setEditingSubmissionId(submission.id);
+      hasLocalWorkspaceEditsRef.current = false;
+      hasUnsavedWorkspaceChangesRef.current = false;
       setServerAutosaveAt(submission.updatedAt ?? null);
       setAutosaveError("");
       setSubmitError("");
@@ -3303,6 +3305,7 @@ function SchoolIndicatorPanelComponent({
     setEditingSubmissionId(submission?.id ?? null);
     setMetricEntries(nextEntries);
     hasLocalWorkspaceEditsRef.current = false;
+    hasUnsavedWorkspaceChangesRef.current = false;
     setServerAutosaveAt(submission?.updatedAt ?? null);
     setAutosaveError("");
     setSubmitError("");
@@ -4359,6 +4362,7 @@ function SchoolIndicatorPanelComponent({
       reportingPeriod,
       indicators: entries.map((entry) => ({
         metricId: entry.metricId,
+        metricCode: entry.metricCode,
         targetValue: entry.targetValue,
         actualValue: entry.actualValue,
         target: entry.target,
