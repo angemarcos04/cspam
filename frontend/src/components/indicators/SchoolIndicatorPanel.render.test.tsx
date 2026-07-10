@@ -650,6 +650,80 @@ describe("SchoolIndicatorPanel optional note removal", () => {
     expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).value).toBe("year-2");
   });
 
+  it("allows academic year switch with a pending file selection when confirmation is accepted", async () => {
+    const onAcademicYearChange = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockIndicatorPanelData([{
+      ...buildHydratedSubmission("submission-1"),
+      academicYear: {
+        id: "year-2",
+        name: "2026-2027",
+      },
+      completion: {
+        hasImetaFormData: false,
+        hasBmefFile: false,
+        hasSmeaFile: false,
+        isComplete: false,
+        requiredFileTypes: ["fm_qad_001"],
+        uploadedFileTypes: [],
+        missingFileTypes: ["fm_qad_001"],
+      },
+      scopeProgress: {
+        requiredScopeIds: ["fm_qad_001"],
+        submittedScopeIds: [],
+        pendingScopeIds: ["fm_qad_001"],
+        submittedRequiredScopeCount: 0,
+        totalRequiredScopeCount: 1,
+      },
+    }], {
+      academicYears: [
+        { id: "year-2", name: "2026-2027", isCurrent: true },
+        { id: "year-3", name: "2027-2028", isCurrent: false },
+      ],
+      metrics: [buildSchoolAchievementMetric("2026-2027")],
+    });
+
+    const view = render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-2"
+        onAcademicYearChange={onAcademicYearChange}
+      />,
+    );
+
+    const yearSelect = await screen.findByLabelText("Academic Year") as HTMLSelectElement;
+    await waitFor(() => {
+      expect(yearSelect.value).toBe("year-2");
+    });
+    expect(yearSelect.disabled).toBe(false);
+
+    const fileTabs = await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i });
+    const fileTab = fileTabs.find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    expect(fileTab).toBeDefined();
+    if (!fileTab) {
+      throw new Error("Expected FM-QAD-001 workspace tab.");
+    }
+    fireEvent.click(fileTab);
+    fireEvent.click(await within(view.container).findByRole("button", { name: /Choose FM-QAD-001/i }));
+
+    const fileInput = view.container.querySelector('input[type="file"]');
+    if (!(fileInput instanceof HTMLInputElement)) {
+      throw new Error("Expected the hidden file input to be rendered.");
+    }
+    fireEvent.change(fileInput, {
+      target: {
+        files: [new File(["report"], "fm-qad-001.pdf", { type: "application/pdf" })],
+      },
+    });
+
+    expect(await screen.findByText(/fm-qad-001\.pdf/i)).not.toBeNull();
+    fireEvent.change(yearSelect, { target: { value: "year-3" } });
+
+    expect(confirmSpy).toHaveBeenCalledWith(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
+    await waitFor(() => {
+      expect(onAcademicYearChange).toHaveBeenCalledWith("year-3");
+    });
+  });
+
   it("follows the academic year selected by the parent dashboard", async () => {
     useIndicatorDataMock.mockReturnValue({
       submissions: [],
