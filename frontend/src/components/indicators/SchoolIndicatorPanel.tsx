@@ -3743,6 +3743,7 @@ function SchoolIndicatorPanelComponent({
   const isGroupBActionBusy = groupBActionInFlightRef.current || isGroupBActionRunning || isSaving || isUploading || isWorkspaceTransitioning;
   const isCriticalActionInFlight = isGroupBActionBusy;
   const isManualActionBlocked = isGroupBActionBusy || isAutosavingDraft;
+  const isWorkspaceNavigationBlocked = isManualActionBlocked || isSubmissionDataLoading;
   const saveActionLabel = "Save";
   const submitActionLabel = workspaceMode === "submitted_editing" ? "Re-submit Package" : "Final Submit Package";
   const saveActionDisabledTitle = isWorkspaceReadOnly
@@ -6420,7 +6421,7 @@ function SchoolIndicatorPanelComponent({
                 value={activeAcademicYearId}
                 onChange={(event) => handleAcademicYearChange(event.target.value)}
                 aria-label="Academic Year"
-                disabled={isActiveCategoryLocked || isManualActionBlocked}
+                disabled={isWorkspaceNavigationBlocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
               >
                 {dropdownAcademicYears.map((year) => (
@@ -6459,7 +6460,7 @@ function SchoolIndicatorPanelComponent({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(-1)}
-                disabled={isWorkspaceReadOnly || complianceTabs.length <= 1}
+                disabled={isWorkspaceNavigationBlocked || complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories left"
                 aria-label="Slide categories left"
@@ -6493,7 +6494,7 @@ function SchoolIndicatorPanelComponent({
                         data-category-id={tab.id}
                         type="button"
                         onClick={() => handleSelectCategory(tab.id)}
-                        disabled={isWorkspaceReadOnly}
+                        disabled={isWorkspaceNavigationBlocked}
                         className={`inline-flex min-w-[188px] shrink-0 items-center justify-between gap-1.5 rounded-sm border px-2 py-1 text-left transition ${
                           isActive
                             ? "border-primary-300 bg-primary-50 text-primary-700"
@@ -6544,7 +6545,7 @@ function SchoolIndicatorPanelComponent({
               <button
                 type="button"
                 onClick={() => handleSlideCategory(1)}
-                disabled={isWorkspaceReadOnly || complianceTabs.length <= 1}
+                disabled={isWorkspaceNavigationBlocked || complianceTabs.length <= 1}
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-slate-300 bg-white text-slate-700 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
                 title="Slide categories right"
                 aria-label="Slide categories right"

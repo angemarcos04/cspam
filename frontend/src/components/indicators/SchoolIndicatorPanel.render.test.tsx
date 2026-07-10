@@ -12,6 +12,22 @@ const privateWorkspaceScopeIds = [
   ...SUBMISSION_FILE_TYPES.filter((type) => type !== "bmef" && type !== "smea"),
 ];
 
+function buildSchoolAchievementMetric() {
+  return {
+    id: "metric-1",
+    code: "IMETA_ENROLL_TOTAL",
+    name: "TOTAL NUMBER OF ENROLMENT",
+    category: "school_achievements_learning_outcomes",
+    framework: "imeta",
+    dataType: "yearly_matrix",
+    inputSchema: {
+      valueType: "integer",
+      years: ["2025-2026"],
+    },
+    sortOrder: 1,
+  };
+}
+
 vi.mock("@/context/Auth", () => ({
   useAuth: () => useAuthMock(),
 }));
@@ -245,10 +261,13 @@ describe("SchoolIndicatorPanel optional note removal", () => {
           totalRequiredScopeCount: privateWorkspaceScopeIds.length,
         },
       },
-    ]);
+    ], {
+      metrics: [buildSchoolAchievementMetric()],
+    });
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
+    expect((await screen.findByLabelText("Academic Year") as HTMLSelectElement).disabled).toBe(false);
     expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
     expect((await screen.findAllByRole("progressbar", { name: "Package Submission progress" })).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Indicators:/)).toBeNull();
@@ -306,12 +325,86 @@ describe("SchoolIndicatorPanel optional note removal", () => {
           totalRequiredScopeCount: privateWorkspaceScopeIds.length,
         },
       },
-    ]);
+    ], {
+      metrics: [buildSchoolAchievementMetric()],
+    });
 
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
+    expect((await screen.findByLabelText("Academic Year") as HTMLSelectElement).disabled).toBe(false);
     expect((await screen.findAllByText(/Package Submission: 12\/12 items sent/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/Final Package:/)).toBeNull();
+  });
+
+  it("keeps Academic Year enabled when the active category is verified", async () => {
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("verified-category-package"),
+        scopeReviews: [{
+          scopeId: "school_achievements_learning_outcomes",
+          decision: "verified",
+          reviewedAt: "2026-05-19T10:00:00.000Z",
+        }],
+      },
+    ], {
+      metrics: [buildSchoolAchievementMetric()],
+    });
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect(await screen.findByText(/Verified by Monitor:/)).not.toBeNull();
+    expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it("keeps Academic Year blocked while a manual save is in progress", async () => {
+    mockIndicatorPanelData([], {
+      isSaving: true,
+    });
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect((await screen.findByLabelText("Academic Year") as HTMLSelectElement).disabled).toBe(true);
+  });
+
+  it("allows switching academic year while viewing a submitted package", async () => {
+    const onAcademicYearChange = vi.fn();
+    mockIndicatorPanelData([
+      {
+        ...buildHydratedSubmission("submitted-package"),
+        status: "submitted",
+        statusLabel: "Submitted",
+        submittedAt: "2026-05-19T10:00:00.000Z",
+        scopeProgress: {
+          requiredScopeIds: privateWorkspaceScopeIds,
+          submittedScopeIds: privateWorkspaceScopeIds,
+          pendingScopeIds: [],
+          submittedRequiredScopeCount: privateWorkspaceScopeIds.length,
+          totalRequiredScopeCount: privateWorkspaceScopeIds.length,
+        },
+      },
+    ], {
+      academicYears: [
+        { id: "year-1", name: "2025-2026", isCurrent: true },
+        { id: "year-2", name: "2026-2027", isCurrent: false },
+      ],
+      metrics: [buildSchoolAchievementMetric()],
+    });
+
+    render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-1"
+        onAcademicYearChange={onAcademicYearChange}
+      />,
+    );
+
+    const yearSelect = await screen.findByLabelText("Academic Year") as HTMLSelectElement;
+    expect(yearSelect.disabled).toBe(false);
+
+    fireEvent.change(yearSelect, { target: { value: "year-2" } });
+
+    await waitFor(() => {
+      expect(onAcademicYearChange).toHaveBeenCalledWith("year-2");
+    });
   });
 
   it("follows the academic year selected by the parent dashboard", async () => {
