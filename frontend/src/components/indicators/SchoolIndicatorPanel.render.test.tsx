@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { SchoolIndicatorPanel } from "@/components/indicators/SchoolIndicatorPanel";
+import {
+  ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE,
+  SchoolIndicatorPanel,
+} from "@/components/indicators/SchoolIndicatorPanel";
 import { SUBMISSION_FILE_TYPES } from "@/constants/submissionFiles";
 import { ApiError, SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/api";
 
@@ -12,7 +15,7 @@ const privateWorkspaceScopeIds = [
   ...SUBMISSION_FILE_TYPES.filter((type) => type !== "bmef" && type !== "smea"),
 ];
 
-function buildSchoolAchievementMetric() {
+function buildSchoolAchievementMetric(schoolYear = "2025-2026") {
   return {
     id: "metric-1",
     code: "IMETA_ENROLL_TOTAL",
@@ -22,7 +25,7 @@ function buildSchoolAchievementMetric() {
     dataType: "yearly_matrix",
     inputSchema: {
       valueType: "integer",
-      years: ["2025-2026"],
+      years: [schoolYear],
     },
     sortOrder: 1,
   };
@@ -79,6 +82,51 @@ function buildHydratedSubmission(submissionId = "submission-1") {
     academicYear: {
       id: "year-1",
       name: "2025-2026",
+    },
+  };
+}
+
+function buildSchoolAchievementDraftSubmission(
+  submissionId = "draft-package",
+  academicYear = { id: "year-1", name: "2025-2026" },
+) {
+  const metric = buildSchoolAchievementMetric(academicYear.name);
+
+  return {
+    ...buildHydratedSubmission(submissionId),
+    academicYear,
+    indicators: [
+      {
+        id: "indicator-1",
+        metric,
+        targetValue: null,
+        actualValue: 1515,
+        varianceValue: null,
+        targetTypedValue: { values: {} },
+        actualTypedValue: {
+          values: {
+            [academicYear.name]: 1515,
+          },
+        },
+        complianceStatus: "recorded",
+        remarks: null,
+      },
+    ],
+    completion: {
+      hasImetaFormData: true,
+      hasBmefFile: false,
+      hasSmeaFile: false,
+      isComplete: false,
+      requiredFileTypes: ["school_achievements_learning_outcomes"],
+      uploadedFileTypes: [],
+      missingFileTypes: [],
+    },
+    scopeProgress: {
+      requiredScopeIds: ["school_achievements_learning_outcomes"],
+      submittedScopeIds: [],
+      pendingScopeIds: ["school_achievements_learning_outcomes"],
+      submittedRequiredScopeCount: 0,
+      totalRequiredScopeCount: 1,
     },
   };
 }
@@ -164,6 +212,7 @@ function mockIndicatorPanelData(submissions: Array<Record<string, unknown>>, ove
 
 beforeEach(() => {
   localStorage.clear();
+  sessionStorage.clear();
   useAuthMock.mockReturnValue({
     apiToken: "token",
     user: {
@@ -400,11 +449,131 @@ describe("SchoolIndicatorPanel optional note removal", () => {
 
     const yearSelect = await screen.findByLabelText("Academic Year") as HTMLSelectElement;
     expect(yearSelect.disabled).toBe(false);
+    await waitFor(() => {
+      expect(yearSelect.value).toBe("year-1");
+    });
 
     fireEvent.change(yearSelect, { target: { value: "year-2" } });
 
     await waitFor(() => {
       expect(onAcademicYearChange).toHaveBeenCalledWith("year-2");
+    });
+  });
+
+  it("switches clean draft academic year without prompting", async () => {
+    const onAcademicYearChange = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockIndicatorPanelData([], {
+      academicYears: [
+        { id: "year-2", name: "2026-2027", isCurrent: true },
+        { id: "year-3", name: "2027-2028", isCurrent: false },
+      ],
+      metrics: [buildSchoolAchievementMetric("2026-2027")],
+    });
+
+    render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-2"
+        onAcademicYearChange={onAcademicYearChange}
+      />,
+    );
+
+    const yearSelect = await screen.findByLabelText("Academic Year") as HTMLSelectElement;
+    expect(yearSelect.disabled).toBe(false);
+    await waitFor(() => {
+      expect(yearSelect.value).toBe("year-2");
+    });
+
+    fireEvent.change(yearSelect, { target: { value: "year-3" } });
+
+    expect(confirmSpy).not.toHaveBeenCalled();
+    await waitFor(() => {
+      expect(onAcademicYearChange).toHaveBeenCalledWith("year-3");
+    });
+  });
+
+  it("blocks academic year switch when dirty workspace confirmation is cancelled", async () => {
+    const onAcademicYearChange = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    mockIndicatorPanelData([buildSchoolAchievementDraftSubmission("draft-package", { id: "year-2", name: "2026-2027" })], {
+      academicYears: [
+        { id: "year-2", name: "2026-2027", isCurrent: true },
+        { id: "year-3", name: "2027-2028", isCurrent: false },
+      ],
+      metrics: [buildSchoolAchievementMetric("2026-2027")],
+    });
+
+    const view = render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-2"
+        onAcademicYearChange={onAcademicYearChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).value).toBe("year-2");
+    });
+    const [valueInput] = await within(view.container).findAllByRole("spinbutton");
+    if (!valueInput) {
+      throw new Error("Expected a School Achievements value input.");
+    }
+    fireEvent.change(valueInput, { target: { value: "123" } });
+    await waitFor(() => {
+      expect((valueInput as HTMLInputElement).value).toBe("123");
+    });
+
+    const yearSelect = screen.getByLabelText("Academic Year") as HTMLSelectElement;
+    expect(yearSelect.disabled).toBe(false);
+    await waitFor(() => {
+      expect(yearSelect.value).toBe("year-2");
+    });
+
+    fireEvent.change(yearSelect, { target: { value: "year-3" } });
+
+    expect(confirmSpy).toHaveBeenCalledWith(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
+    expect(onAcademicYearChange).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).value).toBe("year-2");
+  });
+
+  it("allows academic year switch when dirty workspace confirmation is accepted", async () => {
+    const onAcademicYearChange = vi.fn();
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+    mockIndicatorPanelData([buildSchoolAchievementDraftSubmission("draft-package", { id: "year-2", name: "2026-2027" })], {
+      academicYears: [
+        { id: "year-2", name: "2026-2027", isCurrent: true },
+        { id: "year-3", name: "2027-2028", isCurrent: false },
+      ],
+      metrics: [buildSchoolAchievementMetric("2026-2027")],
+    });
+
+    const view = render(
+      <SchoolIndicatorPanel
+        initialAcademicYearId="year-2"
+        onAcademicYearChange={onAcademicYearChange}
+      />,
+    );
+
+    await waitFor(() => {
+      expect((screen.getByLabelText("Academic Year") as HTMLSelectElement).value).toBe("year-2");
+    });
+    const [valueInput] = await within(view.container).findAllByRole("spinbutton");
+    if (!valueInput) {
+      throw new Error("Expected a School Achievements value input.");
+    }
+    fireEvent.change(valueInput, { target: { value: "123" } });
+    await waitFor(() => {
+      expect((valueInput as HTMLInputElement).value).toBe("123");
+    });
+
+    const yearSelect = screen.getByLabelText("Academic Year") as HTMLSelectElement;
+    await waitFor(() => {
+      expect(yearSelect.value).toBe("year-2");
+    });
+    fireEvent.change(yearSelect, { target: { value: "year-3" } });
+
+    expect(confirmSpy).toHaveBeenCalledWith(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
+    await waitFor(() => {
+      expect(onAcademicYearChange).toHaveBeenCalledWith("year-3");
     });
   });
 

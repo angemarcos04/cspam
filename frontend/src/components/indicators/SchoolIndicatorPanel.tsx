@@ -6169,9 +6169,9 @@ function SchoolIndicatorPanelComponent({
 
     await handleSaveFileUpload(type, pendingFile);
   }, [handleSaveFileUpload, pendingUploadFileByType]);
-  const handleAcademicYearChange = useCallback((nextAcademicYearId: string) => {
+  const handleAcademicYearChange = useCallback((nextAcademicYearId: string): boolean => {
     if (nextAcademicYearId === activeAcademicYearId) {
-      return;
+      return true;
     }
 
     if (
@@ -6181,7 +6181,7 @@ function SchoolIndicatorPanelComponent({
         window.confirm.bind(window),
       )
     ) {
-      return;
+      return false;
     }
 
     void runGroupBAction("Switch academic year", async () => {
@@ -6195,6 +6195,8 @@ function SchoolIndicatorPanelComponent({
         },
       });
     });
+
+    return true;
   }, [activeAcademicYearId, hasUnsavedWorkspaceChanges, onAcademicYearChange, runCriticalWorkspaceTransition, runGroupBAction]);
 
   const resolveFileSourceSubmission = useCallback(
@@ -6448,7 +6450,12 @@ function SchoolIndicatorPanelComponent({
               <select
                 id="indicator-school-year"
                 value={activeAcademicYearId}
-                onChange={(event) => handleAcademicYearChange(event.target.value)}
+                onChange={(event) => {
+                  const isSwitchAccepted = handleAcademicYearChange(event.target.value);
+                  if (!isSwitchAccepted) {
+                    event.currentTarget.value = activeAcademicYearId;
+                  }
+                }}
                 aria-label="Academic Year"
                 disabled={isWorkspaceNavigationBlocked}
                 className="w-full appearance-none rounded-sm border border-slate-300 bg-white px-3 py-2 pr-8 text-sm font-semibold text-slate-900 outline-none transition focus:border-primary focus:ring-2 focus:ring-primary-100"
