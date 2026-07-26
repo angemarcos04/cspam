@@ -204,6 +204,7 @@ interface StatefulAuthEntryRequestOptions {
   token?: string;
   credentialsMode?: RequestCredentials;
   extraHeaders?: Record<string, string>;
+  retryCsrfOn419?: boolean;
 }
 
 function parseBooleanEnvFlag(value: unknown): boolean | null {
@@ -244,6 +245,7 @@ function statefulAuthEntryRequestOptions(): StatefulAuthEntryRequestOptions {
   return {
     token: COOKIE_SESSION_TOKEN,
     credentialsMode: "include",
+    retryCsrfOn419: false,
     extraHeaders: {
       "X-CSPAMS-Auth-Mode": "stateful",
     },

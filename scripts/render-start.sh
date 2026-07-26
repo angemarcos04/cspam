@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+boot_started_at="$(date +%s)"
+
 echo "Starting CSPAMS on Render..."
 echo "Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "PORT: ${PORT:-10000}"
@@ -23,33 +25,20 @@ mkdir -p \
 chmod 1777 /tmp || true
 chmod -R ug+rw storage bootstrap/cache || true
 
-echo "Clearing Laravel cached configuration before boot..."
-CACHE_STORE=file php artisan config:clear || true
-CACHE_STORE=file php artisan route:clear || true
-CACHE_STORE=file php artisan view:clear || true
-CACHE_STORE=file php artisan event:clear || true
-CACHE_STORE=file php artisan cache:clear || true
+step_started_at="$(date +%s)"
+echo "Preparing Laravel cache state..."
 CACHE_STORE=file php artisan optimize:clear || true
+echo "Cache preparation completed in $(( $(date +%s) - step_started_at ))s."
 
-echo "Ensuring database migrations are applied..."
+step_started_at="$(date +%s)"
+echo "Applying database migrations..."
 php artisan migrate --force
+echo "Migrations completed in $(( $(date +%s) - step_started_at ))s."
 
-echo "Seeding required roles and permissions..."
+step_started_at="$(date +%s)"
+echo "Ensuring required roles and permissions..."
 php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
-
-echo "Checking submission storage diagnostics..."
-if php artisan cspams:diagnose-submission-storage; then
-    echo "Submission storage diagnostics completed."
-else
-    echo "WARNING: submission storage diagnostics reported a problem. File uploads may fail. Check migrations and database configuration."
-fi
-
-echo "Auditing submission storage for missing uploaded files..."
-if php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"; then
-    echo "Submission storage audit completed."
-else
-    echo "WARNING: submission storage audit reported issues or failed. Check Render logs."
-fi
+echo "Role and permission seeding completed in $(( $(date +%s) - step_started_at ))s."
 
 if is_truthy "${CSPAMS_SEED_DEMO_DATA:-false}"; then
     echo "Seeding demo data..."
@@ -67,8 +56,32 @@ fi
 
 php artisan storage:link || true
 
-echo "Checking verification delivery configuration..."
-php artisan app:check-verification-delivery || true
+step_started_at="$(date +%s)"
+echo "Building production Laravel caches..."
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
+echo "Production cache building completed in $(( $(date +%s) - step_started_at ))s."
 
-echo "Launching application..."
+if is_truthy "${CSPAMS_RUN_STARTUP_DIAGNOSTICS:-false}"; then
+    echo "Running optional startup diagnostics..."
+
+    if php artisan cspams:diagnose-submission-storage; then
+        echo "Submission storage diagnostics completed."
+    else
+        echo "WARNING: submission storage diagnostics reported a problem. File uploads may fail. Check migrations and database configuration."
+    fi
+
+    if php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"; then
+        echo "Submission storage audit completed."
+    else
+        echo "WARNING: submission storage audit reported issues or failed. Check Render logs."
+    fi
+
+    php artisan app:check-verification-delivery || true
+else
+    echo "Optional startup diagnostics disabled. Run storage and verification checks manually during deployment verification."
+fi
+
+echo "Launching application after $(( $(date +%s) - boot_started_at ))s."
 exec php -S 0.0.0.0:"${PORT:-10000}" -t public public/index.php

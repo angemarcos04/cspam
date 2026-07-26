@@ -88,6 +88,33 @@ describe("api request helpers", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("does not retry a stateful authentication POST when csrf recovery is disabled", async () => {
+    document.cookie = "XSRF-TOKEN=test-xsrf-token; path=/";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ message: "Page Expired" }), {
+        status: 419,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      apiRequest("/api/auth/login", {
+        method: "POST",
+        token: COOKIE_SESSION_TOKEN,
+        credentialsMode: "include",
+        retryCsrfOn419: false,
+        body: {
+          role: "monitor",
+          login: "cspamsmonitor@gmail.com",
+          password: "Demo@123456",
+        },
+      }),
+    ).rejects.toMatchObject({ status: 419 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("supports stateless public auth-entry requests without forcing csrf bootstrap", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify({ token: "demo-token" }), {

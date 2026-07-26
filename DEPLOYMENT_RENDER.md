@@ -61,24 +61,36 @@ Real secrets must be set only in Render Environment Variables. Do not commit `.e
 
 `scripts/render-start.sh` runs every time the container starts. It is the active startup script because the root `Dockerfile` uses `CMD ["bash", "scripts/render-start.sh"]`; `docker/render-start.sh` is copied into the image but is not the active path unless the command is changed.
 
-Startup clears Laravel cached configuration, runs migrations, seeds required roles and permissions, prints safe submission-storage diagnostics, runs a non-fatal missing-file audit, checks mail delivery configuration, and launches the PHP server.
+Startup prepares writable directories, clears compiled Laravel state once, runs migrations, seeds required roles and permissions, builds production caches, and launches the PHP server. Migrations and role seeding remain blocking because requests must not run against an outdated schema or incomplete authorization data.
 
 The important startup commands are:
 
 ```bash
-CACHE_STORE=file php artisan config:clear
-CACHE_STORE=file php artisan route:clear
-CACHE_STORE=file php artisan view:clear
-CACHE_STORE=file php artisan event:clear
-CACHE_STORE=file php artisan cache:clear
 CACHE_STORE=file php artisan optimize:clear
 php artisan migrate --force
 php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
-php artisan cspams:diagnose-submission-storage
-php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
+php artisan config:cache
+php artisan route:cache
+php artisan view:cache
 ```
 
-Migration and required role seeding failures remain fatal. Submission-storage diagnostics and the missing-file audit are log-visible but non-fatal, so old missing upload records do not prevent the backend from booting.
+The startup log records elapsed seconds for cache preparation, migrations, role seeding, production cache building, and total time until the HTTP server launches. These timings identify which required stage is delaying `/api/health` without printing secrets or environment dumps.
+
+Submission-storage and verification-delivery diagnostics are no longer part of every default startup. Run them during deployment verification:
+
+```bash
+php artisan cspams:diagnose-submission-storage
+php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
+php artisan app:check-verification-delivery
+```
+
+To run those noncritical checks during a specific container startup, set:
+
+```env
+CSPAMS_RUN_STARTUP_DIAGNOSTICS=true
+```
+
+The safe default is `false`, so audits and mail diagnostics do not delay every cold start. Diagnostic failures remain nonfatal when the flag is enabled. Migration, role-seeding, and production-cache failures remain fatal.
 
 Demo data seeding is opt-in. Keep `CSPAMS_SEED_DEMO_DATA=false` in production so deploys do not recreate `schoolhead1@cspams.local`, `schoolhead2@cspams.local`, or `schoolhead3@cspams.local`.
 
@@ -87,6 +99,10 @@ For a one-time Render Free Tier purge, set `CSPAMS_PURGE_DEMO_DATA_ON_START=true
 ## Diagnosing 503 / Service Unavailable
 
 A browser message about service unavailability means Vercel or the frontend reached a backend/proxy `502`, `503`, or `504`; it is not a normal School Head or Monitor workflow validation error.
+
+On a sleeping Render service, the first request can take about a minute while the container starts. The login page now begins an anonymous `GET /api/health` readiness check as soon as it opens. It retries only that health check and waits for readiness before sending credentials; login and MFA POST requests are never automatically retried.
+
+The login page reports whether the secure server is starting, ready, or unavailable. This makes the wait explicit, but it cannot make a sleeping instance start instantly.
 
 Use this order:
 
@@ -108,6 +124,7 @@ Use this order:
    - container restart loop
 7. Confirm the Render Docker Command is `bash scripts/render-start.sh`.
 8. Confirm required environment values include `APP_ENV=production`, `APP_DEBUG=false`, a persistent `APP_KEY`, `APP_URL=https://cspams.onrender.com`, database credentials, and the production frontend URL.
+9. Compare the startup timing lines for cache preparation, migrations, role seeding, production cache building, and total time until HTTP launch.
 
 If `/api/health` is unavailable, fix the backend service or proxy first. If the response is HTML with `x-render-routing: suspend-by-user` or text like `This service has been suspended by its owner.`, resume or reactivate the Render service before debugging CSPAMS code. If `/api/health` succeeds but a dashboard endpoint still returns `503`, use Render logs and the Network tab to identify the specific failing endpoint.
 
@@ -150,11 +167,9 @@ Render Shell is not required for normal deploy migrations. On deploy/start, the 
 
 ```bash
 php artisan migrate --force
-php artisan cspams:diagnose-submission-storage
-php artisan cspams:audit-submission-storage --only-missing --limit="${CSPAMS_STORAGE_AUDIT_LIMIT:-50}"
 ```
 
-The audit is non-fatal and does not use `--fail-on-missing` during startup. Old missing files cannot be reconstructed from metadata; rows marked `reupload_required` must be re-uploaded by the School Head.
+Run the submission-storage diagnostic and audit manually after deployment, or temporarily enable `CSPAMS_RUN_STARTUP_DIAGNOSTICS=true`. The audit remains non-fatal and does not use `--fail-on-missing`. Old missing files cannot be reconstructed from metadata; rows marked `reupload_required` must be re-uploaded by the School Head.
 
 After pushing this fix, run Render `Manual Deploy -> Clear build cache & deploy`. Check logs for `databaseBlobTableExists: yes`, `databaseBlobReadable: yes`, `databaseBlobColumnsReady: yes`, `databaseBlobSchemaReady: yes`, and `databaseBlobReady: yes`. With `CSPAMS_DIAGNOSTICS_TOKEN` configured, the protected readiness endpoint should report matching `true` values under `checks.submissionStorage`:
 
@@ -199,3 +214,23 @@ DB::table('notifications')->count();
 ```
 
 Expected results are `true`, `true`, and an integer count of `0` or higher. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspams.onrender.com` and redeploy the frontend.
+
+## Monitor MFA Queue
+
+Production Monitor MFA delivery should remain queued:
+
+```env
+CSPAMS_MONITOR_MFA_DELIVERY_MODE=queued
+CSPAMS_MONITOR_MFA_QUEUE_CONNECTION=database
+CSPAMS_MONITOR_MFA_QUEUE=mail
+```
+
+Queued delivery requires the `cspam-backend-worker` service from `render.yaml` to be deployed, running, and configured with the same `APP_KEY`, database, queue, and mail settings as the web service. The worker runs `docker/worker-start.sh` and consumes the `mail` queue. If the worker is stopped or misconfigured, Monitor MFA messages will remain queued; do not expose codes or switch off MFA as a workaround.
+
+School Head authentication does not use the Monitor MFA queue and is unchanged.
+
+## Cold-Start Limitation
+
+Client-side readiness checks improve the first-login experience by waking the backend while the user fills in the form and by withholding credentials until `/api/health` succeeds. They do not eliminate infrastructure cold starts.
+
+An always-on paid Render web service is the complete production solution when consistent immediate login availability is required. After deployment, test both a deliberately cold backend and an immediate second login, and confirm that each credential submission creates exactly one login request, one post-login `/api/auth/me` verification, and—only for Monitor accounts—one MFA challenge.

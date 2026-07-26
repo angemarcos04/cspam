@@ -1,9 +1,15 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, GraduationCap, ClipboardList, ArrowRight } from "lucide-react";
 import { AuthPoweredByFooter } from "@/components/AuthPoweredByFooter";
 import { useAuth } from "@/context/Auth";
 import { getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
+import {
+  cancelBackendWarmup,
+  getBackendWarmupStatus,
+  warmBackend,
+  type BackendWarmupStatus,
+} from "@/lib/backendWarmup";
 import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
@@ -95,6 +101,10 @@ export function Login() {
   const [isResendingMfa, setIsResendingMfa] = useState(false);
   const [resendCooldownSeconds, setResendCooldownSeconds] = useState(0);
   const [resendMessage, setResendMessage] = useState("");
+  const [backendStatus, setBackendStatus] = useState<BackendWarmupStatus>(
+    () => getBackendWarmupStatus(),
+  );
+  const isMountedRef = useRef(true);
   const isMfaChallengeActive = pendingMfa !== null;
 
   const roleMeta = ROLE_META[activeRole];
@@ -117,6 +127,39 @@ export function Login() {
     setResendCooldownSeconds(0);
     setResendMessage("");
   };
+
+  const checkBackendReadiness = useCallback(async () => {
+    const currentStatus = getBackendWarmupStatus();
+    if (isMountedRef.current) {
+      setBackendStatus(currentStatus === "ready" ? "ready" : "warming");
+    }
+
+    try {
+      await warmBackend();
+      if (isMountedRef.current) {
+        setBackendStatus("ready");
+      }
+      return true;
+    } catch (warmupError) {
+      if (
+        isMountedRef.current
+        && (!(warmupError instanceof Error) || warmupError.name !== "AbortError")
+      ) {
+        setBackendStatus("unavailable");
+      }
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    void checkBackendReadiness();
+
+    return () => {
+      isMountedRef.current = false;
+      cancelBackendWarmup();
+    };
+  }, [checkBackendReadiness]);
 
   const resetRoleSpecificLoginState = (nextRole: LoginRole) => {
     setActiveRole(nextRole);
@@ -257,6 +300,13 @@ export function Login() {
     setError("");
 
     try {
+      if (!pendingMfa) {
+        const backendIsReady = await checkBackendReadiness();
+        if (!backendIsReady) {
+          return;
+        }
+      }
+
       if (pendingMfa) {
         await verifyMfa({
           role: "monitor",
@@ -364,6 +414,7 @@ export function Login() {
   };
 
   const isBusy = isSubmitting || isAuthenticating;
+  const isBackendUnavailable = backendStatus === "unavailable";
   const formInputClass =
     "w-full rounded-none border border-slate-200 bg-white px-3.5 py-3 text-sm text-slate-900 shadow-[0_10px_24px_-20px_rgba(15,23,42,0.42)] outline-none transition placeholder:text-slate-400 focus:border-primary-300 focus:ring-2 focus:ring-primary-100 sm:px-4 sm:py-3.5";
 
@@ -426,6 +477,37 @@ export function Login() {
                   </p>
                 </button>
               </div>
+            </div>
+
+            <div
+              className={`mb-4 border px-3.5 py-2.5 text-sm ${
+                backendStatus === "ready"
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : backendStatus === "unavailable"
+                    ? "border-amber-200 bg-amber-50 text-amber-800"
+                    : "border-sky-200 bg-sky-50 text-sky-800"
+              }`}
+              role="status"
+              aria-live="polite"
+            >
+              {backendStatus === "idle" && "Checking secure server."}
+              {backendStatus === "warming" &&
+                "Starting the secure server. This may take about a minute after a period of inactivity."}
+              {backendStatus === "ready" && "Secure server ready."}
+              {backendStatus === "unavailable" && (
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <span>The server could not be reached. Check your connection, then retry the server check.</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void checkBackendReadiness();
+                    }}
+                    className="shrink-0 font-semibold text-primary-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-200"
+                  >
+                    Retry Server
+                  </button>
+                </div>
+              )}
             </div>
 
             <form className="space-y-4" onSubmit={handleSubmit}>
@@ -590,16 +672,20 @@ export function Login() {
 
               <button
                 type="submit"
-                disabled={isBusy}
+                disabled={isBusy || isBackendUnavailable}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-none bg-primary px-4 py-3.5 text-sm font-semibold text-white shadow-[0_18px_34px_-24px_rgba(2,46,80,0.85)] transition hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 <ShieldCheck className="h-4 w-4" />
                 {isBusy
                   ? pendingMfa
-                    ? "Verifying..."
+                    ? "Verifying login..."
                     : requiresPasswordReset
                       ? "Updating Password..."
-                      : "Signing In..."
+                      : backendStatus === "warming"
+                        ? "Starting server..."
+                        : "Signing in..."
+                  : backendStatus === "warming" && !pendingMfa
+                    ? "Starting server"
                   : pendingMfa
                     ? "Verify and Sign In"
                     : requiresPasswordReset

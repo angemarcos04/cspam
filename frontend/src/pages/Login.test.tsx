@@ -15,8 +15,20 @@ const authState = {
   clearAuthError: vi.fn(),
 };
 
+const backendWarmupState = {
+  warmBackend: vi.fn(),
+  getBackendWarmupStatus: vi.fn(),
+  cancelBackendWarmup: vi.fn(),
+};
+
 vi.mock("@/context/Auth", () => ({
   useAuth: () => authState,
+}));
+
+vi.mock("@/lib/backendWarmup", () => ({
+  warmBackend: () => backendWarmupState.warmBackend(),
+  getBackendWarmupStatus: () => backendWarmupState.getBackendWarmupStatus(),
+  cancelBackendWarmup: () => backendWarmupState.cancelBackendWarmup(),
 }));
 
 describe("Login", () => {
@@ -33,6 +45,84 @@ describe("Login", () => {
     authState.authError = "";
     authState.authErrorCode = null;
     authState.accountStatus = null;
+    backendWarmupState.warmBackend.mockReset();
+    backendWarmupState.warmBackend.mockResolvedValue({
+      status: "ready",
+      warmedAt: Date.now(),
+    });
+    backendWarmupState.getBackendWarmupStatus.mockReset();
+    backendWarmupState.getBackendWarmupStatus.mockReturnValue("ready");
+    backendWarmupState.cancelBackendWarmup.mockReset();
+  });
+
+  it("warms on mount, keeps fields editable, and defers one login until ready", async () => {
+    let resolveWarmup!: () => void;
+    const warmupPromise = new Promise<{ status: "ready"; warmedAt: number }>((resolve) => {
+      resolveWarmup = () => resolve({ status: "ready", warmedAt: Date.now() });
+    });
+    backendWarmupState.getBackendWarmupStatus.mockReturnValue("idle");
+    backendWarmupState.warmBackend.mockReturnValue(warmupPromise);
+    authState.login.mockResolvedValueOnce({ status: "authenticated" });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    expect(backendWarmupState.warmBackend).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Starting server" }).closest("form")!);
+
+    expect(authState.login).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("001234");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("Demo@123456");
+
+    resolveWarmup();
+
+    await waitFor(() => {
+      expect(authState.login).toHaveBeenCalledTimes(1);
+    });
+    expect(authState.login).toHaveBeenCalledWith({
+      role: "school_head",
+      login: "001234",
+      password: "Demo@123456",
+    });
+  });
+
+  it("preserves credentials after warm-up failure and retries only the server check", async () => {
+    let rejectWarmup!: (error: Error) => void;
+    const failedWarmup = new Promise<{ status: "ready"; warmedAt: number }>((_, reject) => {
+      rejectWarmup = reject;
+    });
+    backendWarmupState.getBackendWarmupStatus.mockReturnValue("idle");
+    backendWarmupState.warmBackend
+      .mockReturnValueOnce(failedWarmup)
+      .mockResolvedValue({ status: "ready", warmedAt: Date.now() });
+
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
+    fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
+    rejectWarmup(new Error("unavailable"));
+
+    expect(await screen.findByRole("button", { name: "Retry Server" })).toBeTruthy();
+    expect(authState.login).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("001234");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("Demo@123456");
+
+    fireEvent.click(screen.getByRole("button", { name: "Retry Server" }));
+
+    expect(await screen.findByText("Secure server ready.")).toBeTruthy();
+    expect(backendWarmupState.warmBackend).toHaveBeenCalledTimes(2);
+    expect(authState.login).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("001234");
+    expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("Demo@123456");
   });
 
   it("shows school head by default and updates labels when switching roles", () => {
@@ -211,6 +301,7 @@ describe("Login", () => {
     expect(
       await screen.findByText(/Unable to reach the CSPAMS API at .* Check the deployed API URL and network access\./i),
     ).toBeTruthy();
+    expect(authState.login).toHaveBeenCalledTimes(1);
   });
 
   it("maps bare service-unavailable login failures to safe copy", async () => {

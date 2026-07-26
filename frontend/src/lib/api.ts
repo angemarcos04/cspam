@@ -49,6 +49,7 @@ interface ApiRequestOptions {
   timeoutMs?: number;
   credentialsMode?: RequestCredentials;
   extraHeaders?: Record<string, string>;
+  retryCsrfOn419?: boolean;
 }
 
 export interface ApiRawResponse<T> {
@@ -400,7 +401,16 @@ export async function ensureCsrfCookie(forceRefresh = false): Promise<void> {
 }
 
 export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions = {}): Promise<ApiRawResponse<T>> {
-  const { method = "GET", token, body, signal, timeoutMs, credentialsMode, extraHeaders } = options;
+  const {
+    method = "GET",
+    token,
+    body,
+    signal,
+    timeoutMs,
+    credentialsMode,
+    extraHeaders,
+    retryCsrfOn419 = true,
+  } = options;
   const mutating = isMutatingMethod(method);
   const useCookieSession = token === COOKIE_SESSION_TOKEN;
   const credentials = credentialsMode ?? (useCookieSession ? "include" : "omit");
@@ -455,7 +465,7 @@ export async function apiRequestRaw<T>(path: string, options: ApiRequestOptions 
 
   // Session-bound CSRF tokens can become stale after long idle periods.
   // Retry once with a fresh csrf-cookie before surfacing a 419 to the UI.
-  if (mutating && useCookieSession && response.status === 419) {
+  if (mutating && useCookieSession && retryCsrfOn419 && response.status === 419) {
     await ensureCsrfCookie(true);
     response = await fetchRequest();
   }
