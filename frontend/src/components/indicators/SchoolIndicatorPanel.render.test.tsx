@@ -762,6 +762,35 @@ describe("SchoolIndicatorPanel optional note removal", () => {
 
 });
 
+describe("SchoolIndicatorPanel FM-QAD template downloads", () => {
+  it("shows the template control for a private-school School Head", async () => {
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    expect(await screen.findByText("Download FM-QAD Template")).not.toBeNull();
+  });
+
+  it("does not show the template control for a public-school School Head", async () => {
+    useAuthMock.mockReturnValue({
+      apiToken: "token",
+      user: {
+        id: 25,
+        role: "school_head",
+        schoolId: 1,
+        schoolCode: "103501",
+        schoolName: "Santiago City National High School",
+        schoolType: "public",
+      },
+    });
+
+    render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Academic Year")).not.toBeNull();
+    });
+    expect(screen.queryByText("Download FM-QAD Template")).toBeNull();
+  });
+});
+
 describe("SchoolIndicatorPanel batch submit", () => {
   it("lets School Head users select ready scopes and submit them in one batch", async () => {
     const submitSubmissionScopes = vi.fn().mockResolvedValue({
