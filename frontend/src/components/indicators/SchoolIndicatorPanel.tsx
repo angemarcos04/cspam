@@ -14,6 +14,7 @@ import {
 } from "react";
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
+import { FmQadTemplateDownload } from "@/components/indicators/FmQadTemplateDownload";
 import {
   SUBMISSION_FILE_DEFINITIONS,
   SUBMISSION_FILE_DEFINITION_BY_TYPE,
@@ -3550,6 +3551,8 @@ function SchoolIndicatorPanelComponent({
     latestActiveWorkspaceSubmission ?? activeWorkspaceSubmission,
     user?.schoolType ?? null,
   );
+  const isPrivateSchool =
+    String(activeWorkspaceSchoolType ?? "").trim().toLowerCase() === "private";
   const fallbackRequiredFileTypes = useMemo(
     () => defaultRequiredSubmissionFileTypesForSchoolType(activeWorkspaceSchoolType),
     [activeWorkspaceSchoolType],
@@ -6493,6 +6496,8 @@ function SchoolIndicatorPanelComponent({
             </div>
           </div>
         </div>
+
+        {isPrivateSchool && <FmQadTemplateDownload />}
 
         <div className="space-y-2 pt-3">
           <div className="rounded-sm border border-slate-200 bg-slate-50 p-1.5">
