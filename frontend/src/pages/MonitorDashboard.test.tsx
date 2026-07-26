@@ -41,10 +41,6 @@ vi.mock("@/components/Shell", () => ({
   ),
 }));
 
-vi.mock("@/components/DashboardHelpDialog", () => ({
-  DashboardHelpDialog: () => null,
-}));
-
 vi.mock("@/components/MonitorMfaResetApprovalsDialog", () => ({
   MonitorMfaResetApprovalsDialog: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="MFA Recovery Requests">MFA Recovery Requests</div> : null,
@@ -561,7 +557,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(within(schoolsSection).queryByRole("button", { name: "Add School" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
     expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open quick guide" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Open user manual" })).toBeTruthy();
     const schoolsSearch = within(schoolsSection).getByPlaceholderText("Search school code, school name, or school head") as HTMLInputElement;
     expect(schoolsSection.contains(schoolsSearch)).toBe(true);
     expect(schoolsSearch.closest(".dashboard-shell-visible")).toBeNull();
@@ -1184,7 +1181,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByText("Needs Action")).toBeNull();
     expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
     expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open quick guide" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Queue List" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Review Workspace" })).toBeNull();
     expect(screen.queryByTestId("monitor-indicator-panel")).toBeNull();
@@ -1282,7 +1279,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(screen.queryByRole("button", { name: "Filters" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Refresh" })).toBeNull();
     expect(screen.getByRole("button", { name: "Refresh dashboard data" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Open quick guide" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open quick guide" })).toBeNull();
     expect(within(auditTrailSection).getByLabelText("Action")).toBeTruthy();
     expect(within(auditTrailSection).getByRole("option", { name: "All actions" })).toBeTruthy();
     expect(within(auditTrailSection).getByLabelText("From")).toBeTruthy();

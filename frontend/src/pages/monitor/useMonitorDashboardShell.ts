@@ -29,8 +29,6 @@ export interface UseMonitorDashboardShellResult {
   setShowAdvancedFilters: Dispatch<SetStateAction<boolean>>;
   showAdvancedAnalytics: boolean;
   setShowAdvancedAnalytics: Dispatch<SetStateAction<boolean>>;
-  showHelpDialog: boolean;
-  setShowHelpDialog: Dispatch<SetStateAction<boolean>>;
   showMfaResetApprovalsDialog: boolean;
   setShowMfaResetApprovalsDialog: Dispatch<SetStateAction<boolean>>;
   renderAdvancedAnalytics: boolean;
@@ -57,7 +55,6 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
   const [showNavigatorManual, setShowNavigatorManual] = useState(false);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [showAdvancedAnalytics, setShowAdvancedAnalytics] = useState(false);
-  const [showHelpDialog, setShowHelpDialog] = useState(false);
   const [showMfaResetApprovalsDialog, setShowMfaResetApprovalsDialog] = useState(false);
   const [renderAdvancedAnalytics, setRenderAdvancedAnalytics] = useState(false);
   const [isHidingAdvancedAnalytics, setIsHidingAdvancedAnalytics] = useState(false);
@@ -195,8 +192,6 @@ export function useMonitorDashboardShell(): UseMonitorDashboardShellResult {
     setShowAdvancedFilters,
     showAdvancedAnalytics,
     setShowAdvancedAnalytics,
-    showHelpDialog,
-    setShowHelpDialog,
     showMfaResetApprovalsDialog,
     setShowMfaResetApprovalsDialog,
     renderAdvancedAnalytics,

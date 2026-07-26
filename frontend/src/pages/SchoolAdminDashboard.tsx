@@ -2074,7 +2074,7 @@ export function SchoolAdminDashboard() {
         </section>
       )}
 
-      <DashboardHelpDialog open={showHelpDialog} variant="school_head" onClose={() => setShowHelpDialog(false)} />
+      <DashboardHelpDialog open={showHelpDialog} onClose={() => setShowHelpDialog(false)} />
 
 
       {/* ── School Info ── */}

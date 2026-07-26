@@ -1,5 +1,4 @@
 ﻿import { useCallback, useMemo, useRef, useState } from "react";
-import { DashboardHelpDialog } from "@/components/DashboardHelpDialog";
 import { useEffect } from "react";
 import { MonitorMfaResetApprovalsDialog } from "@/components/MonitorMfaResetApprovalsDialog";
 import { Shell } from "@/components/Shell";
@@ -303,8 +302,6 @@ export function MonitorDashboard() {
     setShowAdvancedFilters,
     showAdvancedAnalytics,
     setShowAdvancedAnalytics,
-    showHelpDialog,
-    setShowHelpDialog,
     showMfaResetApprovalsDialog,
     setShowMfaResetApprovalsDialog,
     renderAdvancedAnalytics,
@@ -1311,7 +1308,6 @@ export function MonitorDashboard() {
           syncStatus={syncStatus}
           syncScope={syncScope}
           onRefresh={() => void handleRefreshDashboard()}
-          onOpenHelp={() => setShowHelpDialog(true)}
         />
       }
     >
@@ -1325,7 +1321,6 @@ export function MonitorDashboard() {
         </section>
       )}
 
-      <DashboardHelpDialog open={showHelpDialog} variant="monitor" onClose={() => setShowHelpDialog(false)} />
       <MonitorMfaResetApprovalsDialog
         open={showMfaResetApprovalsDialog}
         isAuthenticated={isAuthenticated}
