@@ -10,11 +10,19 @@ afterEach(() => {
 
 describe("FmQadTemplateDownload", () => {
   it("starts with the placeholder selected and Download disabled", () => {
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, "click");
+
     render(<FmQadTemplateDownload />);
+
+    const downloadButton = screen.getByRole("button", { name: "Download" });
 
     expect((screen.getByLabelText("FM-QAD template") as HTMLSelectElement).value).toBe("");
     expect(screen.getByRole("option", { name: "Select a template" })).not.toBeNull();
-    expect((screen.getByRole("button", { name: "Download" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((downloadButton as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(downloadButton);
+
+    expect(anchorClick).not.toHaveBeenCalled();
   });
 
   it("enables Download after selecting a valid template", () => {
@@ -62,6 +70,7 @@ describe("FmQadTemplateDownload", () => {
       `/templates/fm-qad/${encodeURIComponent(selectedTemplate.filename)}`,
     );
     expect(appendedAnchor?.download).toBe(selectedTemplate.filename);
+    expect(appendedAnchor?.isConnected).toBe(false);
     expect(submitHandler).not.toHaveBeenCalled();
   });
 });
