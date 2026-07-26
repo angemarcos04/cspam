@@ -204,7 +204,7 @@ describe("NotificationProvider", () => {
     });
   });
 
-  it("shows a session-expired error for unauthorized notification loads", async () => {
+  it("does not show a session-expired message for unauthorized notification loads", async () => {
     apiRequestRawMock.mockRejectedValue(apiError(401));
 
     render(
@@ -214,7 +214,7 @@ describe("NotificationProvider", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId("notification-error").textContent).toBe("Your session expired. Please sign in again.");
+      expect(screen.getByTestId("notification-error").textContent).toBe("");
     });
   });
 

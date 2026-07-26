@@ -79,7 +79,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     async (err: unknown) => {
       if (isApiError(err)) {
         if (err.status === 401) {
-          setError("Your session expired. Please sign in again.");
+          setError("");
           return;
         }
 

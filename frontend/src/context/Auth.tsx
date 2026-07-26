@@ -762,7 +762,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refreshBearerToken, sessionMode, shouldRefreshBearerToken]);
 
   const markConfirmedSessionExpiry = useCallback(() => {
-    setAuthError("Your session expired. Please sign in again.");
+    setAuthError("");
     setAuthErrorCode(401);
     setAccountStatus(null);
     finalizeClientLogout(setUser, clearTokenSession, clearAuthError, { preserveAuthError: true });

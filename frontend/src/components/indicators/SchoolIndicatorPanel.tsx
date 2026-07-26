@@ -1837,7 +1837,7 @@ function normalizeSessionMessage(value: string | null | undefined): string {
     return String(value ?? "");
   }
 
-  return "Your session expired. Please sign in again.";
+  return "";
 }
 
 function toGroupBActionErrorMessage(error: unknown, fallback: string): string {
