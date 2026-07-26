@@ -2,6 +2,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import { AlertTriangle, LoaderCircle } from "lucide-react";
 import { AuthProvider, useAuth } from "@/context/Auth";
+import { DashboardRouteErrorBoundary } from "@/components/DashboardRouteErrorBoundary";
 import { DataProvider } from "@/context/Data";
 import { IndicatorDataProvider } from "@/context/IndicatorData";
 import { NotificationProvider } from "@/context/Notifications";
@@ -9,24 +10,29 @@ import { StudentDataProvider } from "@/context/StudentData";
 import { TeacherDataProvider } from "@/context/TeacherData";
 import type { UserRole } from "@/types";
 import { Login } from "@/pages/Login";
+import {
+  loadMonitorDashboardRoute,
+  loadSchoolAdminDashboardRoute,
+} from "@/lib/dashboardRouteLoaders";
+import { lazyRouteWithRecovery } from "@/lib/lazyRouteWithRecovery";
 import { startRealtimeBridge, stopRealtimeBridge } from "@/lib/realtime";
 
 const ForgotPassword = lazy(() => import("@/pages/ForgotPassword").then((module) => ({ default: module.ForgotPassword })));
 const MfaResetComplete = lazy(() => import("@/pages/MfaResetComplete").then((module) => ({ default: module.MfaResetComplete })));
 const MfaResetRequest = lazy(() => import("@/pages/MfaResetRequest").then((module) => ({ default: module.MfaResetRequest })));
-const MonitorDashboard = lazy(() => import("@/pages/MonitorDashboard").then((module) => ({ default: module.MonitorDashboard })));
+const MonitorDashboard = lazyRouteWithRecovery("monitor", loadMonitorDashboardRoute);
 const ResetPassword = lazy(() => import("@/pages/ResetPassword").then((module) => ({ default: module.ResetPassword })));
-const SchoolAdminDashboard = lazy(() => import("@/pages/SchoolAdminDashboard").then((module) => ({ default: module.SchoolAdminDashboard })));
+const SchoolAdminDashboard = lazyRouteWithRecovery("school-admin", loadSchoolAdminDashboardRoute);
 const SetupAccount = lazy(() => import("@/pages/SetupAccount").then((module) => ({ default: module.SetupAccount })));
 
-function FullscreenLoader() {
+export function FullscreenLoader({ message = "Loading synchronized records..." }: { message?: string }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-page-bg px-4">
       <div className="surface-panel flex w-full max-w-sm items-center gap-3 border p-5">
         <img src="/depedlogo.png" alt="DepEd logo" className="h-11 w-auto bg-white px-1.5 py-1" />
         <div className="flex-1">
           <p className="text-sm font-bold text-primary-800">CSPAMS</p>
-          <p className="text-xs text-slate-600">Loading synchronized records...</p>
+          <p className="text-xs text-slate-600">{message}</p>
         </div>
         <LoaderCircle className="h-5 w-5 animate-spin text-primary" />
       </div>
@@ -80,13 +86,15 @@ function AppRoutes() {
         path="/school-admin"
         element={
           <ProtectedRoute allowedRole="school_head">
-            <AuthenticatedAppProviders>
-              <DashboardDataProviders>
-                <LazyRoute>
-                  <SchoolAdminDashboard />
-                </LazyRoute>
-              </DashboardDataProviders>
-            </AuthenticatedAppProviders>
+            <DashboardRouteErrorBoundary>
+              <AuthenticatedAppProviders>
+                <DashboardDataProviders>
+                  <LazyRoute message="Opening School Dashboard...">
+                    <SchoolAdminDashboard />
+                  </LazyRoute>
+                </DashboardDataProviders>
+              </AuthenticatedAppProviders>
+            </DashboardRouteErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -95,13 +103,15 @@ function AppRoutes() {
         path="/monitor"
         element={
           <ProtectedRoute allowedRole="monitor">
-            <AuthenticatedAppProviders>
-              <DashboardDataProviders>
-                <LazyRoute>
-                  <MonitorDashboard />
-                </LazyRoute>
-              </DashboardDataProviders>
-            </AuthenticatedAppProviders>
+            <DashboardRouteErrorBoundary>
+              <AuthenticatedAppProviders>
+                <DashboardDataProviders>
+                  <LazyRoute message="Opening Division Monitor Dashboard...">
+                    <MonitorDashboard />
+                  </LazyRoute>
+                </DashboardDataProviders>
+              </AuthenticatedAppProviders>
+            </DashboardRouteErrorBoundary>
           </ProtectedRoute>
         }
       />
@@ -110,8 +120,8 @@ function AppRoutes() {
   );
 }
 
-function LazyRoute({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<FullscreenLoader />}>{children}</Suspense>;
+function LazyRoute({ children, message }: { children: ReactNode; message?: string }) {
+  return <Suspense fallback={<FullscreenLoader message={message} />}>{children}</Suspense>;
 }
 
 function RealtimeBridge() {

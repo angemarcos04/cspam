@@ -313,13 +313,46 @@ function buildAuditEvents() {
   ];
 }
 
-async function installMonitorApiMocks(page: Page, stateRef: { value: ReviewState; reviewNotes: string | null }) {
+async function installMonitorApiMocks(
+  page: Page,
+  stateRef: { value: ReviewState; reviewNotes: string | null },
+  options: { requireMfa?: boolean } = {},
+) {
   await page.route("**/api/**", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
 
+    if (path === "/api/health") {
+      return jsonResponse(route, {
+        status: "ok",
+        app: "cspams",
+        timestamp: nowIso,
+      });
+    }
+
     if (path === "/api/auth/login") {
+      if (options.requireMfa) {
+        return jsonResponse(route, {
+          requiresMfa: true,
+          mfa: {
+            challengeId: "11111111-1111-4111-8111-111111111111",
+            expiresAt: new Date(Date.now() + 600_000).toISOString(),
+          },
+          delivery: "sent",
+        });
+      }
+
+      return jsonResponse(route, {
+        token: "e2e-monitor-token",
+        tokenType: "Bearer",
+        expiresAt: null,
+        refreshAfter: null,
+        user: monitorUser,
+      });
+    }
+
+    if (path === "/api/auth/verify-mfa") {
       return jsonResponse(route, {
         token: "e2e-monitor-token",
         tokenType: "Bearer",
@@ -516,6 +549,42 @@ async function openSchoolDetail(page: Page) {
 }
 
 test.describe("monitor review smoke flow", () => {
+  test("opens the dashboard after Monitor MFA without a browser reload", async ({ page }) => {
+    const stateRef = { value: "forReview" as ReviewState, reviewNotes: null as string | null };
+    await installMonitorApiMocks(page, stateRef, { requireMfa: true });
+    const documentRequests: string[] = [];
+    const authRequests: string[] = [];
+    const pageErrors: Error[] = [];
+
+    page.on("request", (request) => {
+      const path = new URL(request.url()).pathname;
+      if (request.resourceType() === "document") {
+        documentRequests.push(path);
+      }
+      if (path.startsWith("/api/auth/")) {
+        authRequests.push(path);
+      }
+    });
+    page.on("pageerror", (error) => {
+      pageErrors.push(error);
+    });
+
+    await page.goto("/", { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Division Monitor" }).click();
+    await page.getByLabel("Login ID").fill("monitor@cspams.local");
+    await page.locator("#passcode").fill("monitor-passcode");
+    await page.getByRole("button", { name: "Sign In" }).click();
+    await page.getByLabel("Verification Code").fill("123456");
+    await page.getByRole("button", { name: "Verify and Sign In" }).click();
+
+    await expect(page.getByRole("heading", { name: "Review Inbox" })).toBeVisible({ timeout: 20_000 });
+    expect(documentRequests).toHaveLength(1);
+    expect(authRequests.filter((path) => path === "/api/auth/login")).toHaveLength(1);
+    expect(authRequests.filter((path) => path === "/api/auth/verify-mfa")).toHaveLength(1);
+    expect(authRequests.filter((path) => path === "/api/auth/me")).toHaveLength(1);
+    expect(pageErrors).toEqual([]);
+  });
+
   test("previews a sent file from View and updates the visible queue after Verify", async ({ page }) => {
     const stateRef = { value: "forReview" as ReviewState, reviewNotes: null as string | null };
     await installMonitorApiMocks(page, stateRef);

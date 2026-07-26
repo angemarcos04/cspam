@@ -21,6 +21,10 @@ const backendWarmupState = {
   cancelBackendWarmup: vi.fn(),
 };
 
+const dashboardRouteLoaderState = {
+  preloadDashboardRoute: vi.fn(),
+};
+
 vi.mock("@/context/Auth", () => ({
   useAuth: () => authState,
 }));
@@ -29,6 +33,11 @@ vi.mock("@/lib/backendWarmup", () => ({
   warmBackend: () => backendWarmupState.warmBackend(),
   getBackendWarmupStatus: () => backendWarmupState.getBackendWarmupStatus(),
   cancelBackendWarmup: () => backendWarmupState.cancelBackendWarmup(),
+}));
+
+vi.mock("@/lib/dashboardRouteLoaders", () => ({
+  preloadDashboardRoute: (role: "monitor" | "school_head") =>
+    dashboardRouteLoaderState.preloadDashboardRoute(role),
 }));
 
 describe("Login", () => {
@@ -53,6 +62,26 @@ describe("Login", () => {
     backendWarmupState.getBackendWarmupStatus.mockReset();
     backendWarmupState.getBackendWarmupStatus.mockReturnValue("ready");
     backendWarmupState.cancelBackendWarmup.mockReset();
+    dashboardRouteLoaderState.preloadDashboardRoute.mockReset();
+    dashboardRouteLoaderState.preloadDashboardRoute.mockResolvedValue(undefined);
+  });
+
+  it("preloads frontend dashboard code when the selected role changes", async () => {
+    render(
+      <MemoryRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <Login />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(dashboardRouteLoaderState.preloadDashboardRoute).toHaveBeenCalledWith("school_head");
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: /division monitor/i })[0]!);
+
+    await waitFor(() => {
+      expect(dashboardRouteLoaderState.preloadDashboardRoute).toHaveBeenCalledWith("monitor");
+    });
   });
 
   it("warms on mount, keeps fields editable, and defers one login until ready", async () => {

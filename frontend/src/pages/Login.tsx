@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { Eye, EyeOff, ShieldCheck, GraduationCap, ClipboardList, ArrowRight } from "lucide-react";
 import { AuthPoweredByFooter } from "@/components/AuthPoweredByFooter";
 import { useAuth } from "@/context/Auth";
@@ -10,6 +10,7 @@ import {
   warmBackend,
   type BackendWarmupStatus,
 } from "@/lib/backendWarmup";
+import { preloadDashboardRoute } from "@/lib/dashboardRouteLoaders";
 import type { UserRole } from "@/types";
 
 type LoginRole = Exclude<UserRole, null>;
@@ -74,7 +75,6 @@ function describeApiOrigin(): string {
 }
 
 export function Login() {
-  const navigate = useNavigate();
   const {
     login,
     verifyMfa,
@@ -106,6 +106,12 @@ export function Login() {
   );
   const isMountedRef = useRef(true);
   const isMfaChallengeActive = pendingMfa !== null;
+
+  useEffect(() => {
+    void preloadDashboardRoute(activeRole).catch(() => {
+      // Route recovery handles a failed preload if the user completes sign-in.
+    });
+  }, [activeRole]);
 
   const roleMeta = ROLE_META[activeRole];
   const forgotPasswordHref = (() => {
@@ -315,7 +321,6 @@ export function Login() {
           code: mfaCode.trim().toUpperCase(),
         });
         clearMfaState();
-        navigate("/monitor");
         return;
       }
 
@@ -348,7 +353,6 @@ export function Login() {
         }
       }
 
-      navigate(activeRole === "school_head" ? "/school-admin" : "/monitor");
     } catch (err) {
       if (isApiError(err)) {
         const shouldRestartMfa =

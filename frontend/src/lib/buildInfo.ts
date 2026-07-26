@@ -5,6 +5,11 @@ export const CSPAMS_BUILD_INFO = {
   buildCommit: import.meta.env.VITE_GIT_COMMIT || "unknown",
 } as const;
 
+export function getCspamsBuildIdentifier(): string {
+  const commit = CSPAMS_BUILD_INFO.buildCommit.trim();
+  return commit || "unknown";
+}
+
 declare global {
   interface Window {
     __CSPAMS_BUILD_INFO__?: typeof CSPAMS_BUILD_INFO;
