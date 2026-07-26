@@ -491,8 +491,7 @@ export function Login() {
               aria-live="polite"
             >
               {backendStatus === "idle" && "Checking secure server."}
-              {backendStatus === "warming" &&
-                "Starting the secure server. This may take about a minute after a period of inactivity."}
+              {backendStatus === "warming" && "Starting secure server."}
               {backendStatus === "ready" && "Secure server ready."}
               {backendStatus === "unavailable" && (
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
