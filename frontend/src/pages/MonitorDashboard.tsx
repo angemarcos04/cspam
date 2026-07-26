@@ -29,9 +29,11 @@ import {
 import {
   MONITOR_QUICK_JUMPS,
   MONITOR_TOP_NAVIGATOR_IDS,
+  MONITOR_USER_MANUAL_VISIBLE,
   RECORD_PAGE_SIZE,
   REQUIREMENT_FILTER_OPTIONS,
   REQUIREMENT_PAGE_SIZE,
+  resolveMonitorUserManualOpen,
 } from "@/pages/monitor/monitorDashboardConfig";
 import {
   downloadCsvFile,
@@ -316,6 +318,14 @@ export function MonitorDashboard() {
     focusAndScrollTo,
     sectionFocusClass,
   } = useMonitorDashboardShell();
+  const isMonitorManualOpen = resolveMonitorUserManualOpen(showNavigatorManual);
+
+  useEffect(() => {
+    if (!MONITOR_USER_MANUAL_VISIBLE && showNavigatorManual) {
+      setShowNavigatorManual(false);
+    }
+  }, [setShowNavigatorManual, showNavigatorManual]);
+
   const [requirementsPage, setRequirementsPage] = useState(1);
   const [recordsPage, setRecordsPage] = useState(1);
   const initialLoadStartedRef = useRef(false);
@@ -346,7 +356,7 @@ export function MonitorDashboard() {
   const { monitorRadarTotals } = useMonitorRadarTotals({
     authSessionKey,
     activeTopNavigator,
-    showNavigatorManual,
+    showNavigatorManual: isMonitorManualOpen,
     scopedSchoolCodes,
     radarTotalsTick,
     queryStudents,
@@ -388,7 +398,7 @@ export function MonitorDashboard() {
   useEffect(() => {
     if (
       !filtersHydrated
-      || showNavigatorManual
+      || isMonitorManualOpen
       || activeTopNavigator !== "schools"
       || schoolRosterLoadStartedRef.current
     ) {
@@ -402,7 +412,7 @@ export function MonitorDashboard() {
     filtersHydrated,
     refreshStudents,
     refreshTeachers,
-    showNavigatorManual,
+    isMonitorManualOpen,
   ]);
 
   useEffect(() => {
@@ -1137,7 +1147,7 @@ export function MonitorDashboard() {
     clearFilterChip,
     schoolDrawerBuildArgs: {
       isOpen: Boolean(schoolDrawerKey),
-      showNavigatorManual,
+      showNavigatorManual: isMonitorManualOpen,
       isMobileViewport,
       activeTopNavigator,
       activeSchoolDrawerTab,
@@ -1275,15 +1285,15 @@ export function MonitorDashboard() {
   });
 
   useEffect(() => {
-    if (showNavigatorManual || activeTopNavigator === "reviews" || !schoolDrawerKey) {
+    if (isMonitorManualOpen || activeTopNavigator === "reviews" || !schoolDrawerKey) {
       return;
     }
 
     closeSchoolDrawer();
-  }, [activeTopNavigator, closeSchoolDrawer, schoolDrawerKey, showNavigatorManual]);
+  }, [activeTopNavigator, closeSchoolDrawer, isMonitorManualOpen, schoolDrawerKey]);
 
   useEffect(() => {
-    if (activeTopNavigator !== "add_school" || showNavigatorManual) {
+    if (activeTopNavigator !== "add_school" || isMonitorManualOpen) {
       return;
     }
 
@@ -1297,7 +1307,7 @@ export function MonitorDashboard() {
         }
       }, 80);
     }
-  }, [activeTopNavigator, closeSchoolDrawer, showNavigatorManual]);
+  }, [activeTopNavigator, closeSchoolDrawer, isMonitorManualOpen]);
 
   const handleViewSchoolsFromAddSchool = useCallback(() => {
     setActiveTopNavigator("schools");
@@ -1315,6 +1325,10 @@ export function MonitorDashboard() {
     setIsNavigatorCompact((current) => !current);
   }, [isMobileViewport, setIsNavigatorCompact, setIsNavigatorVisible]);
   const handleToggleNavigatorManual = useCallback(() => {
+    if (!MONITOR_USER_MANUAL_VISIBLE) {
+      return;
+    }
+
     setShowNavigatorManual((current) => !current);
     setFocusedSectionId(null);
     closeSchoolDrawer();
@@ -1350,7 +1364,7 @@ export function MonitorDashboard() {
         onClose={() => setShowMfaResetApprovalsDialog(false)}
       />
 
-      {!showNavigatorManual && isMobileViewport && (
+      {!isMonitorManualOpen && isMobileViewport && (
         <MonitorMobileNavigator
           activeTopNavigator={activeTopNavigator}
           navigatorBadges={navigatorBadges}
@@ -1369,7 +1383,7 @@ export function MonitorDashboard() {
           isNavigatorCompact={isNavigatorCompact}
           isNavigatorVisible={isNavigatorVisible}
           isMobileViewport={isMobileViewport}
-          showNavigatorManual={showNavigatorManual}
+          showNavigatorManual={isMonitorManualOpen}
           shouldRenderNavigatorItems={shouldRenderNavigatorItems}
           showNavigatorHeaderText={showNavigatorHeaderText}
           onToggleNavigator={handleToggleNavigatorChrome}
@@ -1377,9 +1391,9 @@ export function MonitorDashboard() {
           onToggleManual={handleToggleNavigatorManual}
         />
         <div className="dashboard-main-pane mt-4 min-w-0 lg:mt-0">
-          {showNavigatorManual && <MonitorManualScreen onClose={() => setShowNavigatorManual(false)} />}
+          {isMonitorManualOpen && <MonitorManualScreen onClose={() => setShowNavigatorManual(false)} />}
 
-          {!showNavigatorManual && (
+          {!isMonitorManualOpen && (
             <MonitorDashboardToolbar
               activeTopNavigator={activeTopNavigator}
               activeScreenMeta={activeScreenMeta}
@@ -1395,13 +1409,13 @@ export function MonitorDashboard() {
           )}
 
           <MonitorFiltersPanel
-            isOpen={!showNavigatorManual && showSubmissionFilters}
+            isOpen={!isMonitorManualOpen && showSubmissionFilters}
             isMobileViewport={isMobileViewport}
             onClose={() => setShowAdvancedFilters(false)}
             quickFiltersProps={quickFiltersProps}
           />
 
-          {!showNavigatorManual && activeTopNavigator === "reviews" && (
+          {!isMonitorManualOpen && activeTopNavigator === "reviews" && (
             <MonitorReviewsSection
               isMobileViewport={isMobileViewport}
               sectionFocusClass={sectionFocusClass}
@@ -1429,11 +1443,11 @@ export function MonitorDashboard() {
             />
           )}
 
-          {!showNavigatorManual && activeTopNavigator === "audit" && (
+          {!isMonitorManualOpen && activeTopNavigator === "audit" && (
             <MonitorAuditTrail />
           )}
 
-          {!showNavigatorManual && activeTopNavigator === "add_school" && (
+          {!isMonitorManualOpen && activeTopNavigator === "add_school" && (
             <MonitorAddSchoolSection
               sectionFocusClass={sectionFocusClass}
               schoolRecordFormProps={schoolsSectionApi.schoolRecordFormProps}
@@ -1441,7 +1455,7 @@ export function MonitorDashboard() {
             />
           )}
 
-          {!showNavigatorManual && activeTopNavigator === "schools" && (
+          {!isMonitorManualOpen && activeTopNavigator === "schools" && (
             <MonitorSchoolsSection
               sectionFocusClass={sectionFocusClass}
               isMobileViewport={isMobileViewport}
@@ -1473,7 +1487,7 @@ export function MonitorDashboard() {
             />
           )}
 
-          {!showNavigatorManual && activeTopNavigator === "reviews" && (
+          {!isMonitorManualOpen && activeTopNavigator === "reviews" && (
             <MonitorSchoolDrawer {...schoolDrawerProps} />
           )}
 

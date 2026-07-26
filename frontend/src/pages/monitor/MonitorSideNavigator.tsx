@@ -8,6 +8,7 @@ import {
 import {
   MONITOR_NAVIGATOR_ICONS,
   MONITOR_TOP_NAVIGATOR_ITEMS,
+  MONITOR_USER_MANUAL_VISIBLE,
 } from "@/pages/monitor/monitorDashboardConfig";
 import { navigatorButtonClass } from "@/pages/monitor/monitorDashboardUiUtils";
 import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
@@ -158,30 +159,32 @@ export function MonitorSideNavigator({
           </div>
         </div>
 
-        <div
-          className={`overflow-hidden ${
-            shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
-          }`}
-        >
-          <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
-            <button
-              type="button"
-              onClick={onToggleManual}
-              className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
-                showNavigatorManual
-                  ? "border-primary-100 bg-primary-700"
-                  : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
-              } ${
-                isNavigatorCompact ? "h-11 w-11 justify-center p-0" : "h-11 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
-              }`}
-              title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
-              aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
-            >
-              <BookOpenText className="h-3.5 w-3.5" />
-              {!isNavigatorCompact && <span>{showNavigatorManual ? "Back to Data" : "User Manual"}</span>}
-            </button>
+        {MONITOR_USER_MANUAL_VISIBLE && (
+          <div
+            className={`overflow-hidden ${
+              shouldRenderNavigatorItems ? "mt-3 max-h-24 opacity-100" : "mt-0 max-h-0 opacity-0 pointer-events-none"
+            }`}
+          >
+            <div className={`border-t border-primary-400/30 pt-3 ${isNavigatorCompact ? "flex justify-center" : ""}`}>
+              <button
+                type="button"
+                onClick={onToggleManual}
+                className={`inline-flex items-center gap-1.5 rounded-sm border text-white transition ${
+                  showNavigatorManual
+                    ? "border-primary-100 bg-primary-700"
+                    : "border-primary-400/40 bg-primary-700/65 hover:bg-primary-700"
+                } ${
+                  isNavigatorCompact ? "h-11 w-11 justify-center p-0" : "h-11 w-full px-3 py-2 text-xs font-semibold uppercase tracking-wide"
+                }`}
+                title={showNavigatorManual ? "Close User Manual" : "Open User Manual"}
+                aria-label={showNavigatorManual ? "Close user manual" : "Open user manual"}
+              >
+                <BookOpenText className="h-3.5 w-3.5" />
+                {!isNavigatorCompact && <span>{showNavigatorManual ? "Back to Data" : "User Manual"}</span>}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </aside>
   );

@@ -35,6 +35,13 @@ export interface QuickJumpItem {
   icon: NavigatorIcon;
 }
 
+// Temporarily hidden while the Division Monitor manual is being rewritten.
+export const MONITOR_USER_MANUAL_VISIBLE = false;
+
+export function resolveMonitorUserManualOpen(requestedOpen: boolean): boolean {
+  return MONITOR_USER_MANUAL_VISIBLE && requestedOpen;
+}
+
 export const MONITOR_TOP_NAVIGATOR_ITEMS: MonitorTopNavigatorItem[] = [
   { id: "schools", label: "Schools" },
   { id: "add_school", label: "Add School" },
