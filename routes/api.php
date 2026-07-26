@@ -13,6 +13,7 @@ use App\Http\Controllers\Api\SchoolHeadAccountController;
 use App\Http\Controllers\Api\StudentRecordController;
 use App\Http\Controllers\Api\TeacherRecordController;
 use App\Http\Middleware\EnsureActiveAccount;
+use App\Http\Middleware\InstrumentMonitorReadTiming;
 use App\Http\Middleware\InstrumentStudentCrudTiming;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
@@ -69,8 +70,10 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->post('/broadcas
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->get('/audit-logs', [AuditLogController::class, 'index']);
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
-    Route::get('/review-inbox', [MonitorReviewInboxController::class, 'index']);
-    Route::get('/records', [SchoolRecordController::class, 'index']);
+    Route::get('/review-inbox', [MonitorReviewInboxController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':dashboard.review-inbox');
+    Route::get('/records', [SchoolRecordController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':dashboard.records');
     Route::post('/records', [SchoolRecordController::class, 'store']);
     Route::post('/records/bulk-import', [SchoolRecordController::class, 'bulkImport']);
     Route::get('/records/archived', [SchoolRecordController::class, 'archived']);
@@ -101,7 +104,8 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
     Route::patch('/records/{school}', [SchoolRecordController::class, 'update']);
     Route::delete('/records/{school}', [SchoolRecordController::class, 'destroy']);
 
-    Route::get('/students', [StudentRecordController::class, 'index']);
+    Route::get('/students', [StudentRecordController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':dashboard.students');
     Route::post('/students', [StudentRecordController::class, 'store'])
         ->middleware(InstrumentStudentCrudTiming::class);
     Route::delete('/students', [StudentRecordController::class, 'batchDestroy']);
@@ -111,7 +115,8 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
     Route::delete('/students/{student}', [StudentRecordController::class, 'destroy'])
         ->middleware(InstrumentStudentCrudTiming::class);
 
-    Route::get('/teachers', [TeacherRecordController::class, 'index']);
+    Route::get('/teachers', [TeacherRecordController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':dashboard.teachers');
     Route::post('/teachers', [TeacherRecordController::class, 'store']);
     Route::put('/teachers/{teacher}', [TeacherRecordController::class, 'update']);
     Route::patch('/teachers/{teacher}', [TeacherRecordController::class, 'update']);
@@ -119,9 +124,12 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboa
 });
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicators')->group(function (): void {
-    Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears']);
-    Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics']);
-    Route::get('/submissions', [IndicatorSubmissionController::class, 'index']);
+    Route::get('/academic-years', [IndicatorSubmissionController::class, 'academicYears'])
+        ->middleware(InstrumentMonitorReadTiming::class.':indicators.academic-years');
+    Route::get('/metrics', [IndicatorSubmissionController::class, 'metrics'])
+        ->middleware(InstrumentMonitorReadTiming::class.':indicators.metrics');
+    Route::get('/submissions', [IndicatorSubmissionController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':indicators.submissions');
     Route::post('/submissions/bootstrap', [IndicatorSubmissionController::class, 'bootstrap']);
     Route::post('/submissions', [IndicatorSubmissionController::class, 'store']);
     Route::get('/submissions/{submission}/targets-met-report', [IndicatorSubmissionController::class, 'targetsMetReport']);
@@ -138,7 +146,8 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('indicat
 });
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('notifications')->group(function (): void {
-    Route::get('/', [NotificationController::class, 'index']);
+    Route::get('/', [NotificationController::class, 'index'])
+        ->middleware(InstrumentMonitorReadTiming::class.':notifications');
     Route::post('/read-all', [NotificationController::class, 'markAllAsRead']);
     Route::post('/clear', [NotificationController::class, 'clearAll']);
     Route::post('/{notification}/read', [NotificationController::class, 'markAsRead']);

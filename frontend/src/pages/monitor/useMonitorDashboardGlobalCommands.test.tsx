@@ -4,10 +4,12 @@ import { useMonitorDashboardGlobalCommands } from "@/pages/monitor/useMonitorDas
 
 function buildArgs(overrides: Partial<Parameters<typeof useMonitorDashboardGlobalCommands>[0]> = {}) {
   return {
+    activeTopNavigator: "reviews" as const,
     refreshRecords: vi.fn().mockResolvedValue(undefined),
     refreshSubmissions: vi.fn().mockResolvedValue(undefined),
     refreshStudents: vi.fn().mockResolvedValue(undefined),
     refreshTeachers: vi.fn().mockResolvedValue(undefined),
+    refreshReviewInbox: vi.fn().mockResolvedValue(undefined),
     onToast: vi.fn(),
     setShowNavigatorManual: vi.fn(),
     setActiveTopNavigator: vi.fn(),
@@ -19,7 +21,7 @@ function buildArgs(overrides: Partial<Parameters<typeof useMonitorDashboardGloba
 }
 
 describe("useMonitorDashboardGlobalCommands", () => {
-  it("passes force and throwOnError to every manual dashboard refresh task", async () => {
+  it("refreshes the active Reviews domains without loading inactive school rosters", async () => {
     const args = buildArgs();
     const { result } = renderHook(() => useMonitorDashboardGlobalCommands(args));
 
@@ -30,8 +32,23 @@ describe("useMonitorDashboardGlobalCommands", () => {
     const expectedOptions = { force: true, throwOnError: true };
     expect(args.refreshRecords).toHaveBeenCalledWith(expectedOptions);
     expect(args.refreshSubmissions).toHaveBeenCalledWith(expectedOptions);
+    expect(args.refreshReviewInbox).toHaveBeenCalledWith(expectedOptions);
+    expect(args.refreshStudents).not.toHaveBeenCalled();
+    expect(args.refreshTeachers).not.toHaveBeenCalled();
+  });
+
+  it("refreshes student and teacher data when Schools is active", async () => {
+    const args = buildArgs({ activeTopNavigator: "schools" });
+    const { result } = renderHook(() => useMonitorDashboardGlobalCommands(args));
+
+    await act(async () => {
+      await result.current.handleRefreshDashboard();
+    });
+
+    const expectedOptions = { force: true, throwOnError: true };
     expect(args.refreshStudents).toHaveBeenCalledWith(expectedOptions);
     expect(args.refreshTeachers).toHaveBeenCalledWith(expectedOptions);
+    expect(args.refreshReviewInbox).not.toHaveBeenCalled();
   });
 
   it("shows a warning toast when any manual refresh task rejects", async () => {

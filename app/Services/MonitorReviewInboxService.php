@@ -84,9 +84,23 @@ class MonitorReviewInboxService
     {
         $query = School::query()
             ->with('submittedBy:id,name')
-            ->with('latestReminder.sentBy:id,name')
             ->with([
-                'schoolHeadAccounts',
+                'latestReminder' => static fn ($query) => $query
+                    ->select([
+                        'school_reminders.id',
+                        'school_reminders.school_id',
+                        'school_reminders.sent_by',
+                        'school_reminders.recipient_count',
+                        'school_reminders.dashboard_status',
+                        'school_reminders.email_status',
+                        'school_reminders.delivery_mode',
+                        'school_reminders.delivery_status',
+                        'school_reminders.delivery_warning',
+                        'school_reminders.email_warning',
+                        'school_reminders.created_at',
+                    ])
+                    ->with('sentBy:id,name'),
+                'schoolHeadAccounts:id,school_id,name,email,account_status',
                 'latestMonitorRelevantIndicatorSubmission' => fn ($query) => $this->scopeLatestSubmission($query, $academicYearId),
                 'latestIndicatorSubmission' => fn ($query) => $this->scopeLatestSubmission($query, $academicYearId),
             ])

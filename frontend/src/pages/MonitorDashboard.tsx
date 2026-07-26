@@ -320,6 +320,7 @@ export function MonitorDashboard() {
   const [recordsPage, setRecordsPage] = useState(1);
   const initialLoadStartedRef = useRef(false);
   const initialRecordFilterRefreshSkippedRef = useRef(false);
+  const schoolRosterLoadStartedRef = useRef(false);
   const {
     schoolScopeQuery,
     setSchoolScopeQuery,
@@ -380,11 +381,29 @@ export function MonitorDashboard() {
 
     initialLoadStartedRef.current = true;
     void runRefreshBatches([
-      [refreshRecordsForCurrentFilters],
-      [refreshSubmissions],
-      [refreshStudents, refreshTeachers],
+      [refreshRecordsForCurrentFilters, refreshSubmissions],
     ]);
-  }, [filtersHydrated, refreshRecordsForCurrentFilters, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [filtersHydrated, refreshRecordsForCurrentFilters, refreshSubmissions]);
+
+  useEffect(() => {
+    if (
+      !filtersHydrated
+      || showNavigatorManual
+      || activeTopNavigator !== "schools"
+      || schoolRosterLoadStartedRef.current
+    ) {
+      return;
+    }
+
+    schoolRosterLoadStartedRef.current = true;
+    void runRefreshBatches([[refreshStudents, refreshTeachers]]);
+  }, [
+    activeTopNavigator,
+    filtersHydrated,
+    refreshStudents,
+    refreshTeachers,
+    showNavigatorManual,
+  ]);
 
   useEffect(() => {
     if (!filtersHydrated) {
@@ -603,6 +622,7 @@ export function MonitorDashboard() {
     handleRefreshDashboard,
     handleMonitorTopNavigate,
   } = useMonitorDashboardGlobalCommands({
+    activeTopNavigator,
     refreshRecords: refreshRecordsForCurrentFilters,
     refreshSubmissions,
     refreshStudents,
@@ -638,7 +658,10 @@ export function MonitorDashboard() {
     { label: "Teacher records", message: teacherError },
   ]);
   const isDashboardSyncing =
-    isLoading || isIndicatorDataLoading || isStudentDataLoading || isTeacherDataLoading || isReviewInboxLoading;
+    isLoading
+    || isIndicatorDataLoading
+    || isReviewInboxLoading
+    || (activeTopNavigator === "schools" && (isStudentDataLoading || isTeacherDataLoading));
   const showSubmissionFilters = showAdvancedFilters && activeTopNavigator !== "add_school";
   const shouldRenderNavigatorItems = isMobileViewport ? isNavigatorVisible : true;
   const showNavigatorHeaderText = isMobileViewport ? isNavigatorVisible : !isNavigatorCompact;

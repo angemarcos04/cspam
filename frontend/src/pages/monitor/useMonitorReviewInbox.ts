@@ -74,6 +74,13 @@ const DEFAULT_META: MonitorReviewInboxMeta = {
   to: null,
   hasMorePages: false,
 };
+const RECENT_REVIEW_INBOX_SYNC_TTL_MS = 1_000;
+
+interface ReviewInboxInFlightRequest {
+  url: string;
+  controller: AbortController;
+  promise: Promise<MonitorSchoolRequirementSummary[]>;
+}
 
 function appendParam(params: URLSearchParams, key: string, value: string | number | null | undefined): void {
   const normalized = String(value ?? "").trim();
@@ -140,6 +147,8 @@ export function useMonitorReviewInbox({
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const rowsRef = useRef<MonitorSchoolRequirementSummary[]>([]);
+  const inFlightRequestRef = useRef<ReviewInboxInFlightRequest | null>(null);
+  const lastCompletedRequestRef = useRef<{ url: string; completedAt: number } | null>(null);
 
   const requestUrl = useMemo(
     () => buildMonitorReviewInboxUrl(filters, page, perPage),
@@ -151,44 +160,99 @@ export function useMonitorReviewInbox({
       return rowsRef.current;
     }
 
+    const existingRequest = inFlightRequestRef.current;
+    if (existingRequest?.url === requestUrl) {
+      try {
+        return await existingRequest.promise;
+      } catch (err) {
+        if (options?.throwOnError) {
+          throw err;
+        }
+
+        return rowsRef.current;
+      }
+    }
+
+    const lastCompletedRequest = lastCompletedRequestRef.current;
+    if (
+      !options?.force
+      && lastCompletedRequest?.url === requestUrl
+      && Date.now() - lastCompletedRequest.completedAt < RECENT_REVIEW_INBOX_SYNC_TTL_MS
+    ) {
+      return rowsRef.current;
+    }
+
+    existingRequest?.controller.abort();
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
+    const controller = new AbortController();
     setIsLoading(true);
 
+    const requestPromise = (async () => {
+      try {
+        const payload = await apiRequest<MonitorReviewInboxResponse>(requestUrl, {
+          token: apiToken,
+          signal: controller.signal,
+        });
+        const nextRows = Array.isArray(payload.data) ? payload.data : [];
+        const nextMeta = normalizeMeta(payload.meta, perPage);
+
+        if (requestIdRef.current === requestId) {
+          setRows(nextRows);
+          rowsRef.current = nextRows;
+          setMeta(nextMeta);
+          setError("");
+          setLastSyncedAt(new Date().toISOString());
+          lastCompletedRequestRef.current = {
+            url: requestUrl,
+            completedAt: Date.now(),
+          };
+        }
+
+        return nextRows;
+      } catch (err) {
+        if (controller.signal.aborted) {
+          return rowsRef.current;
+        }
+
+        const message = displayMessageForApiError(err, "Unable to refresh review inbox.");
+        if (requestIdRef.current === requestId) {
+          setError(message);
+        }
+        throw err;
+      } finally {
+        if (inFlightRequestRef.current?.controller === controller) {
+          inFlightRequestRef.current = null;
+        }
+        if (requestIdRef.current === requestId) {
+          setIsLoading(false);
+        }
+      }
+    })();
+
+    inFlightRequestRef.current = {
+      url: requestUrl,
+      controller,
+      promise: requestPromise,
+    };
+
     try {
-      const payload = await apiRequest<MonitorReviewInboxResponse>(requestUrl, {
-        token: apiToken,
-      });
-      const nextRows = Array.isArray(payload.data) ? payload.data : [];
-      const nextMeta = normalizeMeta(payload.meta, perPage);
-
-      if (requestIdRef.current === requestId) {
-        setRows(nextRows);
-        rowsRef.current = nextRows;
-        setMeta(nextMeta);
-        setError("");
-        setLastSyncedAt(new Date().toISOString());
-      }
-
-      return nextRows;
+      return await requestPromise;
     } catch (err) {
-      const message = displayMessageForApiError(err, "Unable to refresh review inbox.");
-      if (requestIdRef.current === requestId) {
-        setError(message);
-      }
       if (options?.throwOnError) {
         throw err;
       }
+
       return rowsRef.current;
-    } finally {
-      if (requestIdRef.current === requestId) {
-        setIsLoading(false);
-      }
     }
   }, [apiToken, enabled, perPage, requestUrl]);
 
   useEffect(() => {
     if (!enabled) {
+      requestIdRef.current += 1;
+      inFlightRequestRef.current?.controller.abort();
+      inFlightRequestRef.current = null;
+      lastCompletedRequestRef.current = null;
       setRows([]);
       rowsRef.current = [];
       setMeta({ ...DEFAULT_META, perPage });
@@ -199,6 +263,12 @@ export function useMonitorReviewInbox({
 
     void refresh();
   }, [enabled, refresh, perPage]);
+
+  useEffect(() => () => {
+    requestIdRef.current += 1;
+    inFlightRequestRef.current?.controller.abort();
+    inFlightRequestRef.current = null;
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -214,11 +284,11 @@ export function useMonitorReviewInbox({
       }
     };
 
-    const scheduleRefresh = (delayMs: number) => {
+    const scheduleRefresh = (delayMs: number, force = false) => {
       clearRefreshTimer();
       refreshTimer = window.setTimeout(() => {
         refreshTimer = null;
-        void refresh({ force: true });
+        void refresh(force ? { force: true } : undefined);
       }, delayMs);
     };
 
@@ -229,7 +299,7 @@ export function useMonitorReviewInbox({
           return;
         }
 
-        scheduleRefresh(250);
+        scheduleRefresh(250, true);
         return;
       }
 

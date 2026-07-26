@@ -187,7 +187,7 @@ function AuthenticatedAppProviders({ children }: { children: ReactNode }) {
 
 function DashboardDataProviders({ children }: { children: ReactNode }) {
   return (
-    <DataProvider>
+    <DataProvider deferInitialSyncForMonitor>
       <IndicatorDataProvider>
         <TeacherDataProvider>
           <StudentDataProvider>{children}</StudentDataProvider>

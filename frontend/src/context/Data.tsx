@@ -388,7 +388,15 @@ function applyAccountStatusOverrides(records: SchoolRecord[], overrides: Account
   });
 }
 
-export function DataProvider({ children }: { children: ReactNode }) {
+interface DataProviderProps {
+  children: ReactNode;
+  deferInitialSyncForMonitor?: boolean;
+}
+
+export function DataProvider({
+  children,
+  deferInitialSyncForMonitor = false,
+}: DataProviderProps) {
   const { user, role, apiToken, handleUnauthorizedResponse } = useAuth();
   const token = user ? apiToken : "";
   const sessionKey = buildDataProviderSessionKey(user);
@@ -717,8 +725,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    if (deferInitialSyncForMonitor && role === "monitor") {
+      return;
+    }
+
     void syncRecords(false);
-  }, [token, sessionKey, syncRecords]);
+  }, [deferInitialSyncForMonitor, role, token, sessionKey, syncRecords]);
 
   const addRecord = useCallback(
     async (record: SchoolRecordPayload): Promise<SchoolHeadAccountProvisioningReceipt | null> => {

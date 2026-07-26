@@ -136,6 +136,78 @@ describe("buildMonitorReviewInboxUrl", () => {
 });
 
 describe("useMonitorReviewInbox", () => {
+  it("shares an identical in-flight request", async () => {
+    let resolveRequest: ((value: typeof emptyResponse) => void) | null = null;
+    vi.mocked(apiRequest).mockImplementation(() => new Promise((resolve) => {
+      resolveRequest = resolve;
+    }));
+
+    const { result } = renderReviewInbox();
+
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledTimes(1);
+    });
+
+    let firstRefresh: Promise<unknown>;
+    let secondRefresh: Promise<unknown>;
+    act(() => {
+      firstRefresh = result.current.refresh({ force: true });
+      secondRefresh = result.current.refresh({ force: true });
+    });
+
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolveRequest?.(emptyResponse);
+      await Promise.all([firstRefresh!, secondRefresh!]);
+    });
+  });
+
+  it("aborts a stale filtered request and keeps the newer result", async () => {
+    const pendingRequests: Array<{
+      resolve: (value: typeof emptyResponse | typeof submittedResponse) => void;
+      signal?: AbortSignal;
+    }> = [];
+    vi.mocked(apiRequest).mockImplementation((_url, options) => new Promise((resolve) => {
+      pendingRequests.push({ resolve, signal: options?.signal });
+    }));
+
+    const { result, rerender } = renderHook(
+      ({ search }) => useMonitorReviewInbox({
+        enabled: true,
+        filters: { search },
+        page: 1,
+        perPage: 10,
+      }),
+      { initialProps: { search: "first" } },
+    );
+
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(1);
+    });
+
+    rerender({ search: "second" });
+
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(2);
+      expect(pendingRequests[0]?.signal?.aborted).toBe(true);
+    });
+
+    await act(async () => {
+      pendingRequests[1]?.resolve(submittedResponse);
+      await Promise.resolve();
+    });
+
+    expect(result.current.rows[0]).toEqual(expect.objectContaining({ schoolCode: "SCH-001" }));
+
+    await act(async () => {
+      pendingRequests[0]?.resolve(emptyResponse);
+      await Promise.resolve();
+    });
+
+    expect(result.current.rows[0]).toEqual(expect.objectContaining({ schoolCode: "SCH-001" }));
+  });
+
   it("refreshes review inbox rows on realtime indicator updates", async () => {
     vi.mocked(apiRequest)
       .mockResolvedValueOnce(emptyResponse)
@@ -169,7 +241,7 @@ describe("useMonitorReviewInbox", () => {
     });
   });
 
-  it("refreshes review inbox on browser focus", async () => {
+  it("does not duplicate a just-completed request on focus and refreshes after the freshness window", async () => {
     vi.mocked(apiRequest)
       .mockResolvedValueOnce(emptyResponse)
       .mockResolvedValueOnce(submittedResponse);
@@ -180,6 +252,14 @@ describe("useMonitorReviewInbox", () => {
       expect(apiRequest).toHaveBeenCalledTimes(1);
     });
 
+    act(() => {
+      window.dispatchEvent(new Event("focus"));
+    });
+
+    await new Promise((resolve) => window.setTimeout(resolve, 50));
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1_000));
     act(() => {
       window.dispatchEvent(new Event("focus"));
     });

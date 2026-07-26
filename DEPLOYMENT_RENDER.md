@@ -61,7 +61,7 @@ Real secrets must be set only in Render Environment Variables. Do not commit `.e
 
 `scripts/render-start.sh` runs every time the container starts. It is the active startup script because the root `Dockerfile` uses `CMD ["bash", "scripts/render-start.sh"]`; `docker/render-start.sh` is copied into the image but is not the active path unless the command is changed.
 
-Startup prepares writable directories, clears compiled Laravel state once, runs migrations, seeds required roles and permissions, builds production caches, and launches the PHP server. Migrations and role seeding remain blocking because requests must not run against an outdated schema or incomplete authorization data.
+Startup prepares writable directories, clears compiled Laravel state once, runs migrations, seeds required roles and permissions, builds production caches, validates the web-server configuration, and launches Nginx with PHP-FPM under Supervisor. Migrations and role seeding remain blocking because requests must not run against an outdated schema or incomplete authorization data.
 
 The important startup commands are:
 
@@ -74,7 +74,22 @@ php artisan route:cache
 php artisan view:cache
 ```
 
-The startup log records elapsed seconds for cache preparation, migrations, role seeding, production cache building, and total time until the HTTP server launches. These timings identify which required stage is delaying `/api/health` without printing secrets or environment dumps.
+The startup log records elapsed seconds for cache preparation, migrations, role seeding, production cache building, web-server validation, and total time until Nginx and PHP-FPM launch. These timings identify which required stage is delaying `/api/health` without printing secrets or environment dumps.
+
+Nginx listens on Render's `PORT`, serves Laravel's `public/` directory, and forwards PHP requests to PHP-FPM. The container no longer uses PHP's development-only built-in server. After a deployment, confirm the startup log contains successful `nginx -t` and `php-fpm -t` output before Supervisor starts.
+
+## Monitor Dashboard Performance Measurements
+
+Targeted timing logs for Monitor read endpoints are disabled by default. To collect evidence during a short investigation window, set:
+
+```env
+CSPAMS_PERFORMANCE_LOGGING=true
+CSPAMS_SLOW_REQUEST_THRESHOLD_MS=500
+```
+
+The structured `[cspams-performance]` entries include the logical endpoint, method, status, total duration, database query count, total query time, returned row count when inexpensive, and whether the response was `304 Not Modified`. They do not include request payloads, SQL, bindings, authorization headers, cookies, tokens, or user records.
+
+Measure at least one cold landing and several warm landings, then disable the flag again. Compare `dashboard.review-inbox`, `dashboard.records`, the three indicator snapshot endpoints, students, teachers, and notifications before making database-query or index changes. Browser Network timing plus these server-side measurements separates network/queueing delay from Laravel and database work.
 
 Submission-storage and verification-delivery diagnostics are no longer part of every default startup. Run them during deployment verification:
 

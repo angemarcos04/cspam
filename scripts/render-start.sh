@@ -83,5 +83,15 @@ else
     echo "Optional startup diagnostics disabled. Run storage and verification checks manually during deployment verification."
 fi
 
-echo "Launching application after $(( $(date +%s) - boot_started_at ))s."
-exec php -S 0.0.0.0:"${PORT:-10000}" -t public public/index.php
+step_started_at="$(date +%s)"
+echo "Preparing Nginx and PHP-FPM..."
+export PORT="${PORT:-10000}"
+envsubst '${PORT}' \
+    < /etc/nginx/http.d/default.conf.template \
+    > /etc/nginx/http.d/default.conf
+nginx -t
+php-fpm -t
+echo "Web server configuration validated in $(( $(date +%s) - step_started_at ))s."
+
+echo "Launching Nginx and PHP-FPM after $(( $(date +%s) - boot_started_at ))s."
+exec /usr/bin/supervisord -c /etc/supervisord.conf

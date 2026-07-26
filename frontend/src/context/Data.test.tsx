@@ -127,6 +127,59 @@ describe("DataProvider school record sync recovery", () => {
     );
   });
 
+  it("defers the Monitor's provider-owned initial request when the dashboard owns synchronization", async () => {
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <DataProvider deferInitialSyncForMonitor>{children}</DataProvider>
+    );
+
+    renderHook(() => useData(), { wrapper });
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(apiRequestRaw).not.toHaveBeenCalled();
+  });
+
+  it("preserves provider-owned initial synchronization for School Heads", async () => {
+    const currentAuth = vi.mocked(useAuth)();
+    vi.mocked(useAuth).mockReturnValue({
+      ...currentAuth,
+      role: "school_head",
+      user: currentAuth.user
+        ? {
+            ...currentAuth.user,
+            role: "school_head",
+            schoolId: 1,
+            schoolCode: "SCH-001",
+            schoolName: "Santiago Elementary",
+          }
+        : null,
+    });
+    vi.mocked(apiRequestRaw).mockResolvedValueOnce({
+      status: 200,
+      data: {
+        data: [],
+        meta: {
+          scope: "school",
+          scopeKey: "school:1|filters:none",
+          recordCount: 0,
+        },
+      },
+      headers: new Headers(),
+    });
+
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <DataProvider deferInitialSyncForMonitor>{children}</DataProvider>
+    );
+
+    renderHook(() => useData(), { wrapper });
+
+    await waitFor(() => {
+      expect(apiRequestRaw).toHaveBeenCalledTimes(1);
+    });
+  });
+
   it("retries without ETag when sync count is nonzero but records are empty", async () => {
     const apiRequestRawMock = vi.mocked(apiRequestRaw);
 

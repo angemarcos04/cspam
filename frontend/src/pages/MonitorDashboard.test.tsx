@@ -78,6 +78,8 @@ const restoreRecordMock = vi.fn();
 const permanentlyDeleteArchivedRecordMock = vi.fn();
 const refreshRecordsMock = vi.fn();
 const refreshSubmissionsMock = vi.fn();
+const refreshStudentsMock = vi.fn();
+const refreshTeachersMock = vi.fn();
 const scrollIntoViewMock = vi.fn();
 const updateSchoolHeadAccountStatusMock = vi.fn();
 const activateSchoolHeadAccountMock = vi.fn();
@@ -194,6 +196,8 @@ describe("MonitorDashboard School Head delivery flows", () => {
     permanentlyDeleteArchivedRecordMock.mockReset();
     refreshRecordsMock.mockReset();
     refreshSubmissionsMock.mockReset();
+    refreshStudentsMock.mockReset();
+    refreshTeachersMock.mockReset();
     scrollIntoViewMock.mockReset();
     updateSchoolHeadAccountStatusMock.mockReset();
     activateSchoolHeadAccountMock.mockReset();
@@ -467,7 +471,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       syncScope: "division",
       totalCount: 0,
       dataVersion: 0,
-      refreshStudents: vi.fn(),
+      refreshStudents: refreshStudentsMock,
       queryStudents: vi.fn().mockResolvedValue({
         data: [],
         meta: {
@@ -501,7 +505,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       syncScope: "division",
       totalCount: 0,
       dataVersion: 0,
-      refreshTeachers: vi.fn(),
+      refreshTeachers: refreshTeachersMock,
       listTeachers: vi.fn().mockResolvedValue({
         data: [],
         meta: {
@@ -538,6 +542,32 @@ describe("MonitorDashboard School Head delivery flows", () => {
     ])).toEqual({
       label: "Indicator submissions",
       message: "Something went wrong while contacting the server. Please try again.",
+    });
+  });
+
+  it("prioritizes Reviews and defers full student and teacher snapshots until Schools opens", async () => {
+    render(<MonitorDashboard />);
+
+    await waitFor(() => {
+      expect(refreshRecordsMock).toHaveBeenCalledTimes(1);
+      expect(refreshSubmissionsMock).toHaveBeenCalledTimes(1);
+    });
+    expect(refreshStudentsMock).not.toHaveBeenCalled();
+    expect(refreshTeachersMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+
+    await waitFor(() => {
+      expect(refreshStudentsMock).toHaveBeenCalledTimes(1);
+      expect(refreshTeachersMock).toHaveBeenCalledTimes(1);
+    });
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Reviews" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Open Schools" })[0]!);
+
+    await waitFor(() => {
+      expect(refreshStudentsMock).toHaveBeenCalledTimes(1);
+      expect(refreshTeachersMock).toHaveBeenCalledTimes(1);
     });
   });
 

@@ -6,6 +6,7 @@ import type { MonitorTopNavigatorId } from "@/pages/monitor/monitorFilters";
 type DashboardToastTone = "success" | "info" | "warning";
 
 interface UseMonitorDashboardGlobalCommandsArgs {
+  activeTopNavigator: MonitorTopNavigatorId;
   refreshRecords: (options?: RefreshOptions) => Promise<unknown>;
   refreshSubmissions: (options?: RefreshOptions) => Promise<unknown>;
   refreshStudents: (options?: RefreshOptions) => Promise<unknown>;
@@ -32,6 +33,7 @@ const TOP_NAV_TARGET_BY_ID: Record<MonitorTopNavigatorId, string> = {
 };
 
 export function useMonitorDashboardGlobalCommands({
+  activeTopNavigator,
   refreshRecords,
   refreshSubmissions,
   refreshStudents,
@@ -46,18 +48,35 @@ export function useMonitorDashboardGlobalCommands({
 }: UseMonitorDashboardGlobalCommandsArgs): UseMonitorDashboardGlobalCommandsResult {
   const handleRefreshDashboard = useCallback(async () => {
     const manualRefreshOptions: RefreshOptions = { force: true, throwOnError: true };
-    const reviewInboxTasks = refreshReviewInbox ? [() => refreshReviewInbox(manualRefreshOptions)] : [];
+    const activeDomainTasks =
+      activeTopNavigator === "reviews" && refreshReviewInbox
+        ? [() => refreshReviewInbox(manualRefreshOptions)]
+        : activeTopNavigator === "schools"
+          ? [
+              () => refreshStudents(manualRefreshOptions),
+              () => refreshTeachers(manualRefreshOptions),
+            ]
+          : [];
     const results = await runRefreshBatches([
-      [() => refreshRecords(manualRefreshOptions)],
-      [() => refreshSubmissions(manualRefreshOptions)],
-      reviewInboxTasks,
-      [() => refreshStudents(manualRefreshOptions), () => refreshTeachers(manualRefreshOptions)],
+      [
+        () => refreshRecords(manualRefreshOptions),
+        () => refreshSubmissions(manualRefreshOptions),
+        ...activeDomainTasks,
+      ],
     ]);
 
     if (results.some((result) => result.status === "rejected")) {
       onToast("Some dashboard data failed to refresh. Please try again.", "warning");
     }
-  }, [onToast, refreshRecords, refreshReviewInbox, refreshSubmissions, refreshStudents, refreshTeachers]);
+  }, [
+    activeTopNavigator,
+    onToast,
+    refreshRecords,
+    refreshReviewInbox,
+    refreshSubmissions,
+    refreshStudents,
+    refreshTeachers,
+  ]);
 
   const handleMonitorTopNavigate = useCallback(
     (id: MonitorTopNavigatorId) => {
