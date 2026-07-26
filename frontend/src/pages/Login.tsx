@@ -479,35 +479,34 @@ export function Login() {
               </div>
             </div>
 
-            <div
-              className={`mb-4 border px-3.5 py-2.5 text-sm ${
-                backendStatus === "ready"
-                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                  : backendStatus === "unavailable"
+            {backendStatus !== "ready" && (
+              <div
+                className={`mb-4 border px-3.5 py-2.5 text-sm ${
+                  backendStatus === "unavailable"
                     ? "border-amber-200 bg-amber-50 text-amber-800"
                     : "border-sky-200 bg-sky-50 text-sky-800"
-              }`}
-              role="status"
-              aria-live="polite"
-            >
-              {backendStatus === "idle" && "Checking secure server."}
-              {backendStatus === "warming" && "Starting secure server."}
-              {backendStatus === "ready" && "Secure server ready."}
-              {backendStatus === "unavailable" && (
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                  <span>The server could not be reached. Check your connection, then retry the server check.</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void checkBackendReadiness();
-                    }}
-                    className="shrink-0 font-semibold text-primary-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-200"
-                  >
-                    Retry Server
-                  </button>
-                </div>
-              )}
-            </div>
+                }`}
+                role="status"
+                aria-live="polite"
+              >
+                {backendStatus === "idle" && "Checking secure server."}
+                {backendStatus === "warming" && "Starting secure server."}
+                {backendStatus === "unavailable" && (
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <span>The server could not be reached. Check your connection, then retry the server check.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void checkBackendReadiness();
+                      }}
+                      className="shrink-0 font-semibold text-primary-700 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-200"
+                    >
+                      Retry Server
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
 
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div>

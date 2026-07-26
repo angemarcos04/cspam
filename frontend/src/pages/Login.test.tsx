@@ -118,8 +118,10 @@ describe("Login", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Retry Server" }));
 
-    expect(await screen.findByText("Secure server ready.")).toBeTruthy();
-    expect(backendWarmupState.warmBackend).toHaveBeenCalledTimes(2);
+    await waitFor(() => {
+      expect(screen.queryByRole("button", { name: "Retry Server" })).toBeNull();
+      expect(backendWarmupState.warmBackend).toHaveBeenCalledTimes(2);
+    });
     expect(authState.login).not.toHaveBeenCalled();
     expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("001234");
     expect((screen.getByLabelText("Password") as HTMLInputElement).value).toBe("Demo@123456");
