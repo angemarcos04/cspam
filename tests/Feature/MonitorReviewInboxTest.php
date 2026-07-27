@@ -52,7 +52,7 @@ class MonitorReviewInboxTest extends TestCase
         $this->assertNull(data_get($response->json('data.0'), 'searchText'));
 
         $secondPage = $this->actingAs($monitor, 'sanctum')
-            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&per_page=2&page=2&academic_year_id=' . $academicYear->id);
+            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&per_page=2&page=2&academic_year_id='.$academicYear->id);
 
         $secondPage->assertOk()
             ->assertJsonPath('meta.currentPage', 2)
@@ -97,14 +97,23 @@ class MonitorReviewInboxTest extends TestCase
             ->assertJsonPath('data.0.schoolName', 'Review Inbox API Coverage');
 
         $seniorHigh = $this->actingAs($monitor, 'sanctum')
-            ->getJson('/api/dashboard/review-inbox?school_id=' . $coverageSchool->id . '&level=senior_high');
+            ->getJson('/api/dashboard/review-inbox?school_id='.$coverageSchool->id.'&level=senior_high');
 
         $seniorHigh->assertOk()
             ->assertJsonPath('meta.total', 1)
             ->assertJsonPath('data.0.schoolName', 'Review Inbox API Coverage');
 
+        $coverageSchool->forceFill(['level' => 'Kindergarten / Junior High / Senior High'])->save();
+        $kindergarten = $this->actingAs($monitor, 'sanctum')
+            ->getJson('/api/dashboard/review-inbox?school_id='.$coverageSchool->id.'&level=kindergarten');
+
+        $kindergarten->assertOk()
+            ->assertJsonPath('meta.total', 1)
+            ->assertJsonPath('data.0.schoolLevel', 'Kindergarten / Junior High / Senior High')
+            ->assertJsonPath('meta.schoolCategoryCounts.privateKindergarten', 1);
+
         $schoolScoped = $this->actingAs($monitor, 'sanctum')
-            ->getJson('/api/dashboard/review-inbox?school_id=' . $schools['missing']->id);
+            ->getJson('/api/dashboard/review-inbox?school_id='.$schools['missing']->id);
 
         $schoolScoped->assertOk()
             ->assertJsonPath('meta.total', 1)
@@ -118,14 +127,14 @@ class MonitorReviewInboxTest extends TestCase
         ]);
 
         $yearScoped = $this->actingAs($monitor, 'sanctum')
-            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id=' . $wrongYear->id);
+            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id='.$wrongYear->id);
 
         $yearScoped->assertOk()
             ->assertJsonPath('meta.total', 5)
             ->assertJsonPath('data.0.indicatorStatus', null);
 
         $currentYearScoped = $this->actingAs($monitor, 'sanctum')
-            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id=' . $academicYear->id);
+            ->getJson('/api/dashboard/review-inbox?search=Review%20Inbox%20API&academic_year_id='.$academicYear->id);
 
         $currentYearScoped->assertOk()
             ->assertJsonPath('meta.total', 5)

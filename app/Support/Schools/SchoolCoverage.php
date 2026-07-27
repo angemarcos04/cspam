@@ -5,23 +5,32 @@ namespace App\Support\Schools;
 final class SchoolCoverage
 {
     public const CANONICAL_VALUES = [
+        'Kindergarten',
         'Elementary',
         'Junior High',
         'Senior High',
+        'Kindergarten / Elementary',
+        'Kindergarten / Junior High',
+        'Kindergarten / Senior High',
         'Elementary / Junior High',
         'Elementary / Senior High',
         'Junior High / Senior High',
+        'Kindergarten / Elementary / Junior High',
+        'Kindergarten / Elementary / Senior High',
+        'Kindergarten / Junior High / Senior High',
         'Elementary / Junior High / Senior High',
+        'Kindergarten / Elementary / Junior High / Senior High',
         'High School',
     ];
 
     private const LABELS = [
+        'kindergarten' => 'Kindergarten',
         'elementary' => 'Elementary',
         'junior_high' => 'Junior High',
         'senior_high' => 'Senior High',
     ];
 
-    private const ORDER = ['elementary', 'junior_high', 'senior_high'];
+    private const ORDER = ['kindergarten', 'elementary', 'junior_high', 'senior_high'];
 
     /**
      * @return array{tokens: list<string>, legacyHighSchool: bool, unknownLabel: string|null}
@@ -43,10 +52,12 @@ final class SchoolCoverage
             $token = self::tokenForPart($part);
             if ($token === 'legacy_high_school') {
                 $legacyHighSchool = true;
+
                 continue;
             }
             if ($token !== null) {
                 $tokens[$token] = true;
+
                 continue;
             }
             $unknownLabel ??= trim($part);
@@ -79,7 +90,7 @@ final class SchoolCoverage
     }
 
     /**
-     * @param list<string> $tokens
+     * @param  list<string>  $tokens
      */
     public static function tokensToStoredLevel(array $tokens): string
     {
@@ -116,6 +127,7 @@ final class SchoolCoverage
         $normalized = preg_replace('/\s+/', ' ', str_replace(['_', '-'], ' ', strtolower(trim($part))));
 
         return match ($normalized) {
+            'kindergarten', 'kinder', 'kindergarten school', 'kindergarten level' => 'kindergarten',
             'elementary', 'elem' => 'elementary',
             'junior high', 'junior high school', 'jhs' => 'junior_high',
             'senior high', 'senior high school', 'shs' => 'senior_high',

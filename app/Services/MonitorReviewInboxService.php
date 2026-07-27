@@ -14,7 +14,7 @@ use Illuminate\Support\Collection;
 class MonitorReviewInboxService
 {
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array{data: array<int, array<string, mixed>>, meta: array<string, mixed>, filters: array<string, mixed>}
      */
     public function build(array $filters): array
@@ -78,7 +78,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      */
     private function baseSchoolQuery(array $filters, ?int $academicYearId): Builder
     {
@@ -238,8 +238,8 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
-     * @param array<string, mixed> $filters
+     * @param  Collection<int, array<string, mixed>>  $rows
+     * @param  array<string, mixed>  $filters
      * @return Collection<int, array<string, mixed>>
      */
     private function applyRowFilters(Collection $rows, array $filters): Collection
@@ -335,7 +335,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param list<string> $terms
+     * @param  list<string>  $terms
      */
     private function matchesSearch(array $row, array $terms): bool
     {
@@ -397,7 +397,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function requirementCounts(Collection $rows): array
@@ -413,7 +413,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function workflowStatusCounts(Collection $rows): array
@@ -428,7 +428,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function schoolStatusCounts(Collection $rows): array
@@ -446,7 +446,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function queueLaneCounts(Collection $rows): array
@@ -461,7 +461,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function schoolPresetCounts(Collection $rows): array
@@ -476,7 +476,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $rows
+     * @param  Collection<int, array<string, mixed>>  $rows
      * @return array<string, int>
      */
     private function schoolCategoryCounts(Collection $rows): array
@@ -485,10 +485,12 @@ class MonitorReviewInboxService
             'total' => 0,
             'public' => 0,
             'private' => 0,
+            'publicKindergarten' => 0,
             'publicElementary' => 0,
             'publicJuniorHigh' => 0,
             'publicSeniorHigh' => 0,
             'publicLegacyHighSchool' => 0,
+            'privateKindergarten' => 0,
             'privateElementary' => 0,
             'privateJuniorHigh' => 0,
             'privateSeniorHigh' => 0,
@@ -502,6 +504,9 @@ class MonitorReviewInboxService
             $hasValidExplicitCoverage = $coverage['unknownLabel'] === null && ! $coverage['legacyHighSchool'];
             if ($sector === 'public') {
                 $counts['public']++;
+                if ($hasValidExplicitCoverage && in_array('kindergarten', $coverage['tokens'], true)) {
+                    $counts['publicKindergarten']++;
+                }
                 if ($hasValidExplicitCoverage && in_array('elementary', $coverage['tokens'], true)) {
                     $counts['publicElementary']++;
                 }
@@ -517,6 +522,9 @@ class MonitorReviewInboxService
             }
             if ($sector === 'private') {
                 $counts['private']++;
+                if ($hasValidExplicitCoverage && in_array('kindergarten', $coverage['tokens'], true)) {
+                    $counts['privateKindergarten']++;
+                }
                 if ($hasValidExplicitCoverage && in_array('elementary', $coverage['tokens'], true)) {
                     $counts['privateElementary']++;
                 }
@@ -564,12 +572,12 @@ class MonitorReviewInboxService
     {
         $code = strtolower(trim((string) $school->school_code));
         if ($code !== '') {
-            return 'code:' . $code;
+            return 'code:'.$code;
         }
 
         $name = strtolower(trim((string) $school->name));
         if ($name !== '') {
-            return 'name:' . $name;
+            return 'name:'.$name;
         }
 
         return 'unknown';
@@ -643,7 +651,7 @@ class MonitorReviewInboxService
 
         $suffix = $boundary === 'start' ? ' 00:00:00' : ' 23:59:59.999';
 
-        return CarbonImmutable::parse($normalized . $suffix)->getTimestampMs();
+        return CarbonImmutable::parse($normalized.$suffix)->getTimestampMs();
     }
 
     private function positiveIntegerOrNull(mixed $value): ?int
@@ -658,7 +666,7 @@ class MonitorReviewInboxService
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      * @return array<string, mixed>
      */
     private function serializeFilters(array $filters): array

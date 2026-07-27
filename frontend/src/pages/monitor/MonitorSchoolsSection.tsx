@@ -146,6 +146,7 @@ export function MonitorSchoolsSection({
               className={selectClass}
             >
               <option value="all">All public coverage</option>
+              <option value="kindergarten">{formatSchoolCoverageLabel("kindergarten")} ({schoolCategoryCounts.publicKindergarten.toLocaleString()})</option>
               <option value="elementary">{formatSchoolCoverageLabel("elementary")} ({schoolCategoryCounts.publicElementary.toLocaleString()})</option>
               <option value="junior_high">{formatSchoolCoverageLabel("junior_high")} ({schoolCategoryCounts.publicJuniorHigh.toLocaleString()})</option>
               <option value="senior_high">{formatSchoolCoverageLabel("senior_high")} ({schoolCategoryCounts.publicSeniorHigh.toLocaleString()})</option>
@@ -177,6 +178,7 @@ export function MonitorSchoolsSection({
               className={selectClass}
             >
               <option value="all">All private coverage</option>
+              <option value="kindergarten">{formatSchoolCoverageLabel("kindergarten")} ({schoolCategoryCounts.privateKindergarten.toLocaleString()})</option>
               <option value="elementary">{formatSchoolCoverageLabel("elementary")} ({schoolCategoryCounts.privateElementary.toLocaleString()})</option>
               <option value="junior_high">{formatSchoolCoverageLabel("junior_high")} ({schoolCategoryCounts.privateJuniorHigh.toLocaleString()})</option>
               <option value="senior_high">{formatSchoolCoverageLabel("senior_high")} ({schoolCategoryCounts.privateSeniorHigh.toLocaleString()})</option>

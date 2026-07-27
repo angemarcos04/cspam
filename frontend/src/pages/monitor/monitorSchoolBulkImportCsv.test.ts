@@ -1,8 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-import { parseSchoolBulkImportCsv } from "./monitorSchoolBulkImportCsv";
+import {
+  parseSchoolBulkImportCsv,
+  SCHOOL_COVERAGE_CSV_INSTRUCTIONS,
+} from "./monitorSchoolBulkImportCsv";
 
 describe("parseSchoolBulkImportCsv", () => {
+  it("documents Kindergarten in the downloadable coverage instructions", () => {
+    expect(SCHOOL_COVERAGE_CSV_INSTRUCTIONS).toContain("Kindergarten");
+    expect(SCHOOL_COVERAGE_CSV_INSTRUCTIONS).toContain('Separate multiple values with " / "');
+  });
+
   it("accepts school-only CSV rows without student or teacher counts", () => {
     const result = parseSchoolBulkImportCsv(
       [

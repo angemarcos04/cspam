@@ -1,4 +1,4 @@
-export type SchoolCoverageToken = "elementary" | "junior_high" | "senior_high";
+export type SchoolCoverageToken = "kindergarten" | "elementary" | "junior_high" | "senior_high";
 export type SchoolLevelToken = SchoolCoverageToken | "high_school" | "unknown";
 
 export interface SchoolCoverageOption {
@@ -13,29 +13,39 @@ export interface SchoolCoverageParseResult {
 }
 
 export const SCHOOL_COVERAGE_OPTIONS: SchoolCoverageOption[] = [
+  { token: "kindergarten", label: "Kindergarten" },
   { token: "elementary", label: "Elementary" },
   { token: "junior_high", label: "Junior High" },
   { token: "senior_high", label: "Senior High" },
 ];
 
 export const CANONICAL_SCHOOL_COVERAGE_VALUES = [
+  "Kindergarten",
   "Elementary",
   "Junior High",
   "Senior High",
+  "Kindergarten / Elementary",
+  "Kindergarten / Junior High",
+  "Kindergarten / Senior High",
   "Elementary / Junior High",
   "Elementary / Senior High",
   "Junior High / Senior High",
+  "Kindergarten / Elementary / Junior High",
+  "Kindergarten / Elementary / Senior High",
+  "Kindergarten / Junior High / Senior High",
   "Elementary / Junior High / Senior High",
+  "Kindergarten / Elementary / Junior High / Senior High",
   "High School",
 ] as const;
 
 const COVERAGE_LABEL_BY_TOKEN: Record<SchoolCoverageToken, string> = {
+  kindergarten: "Kindergarten",
   elementary: "Elementary",
   junior_high: "Junior High",
   senior_high: "Senior High",
 };
 
-const COVERAGE_ORDER: SchoolCoverageToken[] = ["elementary", "junior_high", "senior_high"];
+const COVERAGE_ORDER: SchoolCoverageToken[] = ["kindergarten", "elementary", "junior_high", "senior_high"];
 
 function normalizeSchoolCoverageText(value: string | null | undefined): string {
   return String(value ?? "")
@@ -57,6 +67,12 @@ function tokenForPart(part: string): SchoolCoverageToken | "legacy_high_school" 
   const normalized = normalizeSchoolCoverageText(part);
 
   if (!normalized) return null;
+  if (
+    normalized === "kindergarten"
+    || normalized === "kinder"
+    || normalized === "kindergarten school"
+    || normalized === "kindergarten level"
+  ) return "kindergarten";
   if (normalized === "elementary" || normalized === "elem") return "elementary";
   if (normalized === "junior high" || normalized === "junior high school" || normalized === "jhs") return "junior_high";
   if (normalized === "senior high" || normalized === "senior high school" || normalized === "shs") return "senior_high";

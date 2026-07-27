@@ -117,10 +117,12 @@ export interface SchoolCategoryCounts {
   total: number;
   public: number;
   private: number;
+  publicKindergarten: number;
   publicElementary: number;
   publicJuniorHigh: number;
   publicSeniorHigh: number;
   publicLegacyHighSchool: number;
+  privateKindergarten: number;
   privateElementary: number;
   privateJuniorHigh: number;
   privateSeniorHigh: number;
@@ -131,10 +133,12 @@ const EMPTY_SCHOOL_CATEGORY_COUNTS: SchoolCategoryCounts = {
   total: 0,
   public: 0,
   private: 0,
+  publicKindergarten: 0,
   publicElementary: 0,
   publicJuniorHigh: 0,
   publicSeniorHigh: 0,
   publicLegacyHighSchool: 0,
+  privateKindergarten: 0,
   privateElementary: 0,
   privateJuniorHigh: 0,
   privateSeniorHigh: 0,
@@ -215,6 +219,7 @@ export function buildSchoolCategoryCounts(records: Iterable<Pick<SchoolRecord, "
 
     if (sector === "public") {
       counts.public += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("kindergarten")) counts.publicKindergarten += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("elementary")) counts.publicElementary += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("junior_high")) counts.publicJuniorHigh += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("senior_high")) counts.publicSeniorHigh += 1;
@@ -223,6 +228,7 @@ export function buildSchoolCategoryCounts(records: Iterable<Pick<SchoolRecord, "
 
     if (sector === "private") {
       counts.private += 1;
+      if (hasValidExplicitCoverage && parsed.tokens.includes("kindergarten")) counts.privateKindergarten += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("elementary")) counts.privateElementary += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("junior_high")) counts.privateJuniorHigh += 1;
       if (hasValidExplicitCoverage && parsed.tokens.includes("senior_high")) counts.privateSeniorHigh += 1;

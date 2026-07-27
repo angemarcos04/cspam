@@ -137,15 +137,27 @@ class SchoolRecordBulkImportTest extends TestCase
                     'level' => null,
                     'schoolCoverage' => 'elem | junior high school',
                 ]),
+                $this->schoolRow([
+                    'schoolId' => '955570',
+                    'schoolName' => 'CSV Kindergarten Alias',
+                    'level' => 'Kinder',
+                ]),
+                $this->schoolRow([
+                    'schoolId' => '955571',
+                    'schoolName' => 'CSV Kindergarten Mixed Order',
+                    'level' => 'Senior High / Kindergarten / Elementary',
+                ]),
             ],
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.created', 3);
+            ->assertJsonPath('data.created', 5);
 
         $this->assertSame('Elementary / Senior High', School::query()->where('school_code', '955563')->firstOrFail()->level);
         $this->assertSame('Junior High / Senior High', School::query()->where('school_code', '955564')->firstOrFail()->level);
         $this->assertSame('Elementary / Junior High', School::query()->where('school_code', '955565')->firstOrFail()->level);
+        $this->assertSame('Kindergarten', School::query()->where('school_code', '955570')->firstOrFail()->level);
+        $this->assertSame('Kindergarten / Elementary / Senior High', School::query()->where('school_code', '955571')->firstOrFail()->level);
     }
 
     public function test_bulk_import_rejects_invalid_mixed_school_coverage_values(): void
@@ -568,8 +580,7 @@ class SchoolRecordBulkImportTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $overrides
-     *
+     * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */
     private function schoolRow(array $overrides = []): array
@@ -601,7 +612,7 @@ class SchoolRecordBulkImportTest extends TestCase
 
     private function createSchoolHeadForSchool(School $school, string $name, string $email): User
     {
-        $account = new User();
+        $account = new User;
         $account->name = $name;
         $account->email = $email;
         $account->password = Hash::make('TempPass123!');
@@ -615,6 +626,4 @@ class SchoolRecordBulkImportTest extends TestCase
 
         return $account;
     }
-
 }
-

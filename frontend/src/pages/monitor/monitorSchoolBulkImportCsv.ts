@@ -1,5 +1,8 @@
 import type { SchoolBulkImportRowPayload, SchoolStatus } from "@/types";
 
+export const SCHOOL_COVERAGE_CSV_INSTRUCTIONS =
+  'Use one or more of: Kindergarten, Elementary, Junior High, Senior High. Separate multiple values with " / ".';
+
 function parseCsvLine(line: string): string[] {
   const values: string[] = [];
   let current = "";

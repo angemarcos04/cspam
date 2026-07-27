@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CANONICAL_SCHOOL_COVERAGE_VALUES,
+  SCHOOL_COVERAGE_OPTIONS,
   coverageTokensToStoredLevel,
   formatSchoolCoverageLabel,
   formatSchoolLevelLabel,
@@ -13,6 +14,10 @@ import {
 
 describe("schoolLevelLabels", () => {
   it("parses known coverage values and aliases into canonical ordered tokens", () => {
+    expect(SCHOOL_COVERAGE_OPTIONS[0]).toEqual({ token: "kindergarten", label: "Kindergarten" });
+    expect(parseSchoolCoverage("Kindergarten").tokens).toEqual(["kindergarten"]);
+    expect(parseSchoolCoverage("Kinder").tokens).toEqual(["kindergarten"]);
+    expect(parseSchoolCoverage("KINDERGARTEN-LEVEL").tokens).toEqual(["kindergarten"]);
     expect(parseSchoolCoverage("Elementary").tokens).toEqual(["elementary"]);
     expect(parseSchoolCoverage("elem").tokens).toEqual(["elementary"]);
     expect(parseSchoolCoverage("Junior High").tokens).toEqual(["junior_high"]);
@@ -24,6 +29,8 @@ describe("schoolLevelLabels", () => {
   });
 
   it("parses multi-coverage separators, removes duplicates, and preserves canonical order", () => {
+    expect(parseSchoolCoverage("Senior High / Kinder / Elementary / Kindergarten").tokens)
+      .toEqual(["kindergarten", "elementary", "senior_high"]);
     expect(parseSchoolCoverage("Senior High / Elementary").tokens).toEqual(["elementary", "senior_high"]);
     expect(parseSchoolCoverage("Elementary, Junior High").tokens).toEqual(["elementary", "junior_high"]);
     expect(parseSchoolCoverage("Senior High + Junior High").tokens).toEqual(["junior_high", "senior_high"]);
@@ -32,12 +39,17 @@ describe("schoolLevelLabels", () => {
   });
 
   it("formats and stores coverage using canonical labels", () => {
+    expect(coverageTokensToStoredLevel(["senior_high", "kindergarten"])).toBe("Kindergarten / Senior High");
+    expect(formatSchoolCoverageLabel("Kinder")).toBe("Kindergarten");
     expect(coverageTokensToStoredLevel(["senior_high", "elementary"])).toBe("Elementary / Senior High");
     expect(coverageTokensToStoredLevel(["junior_high", "senior_high"])).toBe("Junior High / Senior High");
     expect(formatSchoolCoverageLabel("Elementary / Junior High / SHS")).toBe("Elementary / Junior High / Senior High");
     expect(formatSchoolCoverageLabel(null)).toBe("N/A");
     expect(formatSchoolLevelLabel("Junior High")).toBe("Junior High");
     expect(CANONICAL_SCHOOL_COVERAGE_VALUES).toContain("Elementary / Junior High / Senior High");
+    expect(CANONICAL_SCHOOL_COVERAGE_VALUES).toContain("Kindergarten / Elementary / Junior High / Senior High");
+    expect(hasSchoolCoverageToken("Kindergarten / Elementary", "kindergarten")).toBe(true);
+    expect(normalizeSchoolLevelToken("Kindergarten")).toBe("kindergarten");
   });
 
   it("flags legacy High School without converting it into Junior or Senior High", () => {
@@ -62,8 +74,11 @@ describe("schoolLevelLabels", () => {
     expect(normalizeSchoolCoverageForSubmit("Junior High / Unknown")).toBeNull();
     expect(normalizeSchoolCoverageForSubmit("High School / Junior High")).toBeNull();
     expect(normalizeSchoolCoverageForSubmit("Secondary / Senior High")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Kindergarten / High School")).toBeNull();
+    expect(normalizeSchoolCoverageForSubmit("Preschool")).toBeNull();
     expect(normalizeSchoolCoverageForSubmit("Unknown")).toBeNull();
     expect(normalizeSchoolCoverageForSubmit("Senior High / Elementary")).toBe("Elementary / Senior High");
+    expect(normalizeSchoolCoverageForSubmit("Senior High / Kinder")).toBe("Kindergarten / Senior High");
     expect(normalizeSchoolCoverageForSubmit("High School")).toBe("High School");
     expect(parseSchoolCoverage("High School / Junior High").legacyHighSchool).toBe(true);
     expect(hasSchoolCoverageToken("High School / Junior High", "junior_high")).toBe(false);

@@ -768,6 +768,22 @@ describe("MonitorDashboard School Head delivery flows", () => {
     expect(listArchivedRecordsMock).not.toHaveBeenCalled();
   });
 
+  it("offers Kindergarten first in both public and private coverage filters", async () => {
+    render(<MonitorDashboard />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open Schools" }));
+
+    const publicFilter = await screen.findByLabelText("Filter public schools by coverage");
+    const privateFilter = screen.getByLabelText("Filter private schools by coverage");
+    const publicOptions = within(publicFilter).getAllByRole("option");
+    const privateOptions = within(privateFilter).getAllByRole("option");
+
+    expect(publicOptions[1]?.getAttribute("value")).toBe("kindergarten");
+    expect(publicOptions[1]?.textContent).toContain("Kindergarten");
+    expect(privateOptions[1]?.getAttribute("value")).toBe("kindergarten");
+    expect(privateOptions[1]?.textContent).toContain("Kindergarten");
+  });
+
   it("does not expose destructive school actions in the active Schools list", async () => {
     render(<MonitorDashboard />);
 

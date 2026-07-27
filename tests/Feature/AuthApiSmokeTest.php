@@ -27,6 +27,7 @@ class AuthApiSmokeTest extends TestCase
 
         /** @var User $schoolHead */
         $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->with('school')->firstOrFail();
+        $schoolHead->school?->forceFill(['level' => 'Kindergarten'])->save();
         $schoolCode = (string) $schoolHead->school?->school_code;
 
         $login = $this->postJson('/api/auth/login', [
@@ -38,6 +39,7 @@ class AuthApiSmokeTest extends TestCase
         $login->assertOk()
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.schoolCode', $schoolCode)
+            ->assertJsonPath('user.schoolCoverage', 'Kindergarten')
             ->assertJsonStructure(['token', 'user']);
 
         $token = (string) $login->json('token');
@@ -46,6 +48,7 @@ class AuthApiSmokeTest extends TestCase
         $me = $this->withToken($token)->getJson('/api/auth/me');
         $me->assertOk()
             ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.schoolCoverage', 'Kindergarten')
             ->assertJsonPath('user.schoolAddress', $schoolHead->school?->address ?? $schoolHead->school?->district);
 
         $logout = $this->withToken($token)->postJson('/api/auth/logout');
@@ -96,4 +99,3 @@ class AuthApiSmokeTest extends TestCase
         $afterLogout->assertStatus(Response::HTTP_UNAUTHORIZED);
     }
 }
-

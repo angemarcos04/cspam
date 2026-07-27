@@ -2,21 +2,21 @@
 
 namespace Tests\Feature;
 
+use App\Models\AccountSetupToken;
+use App\Models\AuditLog;
+use App\Models\FormSubmissionHistory;
 use App\Models\School;
 use App\Models\Section;
 use App\Models\Student;
 use App\Models\User;
-use App\Models\AccountSetupToken;
-use App\Models\AuditLog;
-use App\Models\FormSubmissionHistory;
 use App\Notifications\SchoolHeadAccountRemovedNotification;
 use App\Notifications\SchoolHeadAccountSuspendedNotification;
 use App\Notifications\SchoolHeadPasswordResetNotification;
 use App\Support\Auth\SchoolHeadAccountSetupService;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\AccountStatus;
-use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
@@ -45,7 +45,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
             'schoolId' => '911110',
             'schoolName' => 'Coverage Upsert School',
-            'level' => 'Senior High + Elementary',
+            'level' => 'Senior High + Kindergarten + Elementary',
             'type' => 'public',
             'district' => 'District Test',
             'region' => 'Region Test',
@@ -56,12 +56,28 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.level', 'Elementary / Senior High');
+            ->assertJsonPath('data.level', 'Kindergarten / Elementary / Senior High');
 
         $school = School::query()->where('school_code', '911110')->firstOrFail();
-        $this->assertSame('Elementary / Senior High', $school->level);
+        $this->assertSame('Kindergarten / Elementary / Senior High', $school->level);
 
         $update = $this->withToken($monitorToken)->putJson("/api/dashboard/records/{$school->id}", [
+            'schoolId' => '911110',
+            'schoolName' => 'Coverage Upsert School',
+            'level' => 'Kinder / jhs / shs',
+            'type' => 'public',
+            'address' => 'District Test, Region Test',
+            'district' => 'District Test',
+            'region' => 'Region Test',
+            'status' => 'active',
+        ]);
+
+        $update->assertOk()
+            ->assertJsonPath('data.level', 'Kindergarten / Junior High / Senior High');
+
+        $this->assertSame('Kindergarten / Junior High / Senior High', $school->refresh()->level);
+
+        $removeKindergarten = $this->withToken($monitorToken)->putJson("/api/dashboard/records/{$school->id}", [
             'schoolId' => '911110',
             'schoolName' => 'Coverage Upsert School',
             'level' => 'jhs / shs',
@@ -72,9 +88,8 @@ class SchoolHeadAccountManagementTest extends TestCase
             'status' => 'active',
         ]);
 
-        $update->assertOk()
+        $removeKindergarten->assertOk()
             ->assertJsonPath('data.level', 'Junior High / Senior High');
-
         $this->assertSame('Junior High / Senior High', $school->refresh()->level);
     }
 
@@ -98,7 +113,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ] as $index => $level) {
             $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
                 'schoolId' => (string) (911120 + $index),
-                'schoolName' => 'Invalid Coverage Upsert School ' . ($index + 1),
+                'schoolName' => 'Invalid Coverage Upsert School '.($index + 1),
                 'level' => $level,
                 'type' => 'public',
                 'district' => 'District Test',
@@ -130,7 +145,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $response = $this->withToken($monitorToken)->postJson('/api/dashboard/records', [
             'schoolId' => '911111',
             'schoolName' => 'Test Setup Link School',
-            'level' => 'Elementary',
+            'level' => 'Elementary / Kinder',
             'type' => 'public',
             'district' => 'District Test',
             'region' => 'Region Test',
@@ -145,6 +160,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         ]);
 
         $response->assertOk()
+            ->assertJsonPath('data.level', 'Kindergarten / Elementary')
             ->assertJsonPath('meta.schoolHeadAccount.accountStatus', AccountStatus::ACTIVE->value)
             ->assertJsonPath('meta.schoolHeadAccount.mustResetPassword', true)
             ->assertJsonPath('meta.schoolHeadAccount.email', 'setup.head@cspams.local')
@@ -208,6 +224,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $resetRequired->assertOk()
             ->assertJsonPath('user.role', 'school_head')
             ->assertJsonPath('user.email', 'setup.head@cspams.local')
+            ->assertJsonPath('user.schoolCoverage', 'Kindergarten / Elementary')
             ->assertJsonPath('user.mustResetPassword', false);
 
         $schoolHead->refresh();
@@ -223,6 +240,7 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $loginWithNewPassword->assertOk()
             ->assertJsonPath('user.role', 'school_head')
+            ->assertJsonPath('user.schoolCoverage', 'Kindergarten / Elementary')
             ->assertJsonPath('user.email', 'setup.head@cspams.local')
             ->assertJsonPath('user.mustResetPassword', false);
 
@@ -500,14 +518,11 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
-            public function send($notifiables, $notification): void
-            {
-            }
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher
+        {
+            public function send($notifiables, $notification): void {}
 
-            public function sendNow($notifiables, $notification, ?array $channels = null): void
-            {
-            }
+            public function sendNow($notifiables, $notification, ?array $channels = null): void {}
         });
 
         $resetCodeIssue = $this->withToken($monitorToken)->postJson(
@@ -521,7 +536,8 @@ class SchoolHeadAccountManagementTest extends TestCase
         $resetChallengeId = (string) $resetCodeIssue->json('data.challengeId');
         $this->assertNotSame('', $resetChallengeId);
 
-        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher
+        {
             public function send($notifiables, $notification): void
             {
                 throw new \RuntimeException('403 testing domain restriction: verify a domain before sending to other recipients');
@@ -1005,14 +1021,11 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
-            public function send($notifiables, $notification): void
-            {
-            }
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher
+        {
+            public function send($notifiables, $notification): void {}
 
-            public function sendNow($notifiables, $notification, ?array $channels = null): void
-            {
-            }
+            public function sendNow($notifiables, $notification, ?array $channels = null): void {}
         });
 
         $verificationCodeIssue = $this->withToken($monitorToken)->postJson(
@@ -1026,7 +1039,8 @@ class SchoolHeadAccountManagementTest extends TestCase
         $challengeId = (string) $verificationCodeIssue->json('data.challengeId');
         $this->assertNotSame('', $challengeId);
 
-        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher {
+        $this->app->instance(NotificationDispatcher::class, new class implements NotificationDispatcher
+        {
             public function send($notifiables, $notification): void
             {
                 throw new \RuntimeException('403 testing domain restriction: verify a domain before sending to other recipients');
@@ -1523,7 +1537,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser = new User;
         $hiddenLinkedUser->forceFill([
             'name' => 'Legacy Linked Account',
             'email' => 'legacy.linked@cspams.local',
@@ -1603,7 +1617,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $linkedMonitor = new User();
+        $linkedMonitor = new User;
         $linkedMonitor->forceFill([
             'name' => 'Linked Monitor',
             'email' => 'linked.monitor@cspams.local',
@@ -1696,7 +1710,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $linkedMonitor = new User();
+        $linkedMonitor = new User;
         $linkedMonitor->forceFill([
             'name' => 'Linked Monitor',
             'email' => 'linked.monitor.batch@cspams.local',
@@ -1743,7 +1757,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
 
-        $hiddenLinkedUser = new User();
+        $hiddenLinkedUser = new User;
         $hiddenLinkedUser->forceFill([
             'name' => 'Legacy Linked Account',
             'email' => 'legacy.batch.linked@cspams.local',
@@ -1884,7 +1898,7 @@ class SchoolHeadAccountManagementTest extends TestCase
             'school_id' => $school->id,
             'section_id' => $section->id,
             'academic_year_id' => $academicYearId,
-            'lrn' => 'HD-' . (string) $school->id . '-001',
+            'lrn' => 'HD-'.(string) $school->id.'-001',
             'first_name' => 'Hard',
             'last_name' => 'Delete',
             'status' => 'enrolled',

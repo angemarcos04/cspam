@@ -399,6 +399,8 @@ describe("buildMonitorRequirementSummaryState", () => {
 
   it("counts public and private schools by normalized coverage", () => {
     const counts = buildSchoolCategoryCounts([
+      { type: "Public", level: "Kindergarten" },
+      { type: "private", level: "Kindergarten / Elementary" },
       { type: "Public", level: "Elementary" },
       { type: "public", level: "Junior High / Senior High" },
       { type: "Private", level: "Secondary" },
@@ -410,14 +412,16 @@ describe("buildMonitorRequirementSummaryState", () => {
     ]);
 
     expect(counts).toEqual({
-      total: 8,
-      public: 3,
-      private: 4,
+      total: 10,
+      public: 4,
+      private: 5,
+      publicKindergarten: 1,
       publicElementary: 1,
       publicJuniorHigh: 1,
       publicSeniorHigh: 1,
       publicLegacyHighSchool: 0,
-      privateElementary: 1,
+      privateKindergarten: 1,
+      privateElementary: 2,
       privateJuniorHigh: 0,
       privateSeniorHigh: 1,
       privateLegacyHighSchool: 1,
@@ -426,6 +430,7 @@ describe("buildMonitorRequirementSummaryState", () => {
 
   it("matches school category filters without matching unknown values", () => {
     const publicElementary = { type: "public", level: "Elementary" };
+    const publicKindergartenElementary = { type: "public", level: "Kindergarten / Elementary" };
     const privateSecondary = { type: "Private", level: "Junior High / Senior High" };
     const legacyHighSchool = { type: "Private", level: "Secondary" };
     const unknownMixed = { type: "public", level: "Elementary / Integrated" };
@@ -433,6 +438,9 @@ describe("buildMonitorRequirementSummaryState", () => {
     const unknown = { type: null, level: null };
 
     expect(matchesSchoolCategoryFilter(publicElementary, "public", "elementary")).toBe(true);
+    expect(matchesSchoolCategoryFilter(publicKindergartenElementary, "public", "kindergarten")).toBe(true);
+    expect(matchesSchoolCategoryFilter(publicKindergartenElementary, "public", "elementary")).toBe(true);
+    expect(matchesSchoolCategoryFilter(publicKindergartenElementary, "public", "junior_high")).toBe(false);
     expect(matchesSchoolCategoryFilter(publicElementary, "public", "junior_high")).toBe(false);
     expect(matchesSchoolCategoryFilter(privateSecondary, "private", "junior_high")).toBe(true);
     expect(matchesSchoolCategoryFilter(privateSecondary, "private", "senior_high")).toBe(true);

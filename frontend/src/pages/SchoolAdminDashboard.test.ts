@@ -991,6 +991,32 @@ describe("buildSchoolHeadCurrentReportSourceContext", () => {
 });
 
 describe("resolveSchoolAdminHeaderContext", () => {
+  it("formats Kindergarten coverage and prefers the assigned record over stale authentication coverage", () => {
+    expect(
+      resolveSchoolAdminHeaderContext(
+        {
+          schoolName: "Kinder Academy",
+          schoolCode: "900124",
+          address: "Santiago City",
+          level: "Elementary / Kinder",
+        },
+        {
+          schoolName: "Kinder Academy",
+          schoolCode: "900124",
+          schoolCoverage: "Senior High",
+        } as never,
+      ).schoolCoverage,
+    ).toBe("Kindergarten / Elementary");
+
+    expect(
+      resolveSchoolAdminHeaderContext(null, {
+        schoolName: "Kinder Academy",
+        schoolCode: "900124",
+        schoolCoverage: "Kindergarten",
+      } as never).schoolCoverage,
+    ).toBe("Kindergarten");
+  });
+
   it("uses the assigned school address instead of region-oriented fallback data", () => {
     const result = resolveSchoolAdminHeaderContext(
       {

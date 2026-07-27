@@ -84,6 +84,7 @@ describe("MonitorSchoolRecordForm", () => {
 
     expect(screen.getByText("School Coverage")).toBeTruthy();
     expect(screen.queryByLabelText("Level")).toBeNull();
+    expect((screen.getByLabelText("Kindergarten") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("Elementary") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("Junior High") as HTMLInputElement).checked).toBe(false);
     expect((screen.getByLabelText("Senior High") as HTMLInputElement).checked).toBe(false);
@@ -137,5 +138,44 @@ describe("MonitorSchoolRecordForm", () => {
 
     fireEvent.click(screen.getByLabelText("Senior High"));
     expect(onFieldChange).toHaveBeenLastCalledWith("level", "Junior High / Senior High");
+  });
+
+  it("renders Kindergarten first and keeps canonical order when selected after another coverage", () => {
+    const onFieldChange = vi.fn();
+    const props = buildProps({
+      recordForm: {
+        ...buildProps().recordForm,
+        level: "Senior High",
+      },
+      onFieldChange,
+    });
+    render(<MonitorSchoolRecordForm {...props} />);
+
+    const coverageFieldset = screen.getByText("School Coverage").closest("fieldset");
+    const coverageLabels = Array.from(coverageFieldset?.querySelectorAll("label") ?? []);
+    expect(coverageLabels[0]?.textContent?.trim()).toBe("Kindergarten");
+
+    fireEvent.click(screen.getByLabelText("Kindergarten"));
+    expect(onFieldChange).toHaveBeenCalledWith("level", "Kindergarten / Senior High");
+  });
+
+  it("preselects Kindergarten and removes only it from combined coverage", () => {
+    const onFieldChange = vi.fn();
+    render(
+      <MonitorSchoolRecordForm
+        {...buildProps({
+          recordForm: {
+            ...buildProps().recordForm,
+            level: "Kindergarten / Elementary",
+          },
+          onFieldChange,
+        })}
+      />,
+    );
+
+    expect((screen.getByLabelText("Kindergarten") as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByLabelText("Elementary") as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByLabelText("Kindergarten"));
+    expect(onFieldChange).toHaveBeenCalledWith("level", "Elementary");
   });
 });

@@ -55,6 +55,7 @@ import {
   type SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
 import { normalizeSchoolKey } from "@/pages/monitor/monitorRequirementRules";
+import { SCHOOL_COVERAGE_CSV_INSTRUCTIONS } from "@/pages/monitor/monitorSchoolBulkImportCsv";
 import { useMonitorFilters } from "@/pages/monitor/useMonitorFilters";
 import {
   useMonitorLookups,
@@ -1202,19 +1203,36 @@ export function MonitorDashboard() {
         "status",
         "school_head_name",
         "school_head_email",
+        "coverage_instructions",
       ],
-      records.map((record) => [
-        record.schoolCode ?? record.schoolId ?? "",
-        record.schoolName,
-        record.level ?? "",
-        record.type ?? "",
-        record.address ?? "",
-        record.district ?? "",
-        record.region ?? "",
-        record.status,
-        record.schoolHeadAccount?.name ?? "",
-        record.schoolHeadAccount?.email ?? "",
-      ]),
+      [
+        ...records.map((record) => [
+          record.schoolCode ?? record.schoolId ?? "",
+          record.schoolName,
+          record.level ?? "",
+          record.type ?? "",
+          record.address ?? "",
+          record.district ?? "",
+          record.region ?? "",
+          record.status,
+          record.schoolHeadAccount?.name ?? "",
+          record.schoolHeadAccount?.email ?? "",
+          "",
+        ]),
+        [
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          "",
+          SCHOOL_COVERAGE_CSV_INSTRUCTIONS,
+        ],
+      ],
     );
   }, [records]);
 
