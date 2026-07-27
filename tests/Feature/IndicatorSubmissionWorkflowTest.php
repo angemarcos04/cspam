@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
@@ -11,11 +12,10 @@ use App\Models\IndicatorSubmissionScopeSubmission;
 use App\Models\PerformanceMetric;
 use App\Models\School;
 use App\Models\User;
-use App\Events\CspamsUpdateBroadcast;
-use App\Support\Domain\MetricCategory;
-use App\Support\Domain\MetricDataType;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
+use App\Support\Domain\MetricCategory;
+use App\Support\Domain\MetricDataType;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileDefinition;
@@ -24,6 +24,7 @@ use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -33,8 +34,8 @@ use Tests\TestCase;
 
 class IndicatorSubmissionWorkflowTest extends TestCase
 {
-    use RefreshDatabase;
     use InteractsWithSeededCredentials;
+    use RefreshDatabase;
 
     public function test_metrics_endpoint_includes_salo_indicator(): void
     {
@@ -131,7 +132,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $created->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.summary.totalIndicators', 1);
-        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/' . $created->json('data.id'));
+        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/'.$created->json('data.id'));
         $show->assertOk();
 
         /** @var array<string, mixed>|null $metricRow */
@@ -178,7 +179,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $response->assertStatus(Response::HTTP_CREATED)
             ->assertJsonPath('data.summary.totalIndicators', 4);
-        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/' . $response->json('data.id'));
+        $show = $this->withToken($schoolHeadToken)->getJson('/api/indicators/submissions/'.$response->json('data.id'));
         $show->assertOk();
 
         $rowsByCode = collect($show->json('data.indicators', []))
@@ -1725,8 +1726,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submitted = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit");
         $submitted->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonValidationErrors(['submission'])
-            ->assertJsonPath('errors.submission.0', fn (string $message): bool =>
-                str_contains($message, 'BMEF file') && str_contains($message, 'SMEA file')
+            ->assertJsonPath('errors.submission.0', fn (string $message): bool => str_contains($message, 'BMEF file') && str_contains($message, 'SMEA file')
             );
     }
 
@@ -1915,6 +1915,72 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertContains('bmef', data_get($sentRow, 'scopeProgress.submittedScopeIds', []));
         $this->assertTrue((bool) data_get($sentRow, 'files.bmef.uploaded'));
         $this->assertSame("/api/submissions/{$submissionId}/view/bmef", data_get($sentRow, 'files.bmef.viewUrl'));
+        $afterSendUpdatedAt = IndicatorSubmission::query()->findOrFail($submissionId)->updated_at;
+
+        $this->travel(1)->second();
+        $verified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+        $verifiedUpdatedAt = IndicatorSubmission::query()->findOrFail($submissionId)->updated_at;
+        $this->assertTrue($verifiedUpdatedAt->greaterThan($afterSendUpdatedAt));
+        $verified->assertJsonPath('data.updatedAt', $verifiedUpdatedAt->toISOString());
+
+        $afterVerifyList = $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $afterSendEtag])
+            ->getJson($listUrl);
+        $afterVerifyList->assertOk();
+        $afterVerifyEtag = trim((string) $afterVerifyList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame($afterSendEtag, $afterVerifyEtag);
+        $this->assertSame('verified', data_get(
+            collect($afterVerifyList->json('data', []))->firstWhere('id', $submissionId),
+            'scopeReviews.0.decision',
+        ));
+
+        $this->travel(1)->second();
+        $unverified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'unverified',
+        ])->assertOk();
+        $unverifiedUpdatedAt = IndicatorSubmission::query()->findOrFail($submissionId)->updated_at;
+        $this->assertTrue($unverifiedUpdatedAt->greaterThan($verifiedUpdatedAt));
+        $unverified->assertJsonPath('data.updatedAt', $unverifiedUpdatedAt->toISOString());
+
+        $afterUnverifyList = $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $afterVerifyEtag])
+            ->getJson($listUrl);
+        $afterUnverifyList->assertOk();
+        $afterUnverifyEtag = trim((string) $afterUnverifyList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame($afterVerifyEtag, $afterUnverifyEtag);
+        $this->assertSame('unverified', data_get(
+            collect($afterUnverifyList->json('data', []))->firstWhere('id', $submissionId),
+            'scopeReviews.0.decision',
+        ));
+
+        $this->travel(1)->second();
+        $reverified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'verified',
+        ])->assertOk();
+        $reverifiedUpdatedAt = IndicatorSubmission::query()->findOrFail($submissionId)->updated_at;
+        $this->assertTrue($reverifiedUpdatedAt->greaterThan($unverifiedUpdatedAt));
+        $reverified->assertJsonPath('data.updatedAt', $reverifiedUpdatedAt->toISOString());
+
+        $afterReverifyList = $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $afterUnverifyEtag])
+            ->getJson($listUrl);
+        $afterReverifyList->assertOk();
+        $afterReverifyEtag = trim((string) $afterReverifyList->headers->get('X-Sync-Etag'), '"');
+        $this->assertNotSame($afterUnverifyEtag, $afterReverifyEtag);
+        $this->assertSame('verified', data_get(
+            collect($afterReverifyList->json('data', []))->firstWhere('id', $submissionId),
+            'scopeReviews.0.decision',
+        ));
+
+        $this->withToken($monitorToken)
+            ->withHeaders(['If-None-Match' => $afterReverifyEtag])
+            ->getJson($listUrl)
+            ->assertStatus(Response::HTTP_NOT_MODIFIED);
 
         $this->travel(1)->second();
         $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
@@ -1924,19 +1990,168 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ])->assertOk();
 
         $afterReturnList = $this->withToken($monitorToken)
-            ->withHeaders(['If-None-Match' => $afterSendEtag])
+            ->withHeaders(['If-None-Match' => $afterReverifyEtag])
             ->getJson($listUrl);
         $afterReturnList->assertOk();
         $afterReturnEtag = trim((string) $afterReturnList->headers->get('X-Sync-Etag'), '"');
-        $this->assertNotSame($afterSendEtag, $afterReturnEtag);
+        $this->assertNotSame($afterReverifyEtag, $afterReturnEtag);
         $returnedRow = collect($afterReturnList->json('data', []))
             ->firstWhere('id', $submissionId);
         $this->assertIsArray($returnedRow);
         $this->assertNotContains('bmef', data_get($returnedRow, 'scopeProgress.submittedScopeIds', []));
         $this->assertContains('bmef', data_get($returnedRow, 'scopeProgress.previouslySubmittedScopeIds', []));
         $this->assertContains('bmef', data_get($returnedRow, 'scopeProgress.requiresResubmissionScopeIds', []));
+        $this->assertNotContains('bmef', data_get($returnedRow, 'scopeProgress.correctedAfterReturnScopeIds', []));
         $this->assertFalse((bool) data_get($returnedRow, 'files.bmef.uploaded'));
         $this->assertNull(data_get($returnedRow, 'files.bmef.viewUrl'));
+    }
+
+    public function test_returned_scope_is_only_corrected_after_the_affected_scope_changes(): void
+    {
+        Storage::fake('local');
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        $created = $this->withToken($schoolHeadToken)->postJson('/api/indicators/submissions/bootstrap', [
+            'academic_year_id' => $academicYearId,
+            'reporting_period' => 'ANNUAL',
+        ])->assertCreated();
+        $submissionId = (string) $created->json('data.id');
+
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-original.pdf', 'application/pdf')
+            ->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        /** @var User $monitor */
+        $monitor = User::query()
+            ->whereHas('roles', fn ($query) => $query->whereIn('name', ['monitor', 'Monitor', 'division monitor', 'Division Monitor']))
+            ->firstOrFail();
+        $monitorToken = $monitor->createToken('returned-correction-monitor', ['role:monitor'])->plainTextToken;
+
+        $returned = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
+            'scopeId' => 'bmef',
+            'decision' => 'returned',
+            'notes' => 'Replace the affected BMEF.',
+        ])->assertOk();
+        $returned->assertJsonPath('data.scopeProgress.correctedAfterReturnScopeIds', []);
+
+        $unrelated = $this->uploadSubmissionDocument(
+            $schoolHeadToken,
+            $submissionId,
+            'smea',
+            'smea-unrelated.pdf',
+            'application/pdf',
+        )->assertOk();
+        $unrelated->assertJsonPath(
+            'data.scopeProgress.correctedAfterReturnScopeIds',
+            fn (array $ids): bool => ! in_array('bmef', $ids, true),
+        );
+
+        $corrected = $this->uploadSubmissionDocument(
+            $schoolHeadToken,
+            $submissionId,
+            'bmef',
+            'bmef-corrected.pdf',
+            'application/pdf',
+        )->assertOk();
+        $corrected->assertJsonPath(
+            'data.scopeProgress.correctedAfterReturnScopeIds',
+            fn (array $ids): bool => in_array('bmef', $ids, true),
+        );
+        $this->assertSame('returned', data_get(
+            collect($corrected->json('data.scopeReviews', []))->firstWhere('scopeId', 'bmef'),
+            'decision',
+        ));
+
+        $detail = $this->withToken($schoolHeadToken)
+            ->getJson("/api/indicators/submissions/{$submissionId}")
+            ->assertOk();
+        $this->assertSame(
+            $corrected->json('data.scopeProgress'),
+            $detail->json('data.scopeProgress'),
+        );
+        $this->assertSame(
+            $corrected->json('data.scopeReviews'),
+            $detail->json('data.scopeReviews'),
+        );
+
+        $list = $this->withToken($schoolHeadToken)
+            ->getJson("/api/indicators/submissions?academic_year_id={$academicYearId}&per_page=100")
+            ->assertOk();
+        $listedSubmission = collect($list->json('data', []))->firstWhere('id', $submissionId);
+        $this->assertSame(
+            $corrected->json('data.scopeProgress'),
+            data_get($listedSubmission, 'scopeProgress'),
+        );
+        $this->assertSame(
+            $corrected->json('data.scopeReviews'),
+            data_get($listedSubmission, 'scopeReviews'),
+        );
+
+        $resent = $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+        $resent
+            ->assertJsonPath(
+                'data.scopeProgress.submittedScopeIds',
+                fn (array $ids): bool => in_array('bmef', $ids, true),
+            )
+            ->assertJsonPath(
+                'data.scopeProgress.correctedAfterReturnScopeIds',
+                fn (array $ids): bool => ! in_array('bmef', $ids, true),
+            );
+        $this->assertNull(collect($resent->json('data.scopeReviews', []))->firstWhere('scopeId', 'bmef'));
+    }
+
+    public function test_submission_list_eager_loads_scope_history_once_for_multiple_rows(): void
+    {
+        $this->seedIndicatorFixtures();
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
+        $schoolHeadToken = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHead));
+
+        foreach (range(1, 5) as $version) {
+            $submission = IndicatorSubmission::query()->create([
+                'school_id' => $schoolHead->school_id,
+                'academic_year_id' => $academicYearId,
+                'reporting_period' => "Q{$version}",
+                'version' => $version,
+                'status' => 'draft',
+                'created_by' => $schoolHead->id,
+            ]);
+            FormSubmissionHistory::query()->create([
+                'form_type' => IndicatorSubmission::FORM_TYPE,
+                'submission_id' => $submission->id,
+                'school_id' => $schoolHead->school_id,
+                'academic_year_id' => $academicYearId,
+                'action' => 'generated',
+                'to_status' => 'draft',
+                'actor_id' => $schoolHead->id,
+                'metadata' => null,
+                'created_at' => now(),
+            ]);
+        }
+
+        $historyQueryCount = 0;
+        DB::listen(static function ($query) use (&$historyQueryCount): void {
+            if (str_contains(strtolower($query->sql), 'form_submission_histories')) {
+                $historyQueryCount++;
+            }
+        });
+
+        $this->withToken($schoolHeadToken)
+            ->getJson("/api/indicators/submissions?academic_year_id={$academicYearId}&per_page=100")
+            ->assertOk();
+
+        $this->assertSame(1, $historyQueryCount);
     }
 
     public function test_replacing_sent_file_removes_monitor_reviewability_until_resend(): void
@@ -2379,8 +2594,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $this->assertTrue(
             collect($submitted->json('data.indicators', []))->contains(
-                static fn (mixed $row): bool =>
-                    is_array($row) && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
+                static fn (mixed $row): bool => is_array($row) && data_get($row, "actualTypedValue.values.{$year}") === 'Maria Santos',
             ),
         );
 
@@ -2541,7 +2755,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
     public function test_submission_file_upload_persists_invalid_utf8_binary_bytes(): void
     {
         [$token, $submissionId] = $this->createStorageAuditSubmission();
-        $binaryContent = "%PDF-1.4\n" . "\x9c\x00\xff\x80" . "\n%%EOF";
+        $binaryContent = "%PDF-1.4\n"."\x9c\x00\xff\x80"."\n%%EOF";
         $file = UploadedFile::fake()->createWithContent('fm-qad-001.pdf', $binaryContent);
 
         $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
@@ -3095,7 +3309,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submit->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonPath(
                 'errors.submission.0',
-                'Submission is incomplete. Missing: ' . SubmissionFileDefinition::shortLabelFor('fm_qad_001') . ' file is missing from storage; re-upload before submitting.',
+                'Submission is incomplete. Missing: '.SubmissionFileDefinition::shortLabelFor('fm_qad_001').' file is missing from storage; re-upload before submitting.',
             );
 
         $this->assertDatabaseHas('indicator_submissions', [
@@ -3183,7 +3397,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $send->assertStatus(Response::HTTP_UNPROCESSABLE_ENTITY)
             ->assertJsonPath(
                 'errors.targets.0',
-                'Submission scope is incomplete. Missing: ' . SubmissionFileDefinition::shortLabelFor('fm_qad_001') . ' file is missing from storage; re-upload before sending.',
+                'Submission scope is incomplete. Missing: '.SubmissionFileDefinition::shortLabelFor('fm_qad_001').' file is missing from storage; re-upload before sending.',
             );
 
         $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
@@ -3965,8 +4179,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $options
-     *
+     * @param  array<string, mixed>  $options
      * @return array{0: int, 1: array<string, mixed>, 2: string}
      */
     private function callSubmissionStorageAudit(array $options = []): array
@@ -3984,7 +4197,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $audit
+     * @param  array<string, mixed>  $audit
      */
     private function assertAuditRow(
         array $audit,
@@ -4076,7 +4289,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
     }
 
     /**
-     * @param list<string> $types
+     * @param  list<string>  $types
      */
     private function uploadSubmissionFiles(string $token, string $submissionId, array $types): void
     {

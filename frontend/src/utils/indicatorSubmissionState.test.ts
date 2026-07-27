@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildSubmissionScopeStateFingerprint,
   compareSubmissionFreshness,
+  latestScopeReviewMutationTimestamp,
   resolveFreshestSubmission,
 } from "@/utils/indicatorSubmissionState";
 import type { IndicatorSubmission } from "@/types";
@@ -74,6 +75,65 @@ describe("submission freshness", () => {
 
     expect(resolveFreshestSubmission(detailed, sparse)).toBe(detailed);
   });
+
+  it("uses child review timestamps for repeated verify transitions", () => {
+    const submitted = submission({
+      scopeReviews: [],
+    });
+    const verified = submission({
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:05:00.000Z",
+      }],
+    });
+    const unverified = submission({
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "unverified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:06:00.000Z",
+      }],
+    });
+    const reverified = submission({
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:07:00.000Z",
+      }],
+    });
+
+    expect(latestScopeReviewMutationTimestamp(verified)).toBe(Date.parse("2026-07-01T10:05:00.000Z"));
+    expect(resolveFreshestSubmission(submitted, verified)).toBe(verified);
+    expect(resolveFreshestSubmission(verified, submitted)).toBe(verified);
+    expect(resolveFreshestSubmission(verified, unverified)).toBe(unverified);
+    expect(resolveFreshestSubmission(unverified, reverified)).toBe(reverified);
+    expect(resolveFreshestSubmission(reverified, verified)).toBe(reverified);
+  });
+
+  it("uses scope review updatedAt when it is newer than reviewedAt", () => {
+    const verified = submission({
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:05:00.000Z",
+        updatedAt: "2026-07-01T10:08:00.000Z",
+      }],
+    });
+
+    expect(latestScopeReviewMutationTimestamp(verified)).toBe(Date.parse("2026-07-01T10:08:00.000Z"));
+  });
 });
 
 describe("scope-state fingerprints", () => {
@@ -101,5 +161,17 @@ describe("scope-state fingerprints", () => {
     const second = submission({ scopeProgress: { submittedScopeIds: ["smea", "bmef"], pendingScopeIds: [] } });
 
     expect(buildSubmissionScopeStateFingerprint(first)).toBe(buildSubmissionScopeStateFingerprint(second));
+  });
+
+  it("changes when corrected-after-return state changes", () => {
+    const returned = submission({
+      scopeProgress: { correctedAfterReturnScopeIds: [] },
+    });
+    const corrected = submission({
+      scopeProgress: { correctedAfterReturnScopeIds: ["BMEF"] },
+    });
+
+    expect(buildSubmissionScopeStateFingerprint(returned))
+      .not.toBe(buildSubmissionScopeStateFingerprint(corrected));
   });
 });

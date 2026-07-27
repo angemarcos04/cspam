@@ -67,6 +67,54 @@ describe("upsertSubmissionRow freshness", () => {
     expect(upsertSubmissionRow([submitted], edited)[0]?.scopeProgress?.requiresResubmissionScopeIds)
       .toEqual(["school_achievements_learning_outcomes"]);
   });
+
+  it("keeps repeated review transitions ordered without a reload", () => {
+    const submitted = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: ["bmef"], pendingScopeIds: [] },
+    });
+    const verified = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: ["bmef"], pendingScopeIds: [] },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:05:00.000Z",
+      }],
+    });
+    const unverified = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: ["bmef"], pendingScopeIds: [] },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "unverified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:06:00.000Z",
+      }],
+    });
+    const reverified = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: ["bmef"], pendingScopeIds: [] },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "bmef",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-07-01T10:07:00.000Z",
+      }],
+    });
+
+    const afterVerify = upsertSubmissionRow([submitted], verified);
+    expect(afterVerify[0]?.scopeReviews?.[0]?.decision).toBe("verified");
+    const afterUnverify = upsertSubmissionRow(afterVerify, unverified);
+    expect(afterUnverify[0]?.scopeReviews?.[0]?.decision).toBe("unverified");
+    const afterReverify = upsertSubmissionRow(afterUnverify, reverified);
+    expect(afterReverify[0]?.scopeReviews?.[0]?.decision).toBe("verified");
+    expect(upsertSubmissionRow(afterReverify, verified)[0]?.scopeReviews?.[0]?.reviewedAt)
+      .toBe("2026-07-01T10:07:00.000Z");
+  });
 });
 
 describe("buildIndicatorDataSessionKey", () => {

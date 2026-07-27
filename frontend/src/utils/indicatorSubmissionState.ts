@@ -6,11 +6,27 @@ function parseTimestamp(value: string | null | undefined): number | null {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function latestMutationTimestamp(submission: IndicatorSubmission): number | null {
+export function latestScopeReviewMutationTimestamp(
+  submission: IndicatorSubmission,
+): number | null {
+  const timestamps = (submission.scopeReviews ?? [])
+    .flatMap((review) => [
+      parseTimestamp(review.reviewedAt),
+      parseTimestamp(review.updatedAt),
+    ])
+    .filter((value): value is number => value !== null);
+
+  return timestamps.length > 0 ? Math.max(...timestamps) : null;
+}
+
+export function latestSubmissionMutationTimestamp(
+  submission: IndicatorSubmission,
+): number | null {
   const timestamps = [
     parseTimestamp(submission.updatedAt),
     parseTimestamp(submission.submittedAt),
     parseTimestamp(submission.reviewedAt),
+    latestScopeReviewMutationTimestamp(submission),
     parseTimestamp(submission.createdAt),
   ].filter((value): value is number => value !== null);
 
@@ -54,8 +70,8 @@ export function compareSubmissionFreshness(
     return leftVersion - rightVersion;
   }
 
-  const leftTimestamp = latestMutationTimestamp(left);
-  const rightTimestamp = latestMutationTimestamp(right);
+  const leftTimestamp = latestSubmissionMutationTimestamp(left);
+  const rightTimestamp = latestSubmissionMutationTimestamp(right);
   if (leftTimestamp !== null && rightTimestamp !== null && leftTimestamp !== rightTimestamp) {
     return leftTimestamp - rightTimestamp;
   }
@@ -100,6 +116,7 @@ export function buildSubmissionScopeStateFingerprint(
     normalizeScopeIds(submission?.scopeProgress?.pendingScopeIds),
     normalizeScopeIds(submission?.scopeProgress?.previouslySubmittedScopeIds),
     normalizeScopeIds(submission?.scopeProgress?.requiresResubmissionScopeIds),
+    normalizeScopeIds(submission?.scopeProgress?.correctedAfterReturnScopeIds),
     normalizeScopeReviews(submission),
   ].join("|");
 }

@@ -491,6 +491,7 @@ export function resolveCategoryRailBadgeState({
   isReady,
   isSubmitted,
   requiresResubmission,
+  correctedAfterReturn,
   reviewDecision,
   workspaceMode,
 }: {
@@ -498,6 +499,7 @@ export function resolveCategoryRailBadgeState({
   isReady: boolean;
   isSubmitted: boolean;
   requiresResubmission: boolean;
+  correctedAfterReturn: boolean;
   reviewDecision: string | null;
   workspaceMode: GroupBWorkspaceMode;
 }): CategoryRailBadgeState {
@@ -509,10 +511,16 @@ export function resolveCategoryRailBadgeState({
     };
   }
   if (normalizedDecision === "returned") {
-    if (isReady && missingCount === 0) {
+    if (correctedAfterReturn && isReady && missingCount === 0) {
       return {
         label: "Ready to re-send",
         tone: "border-primary-300 bg-primary-50 text-primary-700",
+      };
+    }
+    if (correctedAfterReturn && missingCount > 0) {
+      return {
+        label: `Missing ${missingCount}`,
+        tone: "border-amber-300 bg-amber-50 text-amber-700",
       };
     }
     return {
@@ -3660,6 +3668,10 @@ function SchoolIndicatorPanelComponent({
     () => activeFormSubmission?.scopeProgress?.requiresResubmissionScopeIds ?? [],
     [activeFormSubmission],
   );
+  const correctedAfterReturnScopeIds = useMemo(
+    () => activeFormSubmission?.scopeProgress?.correctedAfterReturnScopeIds ?? [],
+    [activeFormSubmission],
+  );
   const scopeReviewDecisionById = useMemo(() => {
     const reviews = [...(activeFormSubmission?.scopeReviews ?? [])].sort((left, right) => {
       const leftTime = Date.parse(left.updatedAt ?? left.reviewedAt ?? "");
@@ -6607,11 +6619,13 @@ function SchoolIndicatorPanelComponent({
                         previouslySubmittedScopeIds.includes(normalizedScopeId)
                         && !isScopeSubmitted
                       );
+                    const correctedAfterReturn = correctedAfterReturnScopeIds.includes(normalizedScopeId);
                     const categoryRailBadge = resolveCategoryRailBadgeState({
                       missingCount: scopeMissingCount,
                       isReady: isScopeReady,
                       isSubmitted: isScopeSubmitted,
                       requiresResubmission,
+                      correctedAfterReturn,
                       reviewDecision,
                       workspaceMode,
                     });

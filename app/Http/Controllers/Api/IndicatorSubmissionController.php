@@ -20,15 +20,15 @@ use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
 use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Services\FilterService;
+use App\Support\Audit\WorkflowAuditLogger;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
-use App\Support\Audit\WorkflowAuditLogger;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
-use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileBlobStorage;
+use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
@@ -65,8 +65,7 @@ class IndicatorSubmissionController extends Controller
 
     public function __construct(
         private readonly FilterService $filterService,
-    ) {
-    }
+    ) {}
 
     public function academicYears(Request $request): JsonResponse
     {
@@ -125,13 +124,13 @@ class IndicatorSubmissionController extends Controller
 
         $scope = $this->isSchoolHead($user) ? 'school' : 'division';
         $baseScopeKey = $scope === 'school'
-            ? ($user->school_id ? 'school:' . $user->school_id : 'school:unassigned')
+            ? ($user->school_id ? 'school:'.$user->school_id : 'school:unassigned')
             : 'division:all';
         $filtersKey = $this->filterService->buildCacheKey(
             $filters,
             ['school_id', 'school_code', 'academic_year_id', 'status', 'category', 'date_from', 'date_to', 'search', 'reporting_period'],
         );
-        $scopeKey = $baseScopeKey . '|' . $filtersKey;
+        $scopeKey = $baseScopeKey.'|'.$filtersKey;
 
         $baseQuery = IndicatorSubmission::query();
         $this->applyVisibilityScope($baseQuery, $user);
@@ -157,6 +156,7 @@ class IndicatorSubmissionController extends Controller
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
                 'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
+                'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
                 'scopeReviews.reviewedBy:id,name,email',
                 'createdBy:id,name,email',
                 'submittedBy:id,name,email',
@@ -193,6 +193,7 @@ class IndicatorSubmissionController extends Controller
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
+            'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
@@ -557,8 +558,9 @@ class IndicatorSubmissionController extends Controller
             );
 
             if (GroupBWorkspaceDefinition::isMetricWorkspace($workspaceSection)) {
-                $this->removeSubmittedScopes($submission, [$workspaceSection]);
+                $this->removeSubmittedScopes($submission, [$workspaceSection], false);
             }
+            $this->touchSubmissionScopeState($submission);
 
             event(new CspamsUpdateBroadcast(
                 $this->indicatorBroadcastPayload($submission, 'indicators.updated', [
@@ -604,7 +606,7 @@ class IndicatorSubmissionController extends Controller
 
         $validated = $request->validate([
             'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
-            'file' => ['required', 'file', 'max:' . $maxKb, 'mimes:pdf,docx,xlsx'],
+            'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:pdf,docx,xlsx'],
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
@@ -666,7 +668,8 @@ class IndicatorSubmissionController extends Controller
                     );
                 }
 
-                $this->removeSubmittedScopes($submission, [$fileType]);
+                $this->removeSubmittedScopes($submission, [$fileType], false);
+                $this->touchSubmissionScopeState($submission);
             });
         } catch (\Throwable $e) {
             report($e);
@@ -708,7 +711,7 @@ class IndicatorSubmissionController extends Controller
             fromStatus: $currentStatus,
             toStatus: $currentStatus ?? FormSubmissionStatus::DRAFT->value,
             actorId: $user->id,
-            notes: SubmissionFileDefinition::shortLabelFor($fileType) . ' file uploaded or replaced.',
+            notes: SubmissionFileDefinition::shortLabelFor($fileType).' file uploaded or replaced.',
             metadata: [
                 'type' => $fileType,
                 'path' => $path,
@@ -811,7 +814,7 @@ class IndicatorSubmissionController extends Controller
 
         return response()->file($absolutePath, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => 'inline; filename="' . $filename . '"',
+            'Content-Disposition' => 'inline; filename="'.$filename.'"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -826,7 +829,7 @@ class IndicatorSubmissionController extends Controller
 
         $filename = $this->safeDownloadFilename(
             $blob->original_filename ?: $this->fileOriginalNameForType($submission, $fileType),
-            $fileType . '.bin',
+            $fileType.'.bin',
         );
 
         $mimeType = trim((string) $blob->mime_type);
@@ -836,7 +839,7 @@ class IndicatorSubmissionController extends Controller
 
         return response($blobStorage->contentAsString($blob), Response::HTTP_OK, [
             'Content-Type' => $mimeType,
-            'Content-Disposition' => ($download ? 'attachment' : 'inline') . '; filename="' . $filename . '"',
+            'Content-Disposition' => ($download ? 'attachment' : 'inline').'; filename="'.$filename.'"',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }
@@ -890,7 +893,7 @@ class IndicatorSubmissionController extends Controller
 
         if ($missingRequirements !== []) {
             throw ValidationException::withMessages([
-                'submission' => 'Submission is incomplete. Missing: ' . implode(', ', $missingRequirements) . '.',
+                'submission' => 'Submission is incomplete. Missing: '.implode(', ', $missingRequirements).'.',
             ]);
         }
 
@@ -902,6 +905,7 @@ class IndicatorSubmissionController extends Controller
             'reviewed_at' => null,
             'review_notes' => null,
         ])->save();
+        $this->touchSubmissionScopeState($submission);
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -975,7 +979,7 @@ class IndicatorSubmissionController extends Controller
         $missingRequirements = $scopeProgressResolver->missingRequirementLabelsForScopes($submission, $targets);
         if ($missingRequirements !== []) {
             throw ValidationException::withMessages([
-                'targets' => 'Submission scope is incomplete. Missing: ' . implode(', ', $missingRequirements) . '.',
+                'targets' => 'Submission scope is incomplete. Missing: '.implode(', ', $missingRequirements).'.',
             ]);
         }
 
@@ -990,10 +994,10 @@ class IndicatorSubmissionController extends Controller
             fromStatus: $fromStatus,
             toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
             actorId: $user->id,
-            notes: 'Submission scopes sent for monitor review: ' . implode(', ', array_map(
+            notes: 'Submission scopes sent for monitor review: '.implode(', ', array_map(
                 [$scopeProgressResolver, 'scopeLabel'],
                 $targets,
-            )) . '.',
+            )).'.',
             metadata: [
                 'targets' => $targets,
             ],
@@ -1077,11 +1081,9 @@ class IndicatorSubmissionController extends Controller
         ])->save();
 
         if ($decision === FormSubmissionStatus::RETURNED->value) {
-            $deletedScopeCount = $submission->scopeSubmissions()->delete();
-            if ($deletedScopeCount > 0) {
-                $this->touchSubmissionScopeState($submission);
-            }
+            $submission->scopeSubmissions()->delete();
         }
+        $this->touchSubmissionScopeState($submission);
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -1222,71 +1224,91 @@ class IndicatorSubmissionController extends Controller
             default => 'indicators.scope_returned',
         };
 
-        $review = IndicatorSubmissionScopeReview::query()->updateOrCreate(
-            [
-                'indicator_submission_id' => $submission->id,
-                'scope_id' => $scopeId,
-            ],
-            [
-                'scope_type' => $scopeType,
-                'decision' => $decision,
-                'notes' => $decision === 'returned' ? $notes : null,
-                'reviewed_by' => $user->id,
-                'reviewed_at' => now(),
-            ],
-        );
-
-        if ($decision === 'returned') {
-            $this->removeSubmittedScopes($submission, [$scopeId]);
-        }
-
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: $historyAction,
-            fromStatus: $fromStatus,
-            toStatus: $fromStatus,
-            actorId: $user->id,
-            notes: $decision === 'returned' ? $notes : null,
-            metadata: [
-                'scopeId' => $scopeId,
-                'scopeLabel' => $scopeLabel,
-                'decision' => $decision,
-                'previousDecision' => $previousDecision,
-                'touchedScopes' => [$scopeId],
-                'scopeReviewId' => (string) $review->id,
-            ],
-        );
-
-        $this->auditSubmissionEvent(
-            $request,
+        /** @var IndicatorSubmissionScopeReview $review */
+        $review = DB::transaction(function () use (
             $auditAction,
-            $submission,
-            $user,
-            [
-                'old_status' => $fromStatus,
-                'new_status' => $fromStatus,
-                'scope_id' => $scopeId,
-                'scope_type' => $scopeType,
-                'scope_label' => $scopeLabel,
-                'file_type' => $scopeType === 'file' ? $scopeId : null,
-                'decision' => $decision,
-                'previous_decision' => $previousDecision,
-                'has_note' => $decision === 'returned' && $notes !== null && $notes !== '',
-            ],
-        );
-
-        $schoolHeads = $this->schoolHeadsForSubmission($submission);
-        Notification::sendNow($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
-            $submission,
-            $user,
+            $decision,
+            $fromStatus,
+            $historyAction,
+            $notes,
+            $previousDecision,
+            $request,
             $scopeId,
             $scopeLabel,
-            $decision,
-            $notes,
-        ), ['database']);
+            $scopeType,
+            $submission,
+            $user,
+        ): IndicatorSubmissionScopeReview {
+            $review = IndicatorSubmissionScopeReview::query()->updateOrCreate(
+                [
+                    'indicator_submission_id' => $submission->id,
+                    'scope_id' => $scopeId,
+                ],
+                [
+                    'scope_type' => $scopeType,
+                    'decision' => $decision,
+                    'notes' => $decision === 'returned' ? $notes : null,
+                    'reviewed_by' => $user->id,
+                    'reviewed_at' => now(),
+                ],
+            );
+
+            if ($decision === 'returned') {
+                $this->removeSubmittedScopes($submission, [$scopeId], false);
+            }
+
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: $historyAction,
+                fromStatus: $fromStatus,
+                toStatus: $fromStatus,
+                actorId: $user->id,
+                notes: $decision === 'returned' ? $notes : null,
+                metadata: [
+                    'scopeId' => $scopeId,
+                    'scopeLabel' => $scopeLabel,
+                    'decision' => $decision,
+                    'previousDecision' => $previousDecision,
+                    'touchedScopes' => [$scopeId],
+                    'scopeReviewId' => (string) $review->id,
+                ],
+            );
+
+            $this->auditSubmissionEvent(
+                $request,
+                $auditAction,
+                $submission,
+                $user,
+                [
+                    'old_status' => $fromStatus,
+                    'new_status' => $fromStatus,
+                    'scope_id' => $scopeId,
+                    'scope_type' => $scopeType,
+                    'scope_label' => $scopeLabel,
+                    'file_type' => $scopeType === 'file' ? $scopeId : null,
+                    'decision' => $decision,
+                    'previous_decision' => $previousDecision,
+                    'has_note' => $decision === 'returned' && $notes !== null && $notes !== '',
+                ],
+            );
+
+            $schoolHeads = $this->schoolHeadsForSubmission($submission);
+            Notification::sendNow($schoolHeads, new IndicatorScopeReviewOutcomeNotification(
+                $submission,
+                $user,
+                $scopeId,
+                $scopeLabel,
+                $decision,
+                $notes,
+            ), ['database']);
+
+            $this->touchSubmissionScopeState($submission);
+
+            return $review->refresh();
+        });
 
         event(new CspamsUpdateBroadcast(
             $this->indicatorBroadcastPayload(
@@ -1345,7 +1367,8 @@ class IndicatorSubmissionController extends Controller
             return ['workspace' => $workspace];
         });
 
-        $this->removeSubmittedScopes($submission, [$workspace]);
+        $this->removeSubmittedScopes($submission, [$workspace], false);
+        $this->touchSubmissionScopeState($submission);
 
         app(FormSubmissionHistoryLogger::class)->log(
             formType: IndicatorSubmission::FORM_TYPE,
@@ -1409,6 +1432,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
+            'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
         ]);
         /** @var SubmissionFileRequirementResolver $requirementResolver */
@@ -1472,6 +1496,7 @@ class IndicatorSubmissionController extends Controller
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
+            'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
@@ -1497,7 +1522,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      * @return list<string>
      */
     private function normalizedScopeIdsForSubmission(IndicatorSubmission $submission, array $scopeIds): array
@@ -1529,7 +1554,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      */
     private function assertSchoolYearScopesAreNotVerified(int $schoolId, int $academicYearId, array $scopeIds): void
     {
@@ -1559,7 +1584,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      */
     private function assertScopesAreNotVerified(IndicatorSubmission $submission, array $scopeIds): void
     {
@@ -1587,7 +1612,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      */
     private function upsertSubmittedScopes(IndicatorSubmission $submission, array $scopeIds, User $submittedBy): void
     {
@@ -1612,17 +1637,34 @@ class IndicatorSubmissionController extends Controller
 
     private function touchSubmissionScopeState(IndicatorSubmission $submission): void
     {
-        $submission->touch();
+        $persistedUpdatedAt = IndicatorSubmission::query()
+            ->whereKey($submission->id)
+            ->value('updated_at');
+        $nextUpdatedAt = now()->startOfSecond();
+        if ($persistedUpdatedAt !== null) {
+            $currentUpdatedAt = Carbon::parse($persistedUpdatedAt);
+            if (! $nextUpdatedAt->greaterThan($currentUpdatedAt)) {
+                $nextUpdatedAt = $currentUpdatedAt->copy()->addSecond();
+            }
+        }
+
+        IndicatorSubmission::query()
+            ->whereKey($submission->id)
+            ->update(['updated_at' => $nextUpdatedAt]);
         $submission->refresh();
         $submission->unsetRelation('scopeSubmissions');
         $submission->unsetRelation('scopeReviews');
+        $submission->unsetRelation('scopeStateHistories');
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      */
-    private function removeSubmittedScopes(IndicatorSubmission $submission, array $scopeIds): void
-    {
+    private function removeSubmittedScopes(
+        IndicatorSubmission $submission,
+        array $scopeIds,
+        bool $touchParent = true,
+    ): void {
         $normalizedScopeIds = array_values(array_filter(
             array_map(static fn (mixed $scopeId): string => strtolower(trim((string) $scopeId)), $scopeIds),
             static fn (string $scopeId): bool => $scopeId !== '',
@@ -1637,8 +1679,9 @@ class IndicatorSubmissionController extends Controller
             ->whereIn('scope_id', $normalizedScopeIds)
             ->delete();
 
-        if ($deletedScopeCount > 0) {
+        if ($deletedScopeCount > 0 && $touchParent) {
             $this->touchSubmissionScopeState($submission);
+
             return;
         }
 
@@ -1646,7 +1689,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      */
     private function clearReturnedScopeReviews(IndicatorSubmission $submission, array $scopeIds): void
     {
@@ -1690,8 +1733,8 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param list<string> $scopeIds
-     * @param list<string> $scopeLabels
+     * @param  list<string>  $scopeIds
+     * @param  list<string>  $scopeLabels
      */
     private function notifyMonitorsOfSubmissionReceived(
         IndicatorSubmission $submission,
@@ -1762,7 +1805,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $metadata
+     * @param  array<string, mixed>  $metadata
      */
     private function auditSubmissionEvent(
         Request $request,
@@ -1781,7 +1824,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param Collection<int, array<string, mixed>> $indicatorRows
+     * @param  Collection<int, array<string, mixed>>  $indicatorRows
      * @return list<string>
      */
     private function auditScopeIdsForRows(Collection $indicatorRows): array
@@ -1836,7 +1879,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $extra
+     * @param  array<string, mixed>  $extra
      * @return array<string, mixed>
      */
     private function indicatorBroadcastPayload(
@@ -1943,11 +1986,13 @@ class IndicatorSubmissionController extends Controller
 
         return self::$usersHasAccountTypeColumn;
     }
+
     private function applyVisibilityScope(Builder $query, User $user): void
     {
         if ($this->isSchoolHead($user)) {
             abort_if(! $user->school_id, Response::HTTP_FORBIDDEN, 'School Head account is missing school assignment.');
             $query->where('school_id', $user->school_id);
+
             return;
         }
 
@@ -1975,7 +2020,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $filters
+     * @param  array<string, mixed>  $filters
      */
     private function applyIndicatorFilters(Builder $query, array $filters): void
     {
@@ -1997,6 +2042,7 @@ class IndicatorSubmissionController extends Controller
 
         if ($filters['reporting_period'] === null) {
             $query->whereNull('reporting_period');
+
             return;
         }
 
@@ -2204,7 +2250,7 @@ class IndicatorSubmissionController extends Controller
     private function historyNoteForWorkspaceReset(string $workspace): string
     {
         if (SubmissionFileDefinition::isValidType($workspace)) {
-            return SubmissionFileDefinition::shortLabelFor($workspace) . ' workspace was reset.';
+            return SubmissionFileDefinition::shortLabelFor($workspace).' workspace was reset.';
         }
 
         return match ($workspace) {
@@ -2302,6 +2348,7 @@ class IndicatorSubmissionController extends Controller
                         'metric_id' => $metricId > 0 ? $metricId : null,
                         'metric_code' => $metricCode !== '' ? $metricCode : null,
                     ];
+
                     return null;
                 }
 
@@ -2329,18 +2376,18 @@ class IndicatorSubmissionController extends Controller
                     ->map(static function (array $row): string {
                         $parts = [];
                         if (isset($row['metric_id']) && $row['metric_id'] !== null) {
-                            $parts[] = 'metric_id=' . $row['metric_id'];
+                            $parts[] = 'metric_id='.$row['metric_id'];
                         }
                         if (isset($row['metric_code']) && $row['metric_code'] !== null) {
-                            $parts[] = 'metric_code=' . $row['metric_code'];
+                            $parts[] = 'metric_code='.$row['metric_code'];
                         }
 
-                        return 'row ' . (((int) $row['index']) + 1) . ' (' . implode(', ', $parts) . ')';
+                        return 'row '.(((int) $row['index']) + 1).' ('.implode(', ', $parts).')';
                     })
                     ->implode('; ');
 
                 throw ValidationException::withMessages([
-                    'indicators' => 'Unable to resolve the following indicators against performance_metrics: ' . $summary . '.',
+                    'indicators' => 'Unable to resolve the following indicators against performance_metrics: '.$summary.'.',
                 ]);
             })
             ->filter(static fn (?array $row): bool => is_array($row))
@@ -2348,10 +2395,8 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $row
-     * @param array<string, mixed> $schema
-     * @param int $index
-     *
+     * @param  array<string, mixed>  $row
+     * @param  array<string, mixed>  $schema
      * @return array{
      *     target_value: ?float,
      *     actual_value: ?float,
@@ -2442,12 +2487,12 @@ class IndicatorSubmissionController extends Controller
         }
 
         $raw = (string) $metric->data_type;
+
         return MetricDataType::tryFrom($raw)?->value ?? MetricDataType::NUMBER->value;
     }
 
     /**
-     * @param array<string, mixed> $schema
-     *
+     * @param  array<string, mixed>  $schema
      * @return array{
      *     typed: array<string, mixed>,
      *     numeric: ?float,
@@ -2468,8 +2513,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $schema
-     *
+     * @param  array<string, mixed>  $schema
      * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: float}
      */
     private function parseNumberValue(mixed $raw, array $schema, string $errorPath): array
@@ -2492,7 +2536,7 @@ class IndicatorSubmissionController extends Controller
         }
 
         $display = $valueType === 'percentage'
-            ? number_format($numeric, 2) . '%'
+            ? number_format($numeric, 2).'%'
             : number_format($numeric, 2);
 
         return [
@@ -2504,8 +2548,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $schema
-     *
+     * @param  array<string, mixed>  $schema
      * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: float}
      */
     private function parseCurrencyValue(mixed $raw, array $schema, string $errorPath): array
@@ -2529,7 +2572,7 @@ class IndicatorSubmissionController extends Controller
                 'currency' => $currency,
             ],
             'numeric' => $numeric,
-            'display' => "{$currency} " . number_format($numeric, 2),
+            'display' => "{$currency} ".number_format($numeric, 2),
             'comparable' => $numeric,
         ];
     }
@@ -2557,8 +2600,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $schema
-     *
+     * @param  array<string, mixed>  $schema
      * @return array{typed: array<string, mixed>, numeric: ?float, display: string, comparable: ?string}
      */
     private function parseEnumValue(mixed $raw, array $schema, string $errorPath): array
@@ -2598,8 +2640,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $schema
-     *
+     * @param  array<string, mixed>  $schema
      * @return array{typed: array<string, mixed>, numeric: float, display: string, comparable: array<string, mixed>}
      */
     private function parseYearlyMatrixValue(mixed $raw, array $schema, string $errorPath): array
@@ -2673,6 +2714,7 @@ class IndicatorSubmissionController extends Controller
                     ]);
                 }
                 $normalized[$year] = $boolValue;
+
                 continue;
             }
 
@@ -2680,6 +2722,7 @@ class IndicatorSubmissionController extends Controller
                 $enumValue = trim((string) $yearValue);
                 if ($enumValue === '') {
                     $normalized[$year] = '';
+
                     continue;
                 }
 
@@ -2691,6 +2734,7 @@ class IndicatorSubmissionController extends Controller
                 }
 
                 $normalized[$year] = $resolvedValue;
+
                 continue;
             }
 
@@ -2703,6 +2747,7 @@ class IndicatorSubmissionController extends Controller
                 }
 
                 $normalized[$year] = $textValue;
+
                 continue;
             }
 
@@ -2733,6 +2778,7 @@ class IndicatorSubmissionController extends Controller
 
             if ($valueType === 'enum') {
                 $index = $enumOptions->search((string) $value);
+
                 return $index === false ? 0.0 : ((float) $index + 1);
             }
 
@@ -2742,7 +2788,7 @@ class IndicatorSubmissionController extends Controller
         $display = collect($normalized)
             ->map(function (mixed $value, string $year) use ($valueType, $currency): string {
                 if (is_bool($value)) {
-                    return "{$year}: " . ($value ? 'Yes' : 'No');
+                    return "{$year}: ".($value ? 'Yes' : 'No');
                 }
 
                 if (is_numeric($value)) {
@@ -2758,7 +2804,7 @@ class IndicatorSubmissionController extends Controller
                     return "{$year}: {$formatted}";
                 }
 
-                return "{$year}: " . (string) $value;
+                return "{$year}: ".(string) $value;
             })
             ->join(' | ');
 
@@ -2845,6 +2891,7 @@ class IndicatorSubmissionController extends Controller
         }
 
         $normalized = strtolower(trim((string) $value));
+
         return match ($normalized) {
             '1', 'true', 'yes', 'y' => true,
             '0', 'false', 'no', 'n' => false,
@@ -3038,7 +3085,7 @@ class IndicatorSubmissionController extends Controller
      * Merge auto-calculated KPI indicator rows so these metrics no longer rely
      * on manual target/actual encoding.
      *
-     * @param Collection<int, array<string, mixed>> $rawIndicatorRows
+     * @param  Collection<int, array<string, mixed>>  $rawIndicatorRows
      * @return Collection<int, array<string, mixed>>
      */
     private function mergeAutoCalculatedRows(Collection $rawIndicatorRows, int $schoolId): Collection
@@ -3102,7 +3149,7 @@ class IndicatorSubmissionController extends Controller
     }
 
     /**
-     * @param array<string, mixed> $row
+     * @param  array<string, mixed>  $row
      */
     private function rowHasExplicitTargetActualValues(array $row): bool
     {
@@ -3159,5 +3206,4 @@ class IndicatorSubmissionController extends Controller
             true,
         );
     }
-
 }

@@ -331,6 +331,65 @@ describe("SchoolIndicatorPanel category rail badges", () => {
     expect(within(tab).getByText("Returned")).not.toBeNull();
   });
 
+  it("keeps a complete returned scope Returned until that scope is corrected", async () => {
+    const submission = {
+      ...buildSchoolAchievementDraftSubmission("returned-complete"),
+      status: "draft",
+      scopeProgress: {
+        ...buildSchoolAchievementDraftSubmission("returned-complete").scopeProgress,
+        previouslySubmittedScopeIds: ["school_achievements_learning_outcomes"],
+        requiresResubmissionScopeIds: ["school_achievements_learning_outcomes"],
+        correctedAfterReturnScopeIds: [],
+      },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "school_achievements_learning_outcomes",
+        scopeType: "section",
+        decision: "returned",
+        notes: "Correct this section.",
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    };
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    expect(within(tab).getByText("Returned")).not.toBeNull();
+    expect(within(tab).queryByText("Ready to re-send")).toBeNull();
+  });
+
+  it("shows Ready to re-send only after a complete returned scope is corrected", async () => {
+    const base = buildSchoolAchievementDraftSubmission("returned-corrected");
+    const submission = {
+      ...base,
+      scopeProgress: {
+        ...base.scopeProgress,
+        previouslySubmittedScopeIds: ["school_achievements_learning_outcomes"],
+        requiresResubmissionScopeIds: ["school_achievements_learning_outcomes"],
+        correctedAfterReturnScopeIds: ["school_achievements_learning_outcomes"],
+      },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "school_achievements_learning_outcomes",
+        scopeType: "section",
+        decision: "returned",
+        notes: "Correct this section.",
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    };
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    await waitFor(() => {
+      expect(within(tab).getByText("Ready to re-send")).not.toBeNull();
+    });
+    expect(within(tab).queryByText("Returned")).toBeNull();
+    expect(within(tab).queryByText("Missing 0")).toBeNull();
+  });
+
   it("does not treat an uploaded FM-QAD file as submitted until its scope is sent", async () => {
     const uploaded = buildFileWorkspaceSubmission({
       uploadedFileTypes: ["fm_qad_001"],
@@ -353,6 +412,69 @@ describe("SchoolIndicatorPanel category rail badges", () => {
     const sentTab = await findRailTab(secondView.container, "fm_qad_001");
     expect(within(sentTab).getAllByText("Submitted").length).toBeGreaterThan(0);
   });
+
+  it("renders Submitted, Verified, Submitted, Verified review transitions without remounting", async () => {
+    const submitted = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: ["fm_qad_001"],
+    });
+    mockIndicatorPanelData([submitted]);
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    let tab = await findRailTab(view.container, "fm_qad_001");
+    expect(within(tab).getAllByText("Submitted").length).toBeGreaterThan(0);
+
+    const verified = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-05-19T10:05:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([verified]);
+    view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    tab = await findRailTab(view.container, "fm_qad_001");
+    await waitFor(() => expect(within(tab).getByText("Verified")).not.toBeNull());
+
+    const unverified = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "unverified",
+        notes: null,
+        reviewedAt: "2026-05-19T10:06:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([unverified]);
+    view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    tab = await findRailTab(view.container, "fm_qad_001");
+    await waitFor(() => expect(within(tab).getAllByText("Submitted").length).toBeGreaterThan(0));
+
+    const reverified = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: ["fm_qad_001"],
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "fm_qad_001",
+        scopeType: "file",
+        decision: "verified",
+        notes: null,
+        reviewedAt: "2026-05-19T10:07:00.000Z",
+      }],
+    });
+    mockIndicatorPanelData([reverified]);
+    view.rerender(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    tab = await findRailTab(view.container, "fm_qad_001");
+    await waitFor(() => expect(within(tab).getByText("Verified")).not.toBeNull());
+  });
+
 });
 
 describe("SchoolIndicatorPanel optional note removal", () => {

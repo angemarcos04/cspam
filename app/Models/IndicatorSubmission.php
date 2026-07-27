@@ -2,12 +2,12 @@
 
 namespace App\Models;
 
+use App\Support\Audit\AuditsActivity;
+use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Traits\Filterable;
-use App\Support\Audit\AuditsActivity;
-use App\Support\Domain\FormSubmissionStatus;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -128,6 +128,29 @@ class IndicatorSubmission extends Model
     {
         return $this->hasMany(IndicatorSubmissionScopeSubmission::class)
             ->orderBy('scope_id');
+    }
+
+    public function scopeStateHistories(): HasMany
+    {
+        return $this->hasMany(FormSubmissionHistory::class, 'submission_id')
+            ->where('form_type', self::FORM_TYPE)
+            ->where(static function ($query): void {
+                $query
+                    ->whereIn('action', [
+                        'scope_submitted',
+                        'scope_verified',
+                        'scope_unverified',
+                        'scope_returned',
+                        'updated',
+                        'submitted',
+                        'validated',
+                        'returned',
+                    ])
+                    ->orWhere('action', 'like', '%_uploaded')
+                    ->orWhere('action', 'like', '%_reset');
+            })
+            ->orderBy('created_at')
+            ->orderBy('id');
     }
 
     public function hasImetaFormData(): bool
@@ -299,7 +322,7 @@ class IndicatorSubmission extends Model
 
     private function submissionFileRecordForType(string $type): ?IndicatorSubmissionFile
     {
-        if (!SubmissionFileDefinition::isValidType($type) || SubmissionFileDefinition::isCoreType($type)) {
+        if (! SubmissionFileDefinition::isValidType($type) || SubmissionFileDefinition::isCoreType($type)) {
             return null;
         }
 

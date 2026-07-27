@@ -2,10 +2,8 @@
 
 namespace App\Support\Indicators;
 
-use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionItem;
-use App\Models\PerformanceMetric;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 
@@ -26,7 +24,7 @@ final class SubmissionScopeProgressResolver
     public function scopeLabel(string $scopeId): string
     {
         if (SubmissionFileDefinition::isValidType($scopeId)) {
-            return SubmissionFileDefinition::shortLabelFor($scopeId) . ' file';
+            return SubmissionFileDefinition::shortLabelFor($scopeId).' file';
         }
 
         return match ($scopeId) {
@@ -37,7 +35,7 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      * @return list<string>
      */
     public function missingRequirementLabelsForScopes(IndicatorSubmission $submission, array $scopeIds): array
@@ -51,7 +49,8 @@ final class SubmissionScopeProgressResolver
                     SubmissionFileDefinition::isValidType($scopeId)
                     && app(SubmissionFileStorage::class)->missingFromStorage($submission, $scopeId)
                 ) {
-                    $missing[] = $this->scopeLabel($scopeId) . ' is missing from storage; re-upload before sending';
+                    $missing[] = $this->scopeLabel($scopeId).' is missing from storage; re-upload before sending';
+
                     continue;
                 }
 
@@ -82,6 +81,7 @@ final class SubmissionScopeProgressResolver
      *   pendingScopeIds:list<string>,
      *   previouslySubmittedScopeIds:list<string>,
      *   requiresResubmissionScopeIds:list<string>,
+     *   correctedAfterReturnScopeIds:list<string>,
      *   submittedRequiredScopeCount:int,
      *   totalRequiredScopeCount:int
      * }
@@ -101,6 +101,7 @@ final class SubmissionScopeProgressResolver
             ? [
                 'submittedScopeIds' => $requiredScopeIds,
                 'previouslySubmittedScopeIds' => $requiredScopeIds,
+                'correctedAfterReturnScopeIds' => [],
             ]
             : $this->historicalScopeStateForSubmission($submission, $requiredScopeSet);
         $submittedScopeIds = $this->submittedScopeIdsForSubmission(
@@ -131,13 +132,21 @@ final class SubmissionScopeProgressResolver
                 $previouslySubmittedScopeIds,
                 static fn (string $scopeId): bool => ! in_array($scopeId, $submittedRequiredScopeIds, true),
             )),
+            'correctedAfterReturnScopeIds' => array_values(array_filter(
+                $requiredScopeIds,
+                static fn (string $scopeId): bool => in_array(
+                    $scopeId,
+                    $historicalScopeState['correctedAfterReturnScopeIds'],
+                    true,
+                ),
+            )),
             'submittedRequiredScopeCount' => count($submittedRequiredScopeIds),
             'totalRequiredScopeCount' => count($requiredScopeIds),
         ];
     }
 
     /**
-     * @param list<string> $scopeIds
+     * @param  list<string>  $scopeIds
      * @return list<string>
      */
     public function normalizeScopeIds(IndicatorSubmission $submission, array $scopeIds): array
@@ -164,8 +173,7 @@ final class SubmissionScopeProgressResolver
     private function submittedScopeIdsForSubmission(
         IndicatorSubmission $submission,
         array $historicalSubmittedScopeIds = [],
-    ): array
-    {
+    ): array {
         $requiredScopeIds = $this->requiredScopeIdsForSubmission($submission);
         $requiredScopeSet = array_flip($requiredScopeIds);
 
@@ -189,11 +197,8 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
-     * @param array<string, int> $requiredScopeSet
-     * @return array{
-     *   submittedScopeIds:list<string>,
-     *   previouslySubmittedScopeIds:list<string>
-     * }
+     * @param  array<string, int>  $requiredScopeSet
+     * @return list<string>
      */
     private function durableSubmittedScopeIdsForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
     {
@@ -208,19 +213,23 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
-     * @param array<string, int> $requiredScopeSet
-     * @return list<string>
+     * @param  array<string, int>  $requiredScopeSet
+     * @return array{
+     *   submittedScopeIds:list<string>,
+     *   previouslySubmittedScopeIds:list<string>,
+     *   correctedAfterReturnScopeIds:list<string>
+     * }
      */
     private function historicalScopeStateForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
     {
         $submittedScopeSet = [];
         $previouslySubmittedScopeSet = [];
-        $histories = FormSubmissionHistory::query()
-            ->where('form_type', IndicatorSubmission::FORM_TYPE)
-            ->where('submission_id', $submission->id)
-            ->orderBy('created_at')
-            ->orderBy('id')
-            ->get(['action', 'to_status', 'metadata']);
+        $returnedScopeSet = [];
+        $correctedAfterReturnScopeSet = [];
+        $histories = $submission->relationLoaded('scopeStateHistories')
+            ? $submission->scopeStateHistories
+            : $submission->scopeStateHistories()
+                ->get(['id', 'submission_id', 'form_type', 'action', 'to_status', 'metadata', 'created_at']);
 
         foreach ($histories as $history) {
             $toStatus = strtolower(trim((string) ($history->to_status ?? '')));
@@ -231,12 +240,27 @@ final class SubmissionScopeProgressResolver
                 foreach ($this->extractScopeIdsFromMetadata($submission, $metadata) as $scopeId) {
                     $submittedScopeSet[$scopeId] = true;
                     $previouslySubmittedScopeSet[$scopeId] = true;
+                    unset($returnedScopeSet[$scopeId], $correctedAfterReturnScopeSet[$scopeId]);
                 }
+
+                continue;
+            }
+
+            if ($action === 'scope_returned') {
+                foreach ($this->extractScopeIdsFromMetadata($submission, $metadata) as $scopeId) {
+                    unset($submittedScopeSet[$scopeId], $correctedAfterReturnScopeSet[$scopeId]);
+                    $returnedScopeSet[$scopeId] = true;
+                    $previouslySubmittedScopeSet[$scopeId] = true;
+                }
+
                 continue;
             }
 
             if ($toStatus === FormSubmissionStatus::RETURNED->value) {
                 $submittedScopeSet = [];
+                $returnedScopeSet = $requiredScopeSet;
+                $correctedAfterReturnScopeSet = [];
+
                 continue;
             }
 
@@ -246,6 +270,9 @@ final class SubmissionScopeProgressResolver
             ], true)) {
                 $submittedScopeSet = $requiredScopeSet;
                 $previouslySubmittedScopeSet = $requiredScopeSet;
+                $returnedScopeSet = [];
+                $correctedAfterReturnScopeSet = [];
+
                 continue;
             }
 
@@ -255,16 +282,21 @@ final class SubmissionScopeProgressResolver
 
             foreach ($this->touchedScopeIdsForHistoryAction($submission, $action, $metadata) as $scopeId) {
                 unset($submittedScopeSet[$scopeId]);
+                if (isset($returnedScopeSet[$scopeId])) {
+                    $correctedAfterReturnScopeSet[$scopeId] = true;
+                }
             }
         }
 
         return [
             'submittedScopeIds' => array_values(array_keys($submittedScopeSet)),
             'previouslySubmittedScopeIds' => array_values(array_keys($previouslySubmittedScopeSet)),
+            'correctedAfterReturnScopeIds' => array_values(array_keys($correctedAfterReturnScopeSet)),
         ];
     }
 
     /**
+     * @param  array<string, mixed>  $metadata
      * @return list<string>
      */
     private function touchedScopeIdsForHistoryAction(IndicatorSubmission $submission, string $action, array $metadata): array
@@ -276,11 +308,13 @@ final class SubmissionScopeProgressResolver
 
         if (str_ends_with($action, '_uploaded')) {
             $type = strtolower(trim((string) ($metadata['type'] ?? '')));
+
             return SubmissionFileDefinition::isValidType($type) ? [$type] : [];
         }
 
         if (str_ends_with($action, '_reset')) {
             $workspace = strtolower(trim((string) ($metadata['workspace'] ?? '')));
+
             return $this->normalizeScopeIds($submission, [$workspace]);
         }
 
@@ -288,6 +322,7 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
+     * @param  array<string, mixed>  $metadata
      * @return list<string>
      */
     private function extractScopeIdsFromMetadata(IndicatorSubmission $submission, array $metadata): array
@@ -367,8 +402,8 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
-     * @param array<string, mixed> $schema
-     * @param list<string> $scopeYears
+     * @param  array<string, mixed>  $schema
+     * @param  list<string>  $scopeYears
      * @return list<string>
      */
     private function metricYearsInScope(array $schema, array $scopeYears): array
@@ -391,7 +426,7 @@ final class SubmissionScopeProgressResolver
     }
 
     /**
-     * @param list<string> $requiredYears
+     * @param  list<string>  $requiredYears
      */
     private function yearlyMatrixItemIsComplete(
         IndicatorSubmissionItem $item,

@@ -155,6 +155,7 @@ describe("resolveCategoryRailBadgeState", () => {
       isReady: false,
       isSubmitted: false,
       requiresResubmission: false,
+      correctedAfterReturn: false,
       reviewDecision: null,
       workspaceMode: "draft",
       ...overrides,
@@ -165,7 +166,18 @@ describe("resolveCategoryRailBadgeState", () => {
     expect(resolve({ missingCount: 0, isReady: true }).label).toBe("Ready");
     expect(resolve({ isSubmitted: true }).label).toBe("Submitted");
     expect(resolve({ reviewDecision: "returned" }).label).toBe("Returned");
-    expect(resolve({ missingCount: 0, isReady: true, reviewDecision: "returned" }).label).toBe("Ready to re-send");
+    expect(resolve({ missingCount: 0, isReady: true, reviewDecision: "returned" }).label).toBe("Returned");
+    expect(resolve({
+      missingCount: 0,
+      isReady: true,
+      reviewDecision: "returned",
+      correctedAfterReturn: true,
+    }).label).toBe("Ready to re-send");
+    expect(resolve({
+      missingCount: 2,
+      reviewDecision: "returned",
+      correctedAfterReturn: true,
+    }).label).toBe("Missing 2");
     expect(resolve({ reviewDecision: "verified" }).label).toBe("Verified");
     expect(resolve({ missingCount: 0, isReady: true, requiresResubmission: true }).label).toBe("Ready to re-send");
   });
