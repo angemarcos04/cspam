@@ -230,9 +230,9 @@ DB::table('notifications')->count();
 
 Expected results are `true`, `true`, and an integer count of `0` or higher. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`. If the frontend notification bell still shows a server error after this passes, confirm the Vercel rewrites point to `https://cspams.onrender.com` and redeploy the frontend.
 
-## Monitor MFA Queue
+## Transactional Mail Queue
 
-Production Monitor MFA delivery should remain queued:
+Production Monitor MFA and School Head removal-notification delivery use the same queue worker:
 
 ```env
 CSPAMS_MONITOR_MFA_DELIVERY_MODE=queued
@@ -242,7 +242,7 @@ CSPAMS_MONITOR_MFA_QUEUE=mail
 
 Queued delivery requires the `cspam-backend-worker` service from `render.yaml` to be deployed, running, and configured with the same `APP_KEY`, database, queue, and mail settings as the web service. The worker runs `docker/worker-start.sh` and consumes the `mail` queue. If the worker is stopped or misconfigured, Monitor MFA messages will remain queued; do not expose codes or switch off MFA as a workaround.
 
-School Head authentication does not use the Monitor MFA queue and is unchanged.
+The permanent school-removal endpoint commits deletion before it queues the School Head removal email. Its response reports `queued`, not `sent`; later delivery failures are handled by Laravel queue retry and failed-job operations and cannot roll back or restore the deleted school. School Head authentication does not use the Monitor MFA queue and is unchanged.
 
 ## Cold-Start Limitation
 

@@ -11,9 +11,17 @@ import type {
   SchoolQuickPreset,
   SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
+import {
+  matchesQueueLane,
+  matchesSchoolQuickPreset,
+  resolveWorkflowStatus,
+} from "@/pages/monitor/monitorRequirementRules";
+import { buildSchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirementData";
 import type { SchoolStatus } from "@/types";
 import {
-  schoolRecordMatchesIdentity,
+  normalizeSchoolIdentityValue,
+  reviewInboxRowMatchesSchoolIdentity,
+  schoolIdentitiesMatch,
   type SchoolIdentity,
 } from "@/utils/schoolRecordIdentity";
 
@@ -79,11 +87,22 @@ const DEFAULT_META: MonitorReviewInboxMeta = {
   hasMorePages: false,
 };
 const RECENT_REVIEW_INBOX_SYNC_TTL_MS = 1_000;
+const REVIEW_INBOX_DELETION_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
 
 interface ReviewInboxInFlightRequest {
   url: string;
+  requestId: number;
   controller: AbortController;
   promise: Promise<MonitorSchoolRequirementSummary[]>;
+  throwingPromise: Promise<MonitorSchoolRequirementSummary[]>;
+}
+
+interface ReviewInboxDeletionTombstone {
+  identity: SchoolIdentity;
+  deletedAt: number;
+  requestIdAtDeletion: number;
+  mutationId?: string;
+  wasVisibleAtDeletion: boolean;
 }
 
 function appendParam(params: URLSearchParams, key: string, value: string | number | null | undefined): void {
@@ -137,6 +156,106 @@ function normalizeMeta(meta: Partial<MonitorReviewInboxMeta> | undefined, perPag
   };
 }
 
+function decrementRecordCount(
+  counts: Record<string, number> | undefined,
+  keys: string[],
+): Record<string, number> | undefined {
+  if (!counts) {
+    return undefined;
+  }
+
+  const next = { ...counts };
+  keys.forEach((key) => {
+    if (key in next) {
+      next[key] = Math.max(0, Number(next[key] ?? 0) - 1);
+    }
+  });
+  return next;
+}
+
+function rowNeedsAction(row: MonitorSchoolRequirementSummary): boolean {
+  return row.missingCount > 0
+    || row.awaitingReviewCount > 0
+    || row.indicatorStatus === "returned";
+}
+
+export function removeReviewInboxRowsFromMeta(
+  meta: MonitorReviewInboxMeta,
+  removedRows: MonitorSchoolRequirementSummary[],
+  remainingVisibleRows: number,
+): MonitorReviewInboxMeta {
+  if (removedRows.length === 0) {
+    return meta;
+  }
+
+  let next = { ...meta };
+  removedRows.forEach((row) => {
+    const actionRow = rowNeedsAction(row);
+    const categoryDelta = buildSchoolCategoryCounts([{
+      type: row.schoolType ?? row.packageSchoolType,
+      level: row.schoolLevel,
+    }]);
+    const categoryKeys = Object.entries(categoryDelta)
+      .filter(([, value]) => value > 0)
+      .map(([key]) => key);
+    const requirementKeys = [
+      "total",
+      ...(row.hasAnySubmitted ? ["submittedAny"] : []),
+      ...(row.isComplete ? ["complete"] : []),
+      ...(row.awaitingReviewCount > 0 ? ["awaitingReview"] : []),
+      ...(row.missingCount > 0 ? ["missing"] : []),
+      ...(row.indicatorStatus === "returned" ? ["returned"] : []),
+    ];
+    const workflowKeys = ["all", resolveWorkflowStatus(row)];
+    const schoolStatusKeys = [
+      "all",
+      ...(row.schoolStatus ? [row.schoolStatus] : []),
+    ];
+    const queueKeys = actionRow
+      ? [
+          "all",
+          ...(["urgent", "returned", "for_review", "waiting_data"] as const)
+            .filter((lane) => matchesQueueLane(row, lane)),
+        ]
+      : [];
+    const presetKeys = [
+      "all",
+      ...(["pending", "missing", "returned", "no_submission"] as const)
+        .filter((preset) => matchesSchoolQuickPreset(row, preset)),
+    ];
+
+    next = {
+      ...next,
+      total: Math.max(0, next.total - 1),
+      needsActionCount: typeof next.needsActionCount === "number"
+        ? Math.max(0, next.needsActionCount - (actionRow ? 1 : 0))
+        : undefined,
+      requirementCounts: decrementRecordCount(next.requirementCounts, requirementKeys),
+      workflowStatusCounts: decrementRecordCount(next.workflowStatusCounts, workflowKeys),
+      schoolStatusCounts: decrementRecordCount(next.schoolStatusCounts, schoolStatusKeys),
+      queueLaneCounts: decrementRecordCount(next.queueLaneCounts, queueKeys),
+      schoolPresetCounts: decrementRecordCount(next.schoolPresetCounts, presetKeys),
+      schoolCategoryCounts: decrementRecordCount(next.schoolCategoryCounts, categoryKeys),
+    };
+  });
+
+  const lastPage = Math.max(1, Math.ceil(next.total / Math.max(1, next.perPage)));
+  const currentPage = Math.min(next.currentPage, lastPage);
+  const from = remainingVisibleRows > 0 ? next.from : null;
+  const to = remainingVisibleRows > 0 && from !== null
+    ? from + remainingVisibleRows - 1
+    : null;
+
+  return {
+    ...next,
+    currentPage,
+    lastPage,
+    from,
+    to,
+    hasMorePages: currentPage < lastPage,
+  };
+}
+
 export function useMonitorReviewInbox({
   enabled,
   filters,
@@ -151,30 +270,28 @@ export function useMonitorReviewInbox({
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const requestIdRef = useRef(0);
   const rowsRef = useRef<MonitorSchoolRequirementSummary[]>([]);
+  const metaRef = useRef<MonitorReviewInboxMeta>({ ...DEFAULT_META, perPage });
   const inFlightRequestRef = useRef<ReviewInboxInFlightRequest | null>(null);
   const lastCompletedRequestRef = useRef<{ url: string; completedAt: number } | null>(null);
+  const deletedSchoolTombstonesRef = useRef<ReviewInboxDeletionTombstone[]>([]);
+  const scheduledRefreshTimerRef = useRef<number | null>(null);
+  const aggregatesStaleRef = useRef(false);
 
   const requestUrl = useMemo(
     () => buildMonitorReviewInboxUrl(filters, page, perPage),
     [filters, page, perPage],
   );
 
-  const refresh = useCallback(async (options?: RefreshOptions): Promise<MonitorSchoolRequirementSummary[]> => {
+  const refresh = useCallback((options?: RefreshOptions): Promise<MonitorSchoolRequirementSummary[]> => {
     if (!enabled) {
-      return rowsRef.current;
+      return Promise.resolve(rowsRef.current);
     }
 
     const existingRequest = inFlightRequestRef.current;
-    if (existingRequest?.url === requestUrl) {
-      try {
-        return await existingRequest.promise;
-      } catch (err) {
-        if (options?.throwOnError) {
-          throw err;
-        }
-
-        return rowsRef.current;
-      }
+    if (!options?.force && existingRequest?.url === requestUrl) {
+      return options?.throwOnError
+        ? existingRequest.throwingPromise
+        : existingRequest.promise;
     }
 
     const lastCompletedRequest = lastCompletedRequestRef.current;
@@ -183,7 +300,7 @@ export function useMonitorReviewInbox({
       && lastCompletedRequest?.url === requestUrl
       && Date.now() - lastCompletedRequest.completedAt < RECENT_REVIEW_INBOX_SYNC_TTL_MS
     ) {
-      return rowsRef.current;
+      return Promise.resolve(rowsRef.current);
     }
 
     existingRequest?.controller.abort();
@@ -200,11 +317,48 @@ export function useMonitorReviewInbox({
         });
         const nextRows = Array.isArray(payload.data) ? payload.data : [];
         const nextMeta = normalizeMeta(payload.meta, perPage);
+        const tombstones = deletedSchoolTombstonesRef.current;
+        const safeRows = nextRows.filter((row) => !tombstones.some((tombstone) =>
+          reviewInboxRowMatchesSchoolIdentity(row, tombstone.identity)));
+        const suppressedRows = nextRows.filter((row) => tombstones.some((tombstone) =>
+          reviewInboxRowMatchesSchoolIdentity(row, tombstone.identity)));
+        const requestPredatesDeletion = tombstones.some((tombstone) =>
+          requestId <= tombstone.requestIdAtDeletion);
+        const now = Date.now();
+        deletedSchoolTombstonesRef.current = tombstones.filter((tombstone) => {
+          if (requestId <= tombstone.requestIdAtDeletion) {
+            return true;
+          }
+
+          const serverStillContainsSchool = nextRows.some((row) =>
+            reviewInboxRowMatchesSchoolIdentity(row, tombstone.identity));
+          const scopedSchoolId = new URL(requestUrl, "https://cspams.local")
+            .searchParams.get("school_id");
+          const scopedRequestConfirmsAbsence = Boolean(
+            scopedSchoolId
+            && normalizeSchoolIdentityValue(tombstone.identity.id) === scopedSchoolId,
+          );
+          if (
+            !serverStillContainsSchool
+            && (tombstone.wasVisibleAtDeletion || scopedRequestConfirmsAbsence)
+          ) {
+            return false;
+          }
+
+          return now - tombstone.deletedAt < REVIEW_INBOX_DELETION_TOMBSTONE_TTL_MS;
+        });
 
         if (requestIdRef.current === requestId) {
-          setRows(nextRows);
-          rowsRef.current = nextRows;
-          setMeta(nextMeta);
+          const safeMeta = requestPredatesDeletion
+            ? metaRef.current
+            : removeReviewInboxRowsFromMeta(nextMeta, suppressedRows, safeRows.length);
+          setRows(safeRows);
+          rowsRef.current = safeRows;
+          setMeta(safeMeta);
+          metaRef.current = safeMeta;
+          if (!requestPredatesDeletion) {
+            aggregatesStaleRef.current = false;
+          }
           setError("");
           setLastSyncedAt(new Date().toISOString());
           lastCompletedRequestRef.current = {
@@ -213,7 +367,7 @@ export function useMonitorReviewInbox({
           };
         }
 
-        return nextRows;
+        return safeRows;
       } catch (err) {
         if (controller.signal.aborted) {
           return rowsRef.current;
@@ -234,21 +388,16 @@ export function useMonitorReviewInbox({
       }
     })();
 
+    const safeRequestPromise = requestPromise.catch(() => rowsRef.current);
     inFlightRequestRef.current = {
       url: requestUrl,
+      requestId,
       controller,
-      promise: requestPromise,
+      promise: safeRequestPromise,
+      throwingPromise: requestPromise,
     };
 
-    try {
-      return await requestPromise;
-    } catch (err) {
-      if (options?.throwOnError) {
-        throw err;
-      }
-
-      return rowsRef.current;
-    }
+    return options?.throwOnError ? requestPromise : safeRequestPromise;
   }, [apiToken, enabled, perPage, requestUrl]);
 
   useEffect(() => {
@@ -259,7 +408,11 @@ export function useMonitorReviewInbox({
       lastCompletedRequestRef.current = null;
       setRows([]);
       rowsRef.current = [];
-      setMeta({ ...DEFAULT_META, perPage });
+      const nextMeta = { ...DEFAULT_META, perPage };
+      setMeta(nextMeta);
+      metaRef.current = nextMeta;
+      deletedSchoolTombstonesRef.current = [];
+      aggregatesStaleRef.current = false;
       setError("");
       setIsLoading(false);
       return;
@@ -272,6 +425,12 @@ export function useMonitorReviewInbox({
     requestIdRef.current += 1;
     inFlightRequestRef.current?.controller.abort();
     inFlightRequestRef.current = null;
+    if (scheduledRefreshTimerRef.current !== null) {
+      window.clearTimeout(scheduledRefreshTimerRef.current);
+      scheduledRefreshTimerRef.current = null;
+    }
+    deletedSchoolTombstonesRef.current = [];
+    aggregatesStaleRef.current = false;
   }, []);
 
   useEffect(() => {
@@ -280,55 +439,76 @@ export function useMonitorReviewInbox({
     }
 
     const handleConfirmedDeletion = (event: Event) => {
-      const identity = (event as CustomEvent<SchoolIdentity>).detail;
+      const identity = (event as CustomEvent<SchoolIdentity & { mutationId?: string }>).detail;
       if (!identity) {
         return;
       }
 
-      const nextRows = rowsRef.current.filter((row) => !schoolRecordMatchesIdentity({
-        id: row.schoolKey,
-        schoolId: row.schoolCode,
-        schoolCode: row.schoolCode,
-      }, identity));
-      const removedCount = rowsRef.current.length - nextRows.length;
-      if (removedCount === 0) {
+      const mutationId = String(identity.mutationId ?? "").trim();
+      const existingTombstone = deletedSchoolTombstonesRef.current.some((tombstone) =>
+        (mutationId && tombstone.mutationId === mutationId)
+        || schoolIdentitiesMatch(tombstone.identity, identity));
+      if (existingTombstone) {
         return;
+      }
+
+      const removedRows = rowsRef.current.filter((row) =>
+        reviewInboxRowMatchesSchoolIdentity(row, identity));
+      const nextRows = rowsRef.current.filter((row) =>
+        !reviewInboxRowMatchesSchoolIdentity(row, identity));
+      deletedSchoolTombstonesRef.current = [
+        ...deletedSchoolTombstonesRef.current,
+        {
+          identity,
+          deletedAt: Date.now(),
+          requestIdAtDeletion: requestIdRef.current,
+          mutationId: mutationId || undefined,
+          wasVisibleAtDeletion: removedRows.length > 0,
+        },
+      ];
+      lastCompletedRequestRef.current = null;
+      inFlightRequestRef.current?.controller.abort();
+      if (scheduledRefreshTimerRef.current !== null) {
+        window.clearTimeout(scheduledRefreshTimerRef.current);
+        scheduledRefreshTimerRef.current = null;
       }
 
       rowsRef.current = nextRows;
       setRows(nextRows);
-      setMeta((current) => ({
-        ...current,
-        total: Math.max(0, current.total - removedCount),
-        from: nextRows.length === 0 ? null : current.from,
-        to: nextRows.length === 0
-          ? null
-          : Math.max(current.from ?? 1, (current.to ?? nextRows.length) - removedCount),
-      }));
+      const nextMeta = removeReviewInboxRowsFromMeta(metaRef.current, removedRows, nextRows.length);
+      metaRef.current = nextMeta;
+      setMeta(nextMeta);
+      aggregatesStaleRef.current = removedRows.length === 0;
+      setError("");
+
+      if (enabled) {
+        scheduledRefreshTimerRef.current = window.setTimeout(() => {
+          scheduledRefreshTimerRef.current = null;
+          void refresh({ force: true });
+        }, 0);
+      }
     };
 
     window.addEventListener("cspams:school-deleted", handleConfirmedDeletion);
     return () => window.removeEventListener("cspams:school-deleted", handleConfirmedDeletion);
-  }, []);
+  }, [enabled, refresh]);
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
 
-    let refreshTimer: number | null = null;
-
     const clearRefreshTimer = () => {
-      if (refreshTimer !== null) {
-        window.clearTimeout(refreshTimer);
-        refreshTimer = null;
+      if (scheduledRefreshTimerRef.current !== null) {
+        window.clearTimeout(scheduledRefreshTimerRef.current);
+        scheduledRefreshTimerRef.current = null;
       }
     };
 
     const scheduleRefresh = (delayMs: number, force = false) => {
       clearRefreshTimer();
-      refreshTimer = window.setTimeout(() => {
-        refreshTimer = null;
+      scheduledRefreshTimerRef.current = window.setTimeout(() => {
+        scheduledRefreshTimerRef.current = null;
         void refresh(force ? { force: true } : undefined);
       }, delayMs);
     };
@@ -338,6 +518,20 @@ export function useMonitorReviewInbox({
         const entity = String(payload?.entity ?? "").trim();
         if (entity !== "indicators" && entity !== "dashboard") {
           return;
+        }
+
+        if (
+          entity === "dashboard"
+          && payload?.eventType === "school_head_account_and_school.removed"
+        ) {
+          const mutationId = String(payload.mutationId ?? "").trim();
+          if (
+            mutationId
+            && deletedSchoolTombstonesRef.current.some((tombstone) =>
+              tombstone.mutationId === mutationId)
+          ) {
+            return;
+          }
         }
 
         scheduleRefresh(250, true);

@@ -328,7 +328,12 @@ export function MonitorDashboard() {
   const displayedReconciliationWarningRef = useRef("");
 
   useEffect(() => {
-    if (!reconciliationWarning || displayedReconciliationWarningRef.current === reconciliationWarning) {
+    if (!reconciliationWarning) {
+      displayedReconciliationWarningRef.current = "";
+      return;
+    }
+
+    if (displayedReconciliationWarningRef.current === reconciliationWarning) {
       return;
     }
 

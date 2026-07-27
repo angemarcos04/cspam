@@ -180,6 +180,36 @@ function querySchoolDetailDrawer(): HTMLElement | null {
 }
 
 describe("MonitorDashboard School Head delivery flows", () => {
+  it("shows the same reconciliation warning again after it clears and later recurs", async () => {
+    const warning = "School and account removed. Background synchronization will retry automatically.";
+    const baseData = vi.mocked(useData)();
+    vi.mocked(useData).mockReturnValue({
+      ...baseData,
+      reconciliationWarning: warning,
+    });
+    const { rerender } = render(<MonitorDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(warning)).toHaveLength(1);
+    });
+
+    vi.mocked(useData).mockReturnValue({
+      ...baseData,
+      reconciliationWarning: "",
+    });
+    rerender(<MonitorDashboard />);
+
+    vi.mocked(useData).mockReturnValue({
+      ...baseData,
+      reconciliationWarning: warning,
+    });
+    rerender(<MonitorDashboard />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText(warning)).toHaveLength(2);
+    });
+  });
+
   beforeEach(() => {
     window.history.replaceState(null, "", "/monitor/dashboard");
     window.localStorage.clear();

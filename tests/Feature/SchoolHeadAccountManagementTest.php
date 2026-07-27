@@ -1275,6 +1275,7 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->seed();
         Notification::fake();
         config()->set('auth_mfa.monitor.test_code', '123456');
+        config()->set('mail.default', 'smtp');
 
         $monitorLogin = $this->postJson('/api/auth/login', [
             'role' => 'monitor',
@@ -1319,18 +1320,21 @@ class SchoolHeadAccountManagementTest extends TestCase
             ->assertJsonPath('data.deletedSchoolCount', 1)
             ->assertJsonPath('data.deletedAccountCount', 1)
             ->assertJsonPath('data.deletedCount', 1)
+            ->assertJsonPath('data.notificationDeliveryStatus', 'queued')
+            ->assertJsonPath('data.notificationDeliveryMessage', 'School Head removal notification queued.')
             ->assertJsonStructure([
                 'data' => ['mutationId'],
                 'meta' => ['divisionRecordCount', 'syncedAt'],
             ]);
 
-        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($schoolIdentity): bool {
+        $responseMutationId = (string) $remove->json('data.mutationId');
+        $this->assertNotSame('', $responseMutationId);
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($schoolIdentity, $responseMutationId): bool {
             return $event->payload['eventType'] === 'school_head_account_and_school.removed'
                 && $event->payload['schoolId'] === $schoolIdentity['id']
                 && $event->payload['schoolCode'] === $schoolIdentity['schoolCode']
                 && $event->payload['deletedAccountCount'] === 1
-                && is_string($event->payload['mutationId'])
-                && $event->payload['mutationId'] !== '';
+                && $event->payload['mutationId'] === $responseMutationId;
         });
 
         $this->assertDatabaseMissing('users', [
@@ -1468,17 +1472,24 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertSame(AccountStatus::PENDING_SETUP->value, $schoolHead->accountStatus()->value);
         $this->assertNull($schoolHead->verified_at);
 
+        $payload = $this->deletedAccountPayload(
+            $monitorToken,
+            $school,
+            'Remove pending setup account and school.',
+        );
+        $payload['notifySchoolHead'] = false;
+        $payload['includeReasonInEmail'] = false;
+
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
-            $this->deletedAccountPayload(
-                $monitorToken,
-                $school,
-                'Remove pending setup account and school.',
-            ),
+            $payload,
         );
 
         $remove->assertOk()
-            ->assertJsonPath('data.deletedCount', 1);
+            ->assertJsonPath('data.deletedCount', 1)
+            ->assertJsonPath('data.notificationDeliveryStatus', null)
+            ->assertJsonPath('data.notificationDeliveryMessage', null);
+        Notification::assertSentOnDemandTimes(SchoolHeadAccountRemovedNotification::class, 0);
 
         $this->assertDatabaseMissing('users', [
             'id' => $schoolHead->id,

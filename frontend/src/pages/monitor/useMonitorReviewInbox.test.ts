@@ -43,6 +43,76 @@ const submittedResponse = {
   },
 };
 
+const actionableRow = {
+  schoolKey: "code:sch-001",
+  schoolCode: "SCH-001",
+  schoolName: "Action School",
+  region: "Region IV-A",
+  schoolLevel: "Kindergarten / Elementary",
+  schoolType: "public",
+  schoolStatus: "active" as const,
+  packageSchoolType: "public" as const,
+  requirementModeLabel: "Public",
+  activePackageLabel: "Public",
+  hasComplianceRecord: true,
+  indicatorStatus: "returned",
+  hasActivePackageSubmission: true,
+  hasAnySubmitted: true,
+  isComplete: false,
+  awaitingReviewCount: 0,
+  missingCount: 1,
+  lastActivityAt: "2026-07-28T00:00:00.000Z",
+  lastActivityTime: 1,
+};
+
+const actionableResponse = {
+  data: [actionableRow],
+  meta: {
+    currentPage: 1,
+    lastPage: 1,
+    perPage: 10,
+    total: 1,
+    from: 1,
+    to: 1,
+    hasMorePages: false,
+    requirementCounts: {
+      total: 1,
+      submittedAny: 1,
+      complete: 0,
+      awaitingReview: 0,
+      missing: 1,
+      returned: 1,
+    },
+    workflowStatusCounts: {
+      all: 1,
+      missing: 1,
+      waiting: 0,
+      returned: 0,
+      submitted: 0,
+      validated: 0,
+    },
+    schoolStatusCounts: { all: 1, active: 1, inactive: 0, pending: 0 },
+    queueLaneCounts: { all: 1, urgent: 1, returned: 1, for_review: 0, waiting_data: 1 },
+    schoolPresetCounts: { all: 1, pending: 0, missing: 1, returned: 1, no_submission: 0 },
+    schoolCategoryCounts: {
+      total: 1,
+      public: 1,
+      private: 0,
+      publicKindergarten: 1,
+      publicElementary: 1,
+      publicJuniorHigh: 0,
+      publicSeniorHigh: 0,
+      publicLegacyHighSchool: 0,
+      privateKindergarten: 0,
+      privateElementary: 0,
+      privateJuniorHigh: 0,
+      privateSeniorHigh: 0,
+      privateLegacyHighSchool: 0,
+    },
+    needsActionCount: 1,
+  },
+};
+
 function renderReviewInbox(enabled = true) {
   return renderHook(
     ({ isEnabled }) => useMonitorReviewInbox({
@@ -136,7 +206,7 @@ describe("buildMonitorReviewInboxUrl", () => {
 });
 
 describe("useMonitorReviewInbox", () => {
-  it("shares an identical in-flight request", async () => {
+  it("reuses an identical in-flight request for normal refreshes", async () => {
     let resolveRequest: ((value: typeof emptyResponse) => void) | null = null;
     vi.mocked(apiRequest).mockImplementation(() => new Promise((resolve) => {
       resolveRequest = resolve;
@@ -151,16 +221,51 @@ describe("useMonitorReviewInbox", () => {
     let firstRefresh: Promise<unknown>;
     let secondRefresh: Promise<unknown>;
     act(() => {
-      firstRefresh = result.current.refresh({ force: true });
-      secondRefresh = result.current.refresh({ force: true });
+      firstRefresh = result.current.refresh();
+      secondRefresh = result.current.refresh();
     });
 
     expect(apiRequest).toHaveBeenCalledTimes(1);
+    expect(firstRefresh!).toBe(secondRefresh!);
 
     await act(async () => {
       resolveRequest?.(emptyResponse);
       await Promise.all([firstRefresh!, secondRefresh!]);
     });
+  });
+
+  it("aborts a same-URL request when a forced refresh supersedes it", async () => {
+    const pendingRequests: Array<{
+      resolve: (value: typeof emptyResponse | typeof submittedResponse) => void;
+      signal?: AbortSignal;
+    }> = [];
+    vi.mocked(apiRequest).mockImplementation((_url, options) => new Promise((resolve) => {
+      pendingRequests.push({ resolve, signal: options?.signal });
+    }));
+
+    const { result } = renderReviewInbox();
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(1);
+    });
+
+    let forcedRefresh: Promise<unknown>;
+    act(() => {
+      forcedRefresh = result.current.refresh({ force: true });
+    });
+
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(2);
+    });
+    expect(pendingRequests[0]?.signal?.aborted).toBe(true);
+    expect(pendingRequests[1]?.signal?.aborted).toBe(false);
+
+    await act(async () => {
+      pendingRequests[1]?.resolve(submittedResponse);
+      await forcedRefresh!;
+    });
+
+    expect(result.current.rows[0]).toEqual(expect.objectContaining({ schoolCode: "SCH-001" }));
+    expect(result.current.error).toBe("");
   });
 
   it("aborts a stale filtered request and keeps the newer result", async () => {
@@ -304,13 +409,242 @@ describe("useMonitorReviewInbox", () => {
           id: "12",
           schoolId: "SCH-001",
           schoolCode: "SCH-001",
+          mutationId: "local-review-delete",
+        },
+      }));
+      window.dispatchEvent(new CustomEvent("cspams:update", {
+        detail: {
+          entity: "dashboard",
+          eventType: "school_head_account_and_school.removed",
+          schoolId: "12",
+          schoolCode: "SCH-001",
+          mutationId: "local-review-delete",
         },
       }));
     });
 
     expect(result.current.rows).toHaveLength(0);
     expect(result.current.meta.total).toBe(0);
-    expect(apiRequest).toHaveBeenCalledTimes(1);
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    expect(apiRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it("keeps a deleted school hidden when an older Review Inbox response resolves", async () => {
+    const pendingRequests: Array<{
+      resolve: (value: typeof actionableResponse | typeof emptyResponse) => void;
+      signal?: AbortSignal;
+    }> = [];
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce(actionableResponse)
+      .mockImplementation((_url, options) => new Promise((resolve) => {
+        pendingRequests.push({ resolve, signal: options?.signal });
+      }));
+    const { result } = renderReviewInbox();
+
+    await waitFor(() => {
+      expect(result.current.rows).toHaveLength(1);
+    });
+
+    let staleRefresh: Promise<unknown>;
+    act(() => {
+      staleRefresh = result.current.refresh({ force: true });
+    });
+    expect(pendingRequests).toHaveLength(1);
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: {
+          id: "12",
+          schoolCode: "SCH-001",
+          mutationId: "mutation-race",
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(2);
+    });
+    expect(pendingRequests[0]?.signal?.aborted).toBe(true);
+    expect(result.current.rows).toHaveLength(0);
+    expect(result.current.meta.total).toBe(0);
+
+    await act(async () => {
+      pendingRequests[0]?.resolve(actionableResponse);
+      await staleRefresh!;
+    });
+
+    expect(result.current.rows).toHaveLength(0);
+    expect(result.current.meta.total).toBe(0);
+    expect(result.current.error).toBe("");
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: {
+          id: "12",
+          schoolCode: "SCH-001",
+          mutationId: "mutation-race",
+        },
+      }));
+    });
+    expect(pendingRequests).toHaveLength(2);
+
+    await act(async () => {
+      pendingRequests[1]?.resolve(emptyResponse);
+      await Promise.resolve();
+    });
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: {
+          id: "12",
+          schoolCode: "SCH-001",
+          mutationId: "mutation-race",
+        },
+      }));
+    });
+    await waitFor(() => {
+      expect(pendingRequests).toHaveLength(3);
+    });
+  });
+
+  it("updates deterministic metadata once for a deleted public Kindergarten and Elementary school", async () => {
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce(actionableResponse)
+      .mockResolvedValueOnce(emptyResponse);
+    const { result } = renderReviewInbox();
+
+    await waitFor(() => {
+      expect(result.current.rows).toHaveLength(1);
+    });
+
+    const deletionDetail = {
+      id: "12",
+      schoolCode: "SCH-001",
+      mutationId: "metadata-mutation",
+    };
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", { detail: deletionDetail }));
+    });
+
+    expect(result.current.meta.total).toBe(0);
+    expect(result.current.meta.needsActionCount).toBe(0);
+    expect(result.current.meta.requirementCounts).toMatchObject({
+      total: 0,
+      submittedAny: 0,
+      missing: 0,
+      returned: 0,
+    });
+    expect(result.current.meta.workflowStatusCounts).toMatchObject({ all: 0, missing: 0 });
+    expect(result.current.meta.schoolStatusCounts).toMatchObject({ all: 0, active: 0 });
+    expect(result.current.meta.queueLaneCounts).toMatchObject({
+      all: 0,
+      urgent: 0,
+      returned: 0,
+      waiting_data: 0,
+    });
+    expect(result.current.meta.schoolPresetCounts).toMatchObject({
+      all: 0,
+      missing: 0,
+      returned: 0,
+    });
+    expect(result.current.meta.schoolCategoryCounts).toMatchObject({
+      total: 0,
+      public: 0,
+      publicKindergarten: 0,
+      publicElementary: 0,
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", { detail: deletionDetail }));
+    });
+    expect(result.current.meta.total).toBe(0);
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("coalesces synchronous batch deletion events into one forced inbox reconciliation", async () => {
+    const secondRow = {
+      ...actionableRow,
+      schoolKey: "code:sch-002",
+      schoolId: "13",
+      schoolCode: "SCH-002",
+      schoolName: "Second Action School",
+    };
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce({
+        ...actionableResponse,
+        data: [actionableRow, secondRow],
+        meta: {
+          ...actionableResponse.meta,
+          total: 2,
+          from: 1,
+          to: 2,
+        },
+      })
+      .mockResolvedValueOnce(emptyResponse);
+    const { result } = renderReviewInbox();
+
+    await waitFor(() => {
+      expect(result.current.rows).toHaveLength(2);
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: { id: "12", schoolCode: "SCH-001", mutationId: "batch-review-1" },
+      }));
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: { id: "13", schoolCode: "SCH-002", mutationId: "batch-review-2" },
+      }));
+    });
+
+    expect(result.current.rows).toHaveLength(0);
+    expect(result.current.meta.total).toBe(0);
+    await waitFor(() => {
+      expect(apiRequest).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("shrinks the last Review Inbox page after its only row is deleted", async () => {
+    vi.mocked(apiRequest)
+      .mockResolvedValueOnce({
+        ...actionableResponse,
+        meta: {
+          ...actionableResponse.meta,
+          currentPage: 2,
+          lastPage: 2,
+          total: 11,
+          from: 11,
+          to: 11,
+        },
+      })
+      .mockResolvedValueOnce(emptyResponse);
+    const { result } = renderHook(() => useMonitorReviewInbox({
+      enabled: true,
+      filters: {},
+      page: 2,
+      perPage: 10,
+    }));
+
+    await waitFor(() => {
+      expect(result.current.rows).toHaveLength(1);
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: { id: "12", schoolCode: "SCH-001", mutationId: "last-page" },
+      }));
+    });
+
+    expect(result.current.rows).toHaveLength(0);
+    expect(result.current.meta.total).toBe(10);
+    expect(result.current.meta.lastPage).toBe(1);
+    expect(result.current.meta.currentPage).toBe(1);
+    expect(result.current.meta.from).toBeNull();
+    expect(result.current.meta.to).toBeNull();
   });
 
   it("stops shared refreshes when the review inbox is disabled", async () => {

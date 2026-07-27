@@ -19,6 +19,7 @@ export interface SubmissionProgressBadge {
 
 export interface MonitorSchoolRequirementSummary {
   schoolKey: string;
+  schoolId?: string;
   schoolCode: string;
   schoolName: string;
   region: string;

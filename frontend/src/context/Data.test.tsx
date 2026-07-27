@@ -1120,7 +1120,15 @@ describe("DataProvider school record sync recovery", () => {
         },
         headers: new Headers(),
       })
-      .mockRejectedValueOnce(new ApiError("Refresh failed", 500, null));
+      .mockRejectedValueOnce(new ApiError("Refresh failed", 500, null))
+      .mockResolvedValueOnce(recordsResponse([
+        schoolRecord({
+          id: "13",
+          schoolId: "401778",
+          schoolCode: "401778",
+          schoolName: "Recovered School",
+        }),
+      ], 1));
 
     const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
     const { result } = renderHook(() => useData(), { wrapper });
@@ -1141,6 +1149,179 @@ describe("DataProvider school record sync recovery", () => {
     expect(result.current.recordCount).toBe(0);
     expect(result.current.error).toBe("");
     expect(result.current.syncStatus).toBe("updated");
+
+    await act(async () => {
+      await result.current.refreshRecords({ force: true });
+    });
+    expect(result.current.reconciliationWarning).toBe("");
+    expect(result.current.records.map((record) => record.id)).toEqual(["13"]);
+  });
+
+  it("uses the authoritative Division count for an unfiltered confirmed batch deletion", async () => {
+    const reconciliation = deferred<ReturnType<typeof recordsResponse>>();
+    vi.mocked(apiRequestRaw)
+      .mockResolvedValueOnce(recordsResponse([
+        schoolRecord(),
+        schoolRecord({
+          id: "13",
+          schoolId: "401778",
+          schoolCode: "401778",
+          schoolName: "Private Senior High",
+          type: "private",
+          level: "Senior High",
+        }),
+      ], 10))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            deletedSchoolIds: ["12", "13"],
+            deletedSchools: [
+              {
+                id: "12",
+                schoolId: "401777",
+                schoolCode: "0401777",
+                schoolName: "AMA CC",
+                type: "public",
+                level: "Kindergarten / Elementary",
+              },
+              {
+                id: "13",
+                schoolId: "401778",
+                schoolCode: "401778",
+                schoolName: "Private Senior High",
+                type: "private",
+                level: "Senior High",
+              },
+              {
+                id: "12",
+                schoolId: "401777",
+                schoolCode: "0401777",
+                schoolName: "AMA CC",
+                type: "public",
+                level: "Kindergarten / Elementary",
+              },
+            ],
+            blocked: [{ schoolId: "14", schoolName: "Blocked School", reason: "Monitor linked." }],
+            missingSchoolIds: ["999"],
+            requestedCount: 4,
+            deletedSchoolCount: 2,
+            deletedAccountCount: 2,
+            mutationIds: ["batch-12", "batch-13", "batch-12"],
+            deletedCount: 2,
+          },
+          meta: { divisionRecordCount: 8, syncedAt: "2026-07-28T00:01:00.000Z" },
+        },
+        headers: new Headers(),
+      })
+      .mockImplementationOnce(() => reconciliation.promise);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+    await waitFor(() => expect(result.current.recordCount).toBe(10));
+
+    await act(async () => {
+      await result.current.removeSchoolHeadAccountsBatch(["12", "13", "12", "14", "999"]);
+    });
+
+    expect(result.current.records).toHaveLength(0);
+    expect(result.current.recordCount).toBe(8);
+    expect(buildSchoolCategoryCounts(result.current.records)).toMatchObject({
+      total: 0,
+      public: 0,
+      private: 0,
+      publicKindergarten: 0,
+      publicElementary: 0,
+      privateSeniorHigh: 0,
+    });
+    expect(apiRequestRaw).toHaveBeenCalledTimes(3);
+
+    const syncListener = vi.mocked(subscribeSharedSyncPolling).mock.calls[0]?.[0];
+    act(() => {
+      syncListener?.("realtime", {
+        entity: "dashboard",
+        eventType: "school_head_account_and_school.removed",
+        schoolId: "12",
+        schoolCode: "0401777",
+        mutationId: "batch-12",
+      });
+      syncListener?.("realtime", {
+        entity: "dashboard",
+        eventType: "school_head_account_and_school.removed",
+        schoolId: "13",
+        schoolCode: "401778",
+        mutationId: "batch-13",
+      });
+    });
+    expect(result.current.recordCount).toBe(8);
+    expect(apiRequestRaw).toHaveBeenCalledTimes(3);
+
+    await act(async () => {
+      reconciliation.resolve(recordsResponse([], 8));
+      await Promise.resolve();
+    });
+  });
+
+  it("keeps a filtered count local instead of applying the Division-wide count", async () => {
+    const reconciliation = deferred<ReturnType<typeof recordsResponse>>();
+    vi.mocked(apiRequestRaw)
+      .mockResolvedValueOnce(recordsResponse([
+        schoolRecord(),
+        schoolRecord({ id: "13", schoolId: "401778", schoolCode: "401778" }),
+        schoolRecord({ id: "14", schoolId: "401779", schoolCode: "401779" }),
+      ], 3))
+      .mockResolvedValueOnce(recordsResponse([
+        schoolRecord(),
+        schoolRecord({ id: "13", schoolId: "401778", schoolCode: "401778" }),
+        schoolRecord({ id: "14", schoolId: "401779", schoolCode: "401779" }),
+      ], 3))
+      .mockResolvedValueOnce({
+        status: 200,
+        data: {
+          data: {
+            message: "School removed.",
+            deletedSchool: {
+              id: "12",
+              schoolId: "401777",
+              schoolCode: "0401777",
+              schoolName: "AMA CC",
+            },
+            deletedSchoolCount: 1,
+            deletedAccountCount: 1,
+            deletedCount: 1,
+            mutationId: "filtered-12",
+          },
+          meta: { divisionRecordCount: 8, syncedAt: "2026-07-28T00:01:00.000Z" },
+        },
+        headers: new Headers(),
+      })
+      .mockImplementationOnce(() => reconciliation.promise);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <DataProvider>{children}</DataProvider>;
+    const { result } = renderHook(() => useData(), { wrapper });
+    await waitFor(() => expect(result.current.recordCount).toBe(3));
+    await act(async () => {
+      await result.current.refreshRecords({ filters: { search: "AMA" }, force: true });
+    });
+
+    await act(async () => {
+      await result.current.removeSchoolHeadAccount("12", {
+        reason: "Remove filtered school.",
+        verificationChallengeId: "filtered-challenge",
+        verificationCode: "123456",
+      });
+    });
+
+    expect(result.current.recordCount).toBe(2);
+    expect(result.current.records.map((record) => record.id)).toEqual(["13", "14"]);
+
+    await act(async () => {
+      reconciliation.resolve(recordsResponse([
+        schoolRecord({ id: "13", schoolId: "401778", schoolCode: "401778" }),
+        schoolRecord({ id: "14", schoolId: "401779", schoolCode: "401779" }),
+      ], 2));
+      await Promise.resolve();
+    });
   });
 
   it("applies another session's realtime deletion immediately and schedules reconciliation", async () => {

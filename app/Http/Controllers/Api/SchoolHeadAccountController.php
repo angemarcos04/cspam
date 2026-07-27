@@ -1633,11 +1633,11 @@ class SchoolHeadAccountController extends Controller
         });
 
         if ($notifySchoolHead && $notificationTarget instanceof User) {
-            $notificationDeliveryStatus = 'sent';
-            $notificationDeliveryMessage = 'School Head removal notification sent.';
+            $notificationDeliveryStatus = 'queued';
+            $notificationDeliveryMessage = 'School Head removal notification queued.';
             if (MailDelivery::isSimulated()) {
                 $notificationDeliveryStatus = MailDelivery::simulatedStatus();
-                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Removal notification was generated, but will not reach real inboxes.');
+                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Removal notification was queued, but will not reach real inboxes.');
             }
 
             try {

@@ -13,6 +13,7 @@ import { apiRequestRaw, displayMessageForApiError, isApiError } from "@/lib/api"
 import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
 import {
+  schoolIdentitiesMatch,
   schoolRecordMatchesIdentity,
   type SchoolIdentity,
 } from "@/utils/schoolRecordIdentity";
@@ -80,7 +81,7 @@ export type SchoolRecordRefreshOptions = RefreshOptions & {
   filters?: SchoolRecordRefreshFilters | null;
 };
 
-interface NormalizedSchoolRecordRefreshFilters {
+export interface NormalizedSchoolRecordRefreshFilters {
   search: string;
   status: SchoolStatus | "";
   dateFrom: string;
@@ -338,6 +339,18 @@ function normalizeSchoolRecordRefreshFilters(
   };
 }
 
+export function isUnfilteredDivisionRecordScope(
+  scope: SyncScope,
+  filters: NormalizedSchoolRecordRefreshFilters,
+): boolean {
+  return scope === "division"
+    && filters.search === ""
+    && filters.status === ""
+    && filters.dateFrom === ""
+    && filters.dateTo === ""
+    && filters.schoolId === "";
+}
+
 function buildSchoolRecordRefreshUrl(filters: NormalizedSchoolRecordRefreshFilters): string {
   const params = new URLSearchParams();
 
@@ -458,6 +471,7 @@ export function DataProvider({
   const realtimeSyncTimerRef = useRef<number | null>(null);
   const recordsRef = useRef<SchoolRecord[]>([]);
   const recordCountRef = useRef(0);
+  const syncScopeRef = useRef<SyncScope>(null);
   const recordRequestSequenceRef = useRef(0);
   const deletedSchoolTombstonesRef = useRef<DeletedSchoolTombstone[]>([]);
   const localDeletionMutationIdsRef = useRef<Map<string, number>>(new Map());
@@ -489,17 +503,28 @@ export function DataProvider({
   }, [recordCount]);
 
   useEffect(() => {
+    syncScopeRef.current = syncScope;
+  }, [syncScope]);
+
+  useEffect(() => {
     accountStatusOverridesRef.current = accountStatusOverrides;
   }, [accountStatusOverrides]);
 
   const filterRecordSyncPayload = useCallback((
     nextRecords: SchoolRecord[],
     requestSequence: number,
-  ): { records: SchoolRecord[]; suppressedCount: number } => {
+  ): {
+    records: SchoolRecord[];
+    suppressedCount: number;
+    confirmedDeletedSchoolsAbsent: boolean;
+  } => {
     const now = Date.now();
     const tombstones = deletedSchoolTombstonesRef.current;
     const safeRecords = nextRecords.filter((record) => !tombstones.some((tombstone) =>
       schoolRecordMatchesIdentity(record, tombstone.identity)));
+    const confirmedDeletedSchoolsAbsent = tombstones.length > 0 && tombstones.every((tombstone) =>
+      requestSequence > tombstone.requestSequenceAtDeletion
+      && !nextRecords.some((record) => schoolRecordMatchesIdentity(record, tombstone.identity)));
 
     deletedSchoolTombstonesRef.current = tombstones.filter((tombstone) => {
       if (requestSequence <= tombstone.requestSequenceAtDeletion) {
@@ -518,6 +543,7 @@ export function DataProvider({
     return {
       records: safeRecords,
       suppressedCount: Math.max(0, nextRecords.length - safeRecords.length),
+      confirmedDeletedSchoolsAbsent,
     };
   }, []);
 
@@ -535,54 +561,77 @@ export function DataProvider({
     return filtered;
   }, [filterRecordSyncPayload]);
 
-  const applyConfirmedSchoolDeletion = useCallback((
-    identity: SchoolIdentity,
-    options?: { mutationId?: string | null },
-  ): boolean => {
-    const currentRecords = recordsRef.current;
-    const existed = currentRecords.some((record) => schoolRecordMatchesIdentity(record, identity));
-    const nextRecords = currentRecords.filter((record) => !schoolRecordMatchesIdentity(record, identity));
-    const mutationId = String(options?.mutationId ?? "").trim();
-    const existingTombstone = deletedSchoolTombstonesRef.current.find((tombstone) =>
-      (mutationId && tombstone.mutationId === mutationId)
-      || schoolRecordMatchesIdentity({
-        id: String(tombstone.identity.id ?? ""),
-        schoolId: tombstone.identity.schoolId === undefined ? null : String(tombstone.identity.schoolId ?? ""),
-        schoolCode: tombstone.identity.schoolCode === undefined ? null : String(tombstone.identity.schoolCode ?? ""),
-      }, identity));
+  const applyConfirmedSchoolDeletions = useCallback((
+    deletions: Array<{ identity: SchoolIdentity; mutationId?: string | null }>,
+    options?: { divisionRecordCount?: number | null },
+  ): number => {
+    const uniqueDeletions = deletions.reduce<Array<{ identity: SchoolIdentity; mutationId?: string | null }>>(
+      (current, deletion) => {
+        const mutationId = String(deletion.mutationId ?? "").trim();
+        if (current.some((candidate) => (
+          (mutationId && String(candidate.mutationId ?? "").trim() === mutationId)
+          || schoolIdentitiesMatch(candidate.identity, deletion.identity)
+        ))) {
+          return current;
+        }
 
-    if (!existingTombstone) {
-      deletedSchoolTombstonesRef.current = [
-        ...deletedSchoolTombstonesRef.current,
-        {
-          identity,
-          deletedAt: Date.now(),
+        return [...current, deletion];
+      },
+      [],
+    );
+    if (uniqueDeletions.length === 0) {
+      return 0;
+    }
+
+    const currentRecords = recordsRef.current;
+    const removedRecords = currentRecords.filter((record) => uniqueDeletions.some((deletion) =>
+      schoolRecordMatchesIdentity(record, deletion.identity)));
+    const nextRecords = currentRecords.filter((record) => !uniqueDeletions.some((deletion) =>
+      schoolRecordMatchesIdentity(record, deletion.identity)));
+    const now = Date.now();
+    const nextTombstones = [...deletedSchoolTombstonesRef.current];
+
+    uniqueDeletions.forEach((deletion) => {
+      const mutationId = String(deletion.mutationId ?? "").trim();
+      const exists = nextTombstones.some((tombstone) =>
+        (mutationId && tombstone.mutationId === mutationId)
+        || schoolIdentitiesMatch(tombstone.identity, deletion.identity));
+      if (!exists) {
+        nextTombstones.push({
+          identity: deletion.identity,
+          deletedAt: now,
           requestSequenceAtDeletion: recordRequestSequenceRef.current,
           mutationId: mutationId || undefined,
-          decrementedRecordCount: existed,
-        },
-      ];
-    }
+          decrementedRecordCount: removedRecords.some((record) =>
+            schoolRecordMatchesIdentity(record, deletion.identity)),
+        });
+      }
+      if (mutationId) {
+        localDeletionMutationIdsRef.current.set(mutationId, now);
+      }
+    });
+    deletedSchoolTombstonesRef.current = nextTombstones;
 
-    if (mutationId) {
-      localDeletionMutationIdsRef.current.set(mutationId, Date.now());
-    }
-
-    if (existed) {
+    if (removedRecords.length > 0) {
       recordsRef.current = nextRecords;
       setRecords(nextRecords);
-      setRecordCount((current) => {
-        const next = Math.max(0, current - 1);
-        recordCountRef.current = next;
-        return next;
-      });
     }
 
-    const nextOverrides = accountStatusOverridesRef.current.filter((override) => !schoolRecordMatchesIdentity({
-      id: override.schoolId,
-      schoolId: override.schoolId,
-      schoolCode: override.schoolCode,
-    }, identity));
+    const authoritativeCount = normalizeRecordCount(options?.divisionRecordCount, -1);
+    const canUseAuthoritativeCount = authoritativeCount >= 0
+      && isUnfilteredDivisionRecordScope(syncScopeRef.current, activeRecordFiltersRef.current);
+    const nextRecordCount = canUseAuthoritativeCount
+      ? authoritativeCount
+      : Math.max(0, recordCountRef.current - removedRecords.length);
+    recordCountRef.current = nextRecordCount;
+    setRecordCount(nextRecordCount);
+
+    const nextOverrides = accountStatusOverridesRef.current.filter((override) => !uniqueDeletions.some((deletion) =>
+      schoolRecordMatchesIdentity({
+        id: override.schoolId,
+        schoolId: override.schoolId,
+        schoolCode: override.schoolCode,
+      }, deletion.identity)));
     accountStatusOverridesRef.current = nextOverrides;
     setAccountStatusOverrides(nextOverrides);
     etagRef.current = "";
@@ -592,13 +641,24 @@ export function DataProvider({
     setSyncStatus("updated");
 
     if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
-        detail: { ...identity, mutationId: mutationId || undefined },
-      }));
+      uniqueDeletions.forEach((deletion) => {
+        const mutationId = String(deletion.mutationId ?? "").trim();
+        window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+          detail: { ...deletion.identity, mutationId: mutationId || undefined },
+        }));
+      });
     }
 
-    return existed;
+    return removedRecords.length;
   }, []);
+
+  const applyConfirmedSchoolDeletion = useCallback((
+    identity: SchoolIdentity,
+    options?: { mutationId?: string | null; divisionRecordCount?: number | null },
+  ): boolean => applyConfirmedSchoolDeletions(
+    [{ identity, mutationId: options?.mutationId }],
+    { divisionRecordCount: options?.divisionRecordCount },
+  ) > 0, [applyConfirmedSchoolDeletions]);
 
   const rememberAccountStatusOverride = useCallback((schoolId: string, record: SchoolRecord | undefined, account: SchoolHeadAccountSummary) => {
     const override: AccountStatusOverride = {
@@ -671,6 +731,7 @@ export function DataProvider({
     localDeletionMutationIdsRef.current.clear();
     recordRequestSequenceRef.current = 0;
     recordCountRef.current = 0;
+    syncScopeRef.current = null;
     clearRealtimeSyncTimer();
     setRecords([]);
     setAccountStatusOverrides([]);
@@ -851,9 +912,6 @@ export function DataProvider({
           }
 
           setSyncStatus("up_to_date");
-          if (operation === "post-mutation-reconciliation") {
-            setReconciliationWarning("");
-          }
           return;
         }
 
@@ -895,7 +953,7 @@ export function DataProvider({
         }
 
         setSyncStatus("updated");
-        if (operation === "post-mutation-reconciliation") {
+        if (filtered.confirmedDeletedSchoolsAbsent) {
           setReconciliationWarning("");
         }
       } catch (err) {
@@ -1724,7 +1782,10 @@ export function DataProvider({
 
         applyConfirmedSchoolDeletion(
           result.deletedSchool ?? { id: schoolId },
-          { mutationId: result.mutationId },
+          {
+            mutationId: result.mutationId,
+            divisionRecordCount: result.divisionRecordCount,
+          },
         );
         void syncRecords(
           true,
@@ -1798,11 +1859,13 @@ export function DataProvider({
         const deletedSchools = result.deletedSchools?.length > 0
           ? result.deletedSchools
           : result.deletedSchoolIds.map((id) => ({ id }));
-        deletedSchools.forEach((identity, index) => {
-          applyConfirmedSchoolDeletion(identity, {
+        applyConfirmedSchoolDeletions(
+          deletedSchools.map((identity, index) => ({
+            identity,
             mutationId: result.mutationIds?.[index],
-          });
-        });
+          })),
+          { divisionRecordCount: result.divisionRecordCount },
+        );
         void syncRecords(
           true,
           true,
@@ -1819,7 +1882,7 @@ export function DataProvider({
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords, applyConfirmedSchoolDeletion],
+    [token, handleApiError, syncRecords, applyConfirmedSchoolDeletions],
   );
 
   const bulkImportRecords = useCallback(
@@ -1929,7 +1992,6 @@ export function DataProvider({
 
           applyConfirmedSchoolDeletion({
             id: payload.schoolId,
-            schoolId: payload.schoolId,
             schoolCode: payload.schoolCode,
           }, { mutationId });
           scheduleSync(220, true);
