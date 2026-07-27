@@ -627,6 +627,8 @@ export interface IndicatorSubmission {
     requiredScopeIds?: string[];
     submittedScopeIds?: string[];
     pendingScopeIds?: string[];
+    previouslySubmittedScopeIds?: string[];
+    requiresResubmissionScopeIds?: string[];
     submittedRequiredScopeCount?: number;
     totalRequiredScopeCount?: number;
   };

@@ -53,6 +53,7 @@ import {
   resolveSubmissionPresentationSchoolType,
   resolveSubmittedReportVisibleFileDefinitions,
 } from "@/utils/submissionRequirements";
+import { buildSubmissionScopeStateFingerprint } from "@/utils/indicatorSubmissionState";
 import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
 import type {
   IndicatorSubmission,
@@ -396,6 +397,7 @@ function buildSubmissionRefreshFingerprint(submission: IndicatorSubmission | nul
     submission.version ?? "",
     submission.updatedAt ?? "",
     submission.submittedAt ?? "",
+    buildSubmissionScopeStateFingerprint(submission),
   ].join(":");
 }
 

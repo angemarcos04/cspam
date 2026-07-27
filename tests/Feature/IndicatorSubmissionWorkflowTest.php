@@ -1791,8 +1791,10 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $submissionId = (string) $created->json('data.id');
         $this->uploadSubmissionDocument($token, $submissionId, 'fm_qad_001', 'fm-qad-001.pdf', 'application/pdf')
             ->assertOk();
+        $updatedBeforeSend = IndicatorSubmission::query()->findOrFail($submissionId)->updated_at;
 
         Event::fake([CspamsUpdateBroadcast::class]);
+        $this->travel(1)->second();
 
         $scoped = $this->withToken($token)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
             'targets' => ['fm_qad_001'],
@@ -1801,7 +1803,21 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $scoped->assertOk()
             ->assertJsonPath('data.status', 'draft')
             ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => in_array('fm_qad_001', $ids, true))
+            ->assertJsonPath('data.scopeProgress.previouslySubmittedScopeIds', fn (array $ids): bool => in_array('fm_qad_001', $ids, true))
+            ->assertJsonPath('data.scopeProgress.requiresResubmissionScopeIds', [])
             ->assertJsonPath('data.scopeProgress.submittedRequiredScopeCount', 1);
+
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'fm_qad_001',
+        ]);
+        $this->assertTrue(
+            IndicatorSubmission::query()->findOrFail($submissionId)->updated_at->greaterThan($updatedBeforeSend),
+        );
+
+        $full = $this->withToken($token)->getJson("/api/indicators/submissions/{$submissionId}");
+        $full->assertOk();
+        $this->assertSame($scoped->json('data.scopeProgress'), $full->json('data.scopeProgress'));
 
         $schoolCode = (string) School::query()->whereKey($schoolHead->school_id)->value('school_code');
         Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($submissionId, $academicYearId, $schoolCode): bool {
@@ -1917,6 +1933,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->firstWhere('id', $submissionId);
         $this->assertIsArray($returnedRow);
         $this->assertNotContains('bmef', data_get($returnedRow, 'scopeProgress.submittedScopeIds', []));
+        $this->assertContains('bmef', data_get($returnedRow, 'scopeProgress.previouslySubmittedScopeIds', []));
+        $this->assertContains('bmef', data_get($returnedRow, 'scopeProgress.requiresResubmissionScopeIds', []));
         $this->assertFalse((bool) data_get($returnedRow, 'files.bmef.uploaded'));
         $this->assertNull(data_get($returnedRow, 'files.bmef.viewUrl'));
     }
@@ -1960,8 +1978,11 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ->assertJsonPath('data.files.bmef.uploaded', true)
             ->assertJsonPath('data.files.bmef.originalFilename', 'bmef-original.pdf');
 
-        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf')
-            ->assertOk();
+        $replaced = $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef-revised.pdf', 'application/pdf');
+        $replaced->assertOk()
+            ->assertJsonPath('data.scopeProgress.submittedScopeIds', fn (array $ids): bool => ! in_array('bmef', $ids, true))
+            ->assertJsonPath('data.scopeProgress.previouslySubmittedScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true))
+            ->assertJsonPath('data.scopeProgress.requiresResubmissionScopeIds', fn (array $ids): bool => in_array('bmef', $ids, true));
         $this->assertDatabaseMissing('indicator_submission_scope_submissions', [
             'indicator_submission_id' => $submissionId,
             'scope_id' => 'bmef',

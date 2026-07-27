@@ -80,6 +80,8 @@ final class SubmissionScopeProgressResolver
      *   requiredScopeIds:list<string>,
      *   submittedScopeIds:list<string>,
      *   pendingScopeIds:list<string>,
+     *   previouslySubmittedScopeIds:list<string>,
+     *   requiresResubmissionScopeIds:list<string>,
      *   submittedRequiredScopeCount:int,
      *   totalRequiredScopeCount:int
      * }
@@ -87,11 +89,34 @@ final class SubmissionScopeProgressResolver
     public function buildScopeProgressForSubmission(IndicatorSubmission $submission): array
     {
         $requiredScopeIds = $this->requiredScopeIdsForSubmission($submission);
-        $submittedScopeIds = $this->submittedScopeIdsForSubmission($submission);
         $requiredScopeSet = array_flip($requiredScopeIds);
+        $status = $submission->status instanceof FormSubmissionStatus
+            ? $submission->status->value
+            : strtolower(trim((string) $submission->status));
+        $isFinalized = in_array($status, [
+            FormSubmissionStatus::SUBMITTED->value,
+            FormSubmissionStatus::VALIDATED->value,
+        ], true);
+        $historicalScopeState = $isFinalized
+            ? [
+                'submittedScopeIds' => $requiredScopeIds,
+                'previouslySubmittedScopeIds' => $requiredScopeIds,
+            ]
+            : $this->historicalScopeStateForSubmission($submission, $requiredScopeSet);
+        $submittedScopeIds = $this->submittedScopeIdsForSubmission(
+            $submission,
+            $historicalScopeState['submittedScopeIds'],
+        );
         $submittedRequiredScopeIds = array_values(array_filter(
             $submittedScopeIds,
             static fn (string $scopeId): bool => isset($requiredScopeSet[$scopeId]),
+        ));
+        $previouslySubmittedScopeIds = array_values(array_filter(
+            $requiredScopeIds,
+            static fn (string $scopeId): bool => in_array($scopeId, [
+                ...$historicalScopeState['previouslySubmittedScopeIds'],
+                ...$submittedRequiredScopeIds,
+            ], true),
         ));
 
         return [
@@ -99,6 +124,11 @@ final class SubmissionScopeProgressResolver
             'submittedScopeIds' => $submittedRequiredScopeIds,
             'pendingScopeIds' => array_values(array_filter(
                 $requiredScopeIds,
+                static fn (string $scopeId): bool => ! in_array($scopeId, $submittedRequiredScopeIds, true),
+            )),
+            'previouslySubmittedScopeIds' => $previouslySubmittedScopeIds,
+            'requiresResubmissionScopeIds' => array_values(array_filter(
+                $previouslySubmittedScopeIds,
                 static fn (string $scopeId): bool => ! in_array($scopeId, $submittedRequiredScopeIds, true),
             )),
             'submittedRequiredScopeCount' => count($submittedRequiredScopeIds),
@@ -131,7 +161,10 @@ final class SubmissionScopeProgressResolver
     /**
      * @return list<string>
      */
-    private function submittedScopeIdsForSubmission(IndicatorSubmission $submission): array
+    private function submittedScopeIdsForSubmission(
+        IndicatorSubmission $submission,
+        array $historicalSubmittedScopeIds = [],
+    ): array
     {
         $requiredScopeIds = $this->requiredScopeIdsForSubmission($submission);
         $requiredScopeSet = array_flip($requiredScopeIds);
@@ -152,12 +185,15 @@ final class SubmissionScopeProgressResolver
             return $durableScopeIds;
         }
 
-        return $this->historySubmittedScopeIdsForSubmission($submission, $requiredScopeSet);
+        return $historicalSubmittedScopeIds;
     }
 
     /**
      * @param array<string, int> $requiredScopeSet
-     * @return list<string>
+     * @return array{
+     *   submittedScopeIds:list<string>,
+     *   previouslySubmittedScopeIds:list<string>
+     * }
      */
     private function durableSubmittedScopeIdsForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
     {
@@ -175,9 +211,10 @@ final class SubmissionScopeProgressResolver
      * @param array<string, int> $requiredScopeSet
      * @return list<string>
      */
-    private function historySubmittedScopeIdsForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
+    private function historicalScopeStateForSubmission(IndicatorSubmission $submission, array $requiredScopeSet): array
     {
         $submittedScopeSet = [];
+        $previouslySubmittedScopeSet = [];
         $histories = FormSubmissionHistory::query()
             ->where('form_type', IndicatorSubmission::FORM_TYPE)
             ->where('submission_id', $submission->id)
@@ -193,6 +230,7 @@ final class SubmissionScopeProgressResolver
             if ($action === 'scope_submitted') {
                 foreach ($this->extractScopeIdsFromMetadata($submission, $metadata) as $scopeId) {
                     $submittedScopeSet[$scopeId] = true;
+                    $previouslySubmittedScopeSet[$scopeId] = true;
                 }
                 continue;
             }
@@ -207,6 +245,7 @@ final class SubmissionScopeProgressResolver
                 FormSubmissionStatus::VALIDATED->value,
             ], true)) {
                 $submittedScopeSet = $requiredScopeSet;
+                $previouslySubmittedScopeSet = $requiredScopeSet;
                 continue;
             }
 
@@ -219,7 +258,10 @@ final class SubmissionScopeProgressResolver
             }
         }
 
-        return array_values(array_keys($submittedScopeSet));
+        return [
+            'submittedScopeIds' => array_values(array_keys($submittedScopeSet)),
+            'previouslySubmittedScopeIds' => array_values(array_keys($previouslySubmittedScopeSet)),
+        ];
     }
 
     /**

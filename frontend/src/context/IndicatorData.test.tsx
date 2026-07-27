@@ -9,7 +9,65 @@ import {
   mergeSubmissionPreservingDetails,
   patchSubmissionWithLightweightPayload,
   resolveIndicatorRealtimeSyncPlan,
+  upsertSubmissionRow,
 } from "@/context/IndicatorData";
+import type { IndicatorSubmission } from "@/types";
+
+function buildSubmissionRow(overrides: Partial<IndicatorSubmission> = {}): IndicatorSubmission {
+  return {
+    id: "sub-race",
+    formType: "indicator",
+    status: "draft",
+    statusLabel: "Draft",
+    reportingPeriod: "ANNUAL",
+    version: 4,
+    schoolId: "school-1",
+    notes: null,
+    reviewNotes: null,
+    summary: { totalIndicators: 0, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
+    indicators: [],
+    academicYear: { id: "ay-1", name: "2025-2026" },
+    submittedAt: null,
+    reviewedAt: null,
+    createdAt: "2026-07-01T00:00:00.000Z",
+    updatedAt: "2026-07-01T01:00:00.000Z",
+    ...overrides,
+  };
+}
+
+describe("upsertSubmissionRow freshness", () => {
+  it("does not let an older same-version list response remove a newly submitted scope", () => {
+    const submitted = buildSubmissionRow({
+      updatedAt: "2026-07-01T02:00:00.000Z",
+      scopeProgress: { submittedScopeIds: ["school_achievements_learning_outcomes"], pendingScopeIds: [] },
+    });
+    const staleListRow = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: [], pendingScopeIds: ["school_achievements_learning_outcomes"] },
+    });
+
+    expect(upsertSubmissionRow([submitted], staleListRow)[0]?.scopeProgress?.submittedScopeIds)
+      .toEqual(["school_achievements_learning_outcomes"]);
+  });
+
+  it("accepts a newer same-version edit that invalidates the sent scope", () => {
+    const submitted = buildSubmissionRow({
+      scopeProgress: { submittedScopeIds: ["school_achievements_learning_outcomes"], pendingScopeIds: [] },
+    });
+    const edited = buildSubmissionRow({
+      updatedAt: "2026-07-01T02:00:00.000Z",
+      scopeProgress: {
+        submittedScopeIds: [],
+        pendingScopeIds: ["school_achievements_learning_outcomes"],
+        previouslySubmittedScopeIds: ["school_achievements_learning_outcomes"],
+        requiresResubmissionScopeIds: ["school_achievements_learning_outcomes"],
+      },
+    });
+
+    expect(upsertSubmissionRow([submitted], edited)[0]?.scopeProgress?.submittedScopeIds).toEqual([]);
+    expect(upsertSubmissionRow([submitted], edited)[0]?.scopeProgress?.requiresResubmissionScopeIds)
+      .toEqual(["school_achievements_learning_outcomes"]);
+  });
+});
 
 describe("buildIndicatorDataSessionKey", () => {
   it("includes assigned school context for School Head users", () => {
@@ -336,6 +394,12 @@ describe("patchSubmissionWithLightweightPayload", () => {
       version: 1,
       schoolId: "school-1",
       schoolType: "private",
+      school: {
+        id: "school-1",
+        schoolCode: "401777",
+        name: "Test School",
+        type: "private",
+      },
       notes: null,
       reviewNotes: null,
       summary: { totalIndicators: 1, metIndicators: 0, belowTargetIndicators: 0, complianceRatePercent: 0 },
@@ -377,6 +441,14 @@ describe("patchSubmissionWithLightweightPayload", () => {
         submittedRequiredScopeCount: 0,
         totalRequiredScopeCount: 2,
       },
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "school_achievements_learning_outcomes",
+        scopeType: "section",
+        decision: "returned",
+        notes: "Revise this section.",
+        reviewedAt: "2026-05-20T01:00:00.000Z",
+      }],
       files: {
         fm_qad_001: {
           type: "fm_qad_001",
@@ -445,6 +517,9 @@ describe("patchSubmissionWithLightweightPayload", () => {
     expect(patched.status).toBe("submitted");
     expect(patched.statusLabel).toBe("Submitted");
     expect(patched.scopeProgress?.submittedScopeIds).toEqual(["fm_qad_001"]);
+    expect(patched.scopeReviews?.[0]?.decision).toBe("returned");
+    expect(patched.school?.id).toBe("school-1");
+    expect(patched.academicYear?.id).toBe("ay-1");
     expect(patched.files?.fm_qad_001?.uploaded).toBe(true);
     expect(patched.indicators).toHaveLength(1);
     expect(patched.indicators[0]?.metric?.code).toBe("IMETA_HEAD_NAME");

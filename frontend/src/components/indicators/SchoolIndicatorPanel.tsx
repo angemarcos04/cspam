@@ -33,6 +33,10 @@ import {
   resolveSubmissionPresentationSchoolType,
   defaultRequiredSubmissionFileTypesForSchoolType,
 } from "@/utils/submissionRequirements";
+import {
+  buildSubmissionScopeStateFingerprint,
+  compareSubmissionFreshness,
+} from "@/utils/indicatorSubmissionState";
 import type {
   AcademicYearOption,
   FormSubmissionHistoryEntry,
@@ -354,7 +358,7 @@ function isWorkspaceSubmissionAtLeastAsFresh(
     return true;
   }
 
-  return getSubmissionFreshnessScore(candidate) >= getSubmissionFreshnessScore(reference);
+  return compareSubmissionFreshness(candidate, reference) >= 0;
 }
 
 function mergeWorkspaceSubmissionCandidates(
@@ -454,6 +458,7 @@ function buildWorkspaceSubmissionFingerprint(
     submission?.updatedAt ?? "",
     submission?.submittedAt ?? "",
     submission?.reviewedAt ?? "",
+    buildSubmissionScopeStateFingerprint(submission),
     ...SUBMISSION_FILE_TYPES.map((type) => `${type}:${hasUploadedSubmissionFile(submission, type) ? 1 : 0}`),
   ].join(":");
 }
@@ -472,7 +477,77 @@ function buildWorkspaceHydrationFingerprint(
     submission.version ?? "",
     submission.updatedAt ?? "",
     submission.status ?? "",
+    buildSubmissionScopeStateFingerprint(submission),
   ].join(":");
+}
+
+export type CategoryRailBadgeState = {
+  label: "Verified" | "Returned" | "Submitted" | "Ready to re-send" | "Ready" | `Missing ${number}` | "Draft" | "Read-only";
+  tone: string;
+};
+
+export function resolveCategoryRailBadgeState({
+  missingCount,
+  isReady,
+  isSubmitted,
+  requiresResubmission,
+  reviewDecision,
+  workspaceMode,
+}: {
+  missingCount: number;
+  isReady: boolean;
+  isSubmitted: boolean;
+  requiresResubmission: boolean;
+  reviewDecision: string | null;
+  workspaceMode: GroupBWorkspaceMode;
+}): CategoryRailBadgeState {
+  const normalizedDecision = String(reviewDecision ?? "").trim().toLowerCase();
+  if (normalizedDecision === "verified") {
+    return {
+      label: "Verified",
+      tone: "border-emerald-300 bg-emerald-50 text-emerald-700",
+    };
+  }
+  if (normalizedDecision === "returned") {
+    if (isReady && missingCount === 0) {
+      return {
+        label: "Ready to re-send",
+        tone: "border-primary-300 bg-primary-50 text-primary-700",
+      };
+    }
+    return {
+      label: "Returned",
+      tone: "border-amber-300 bg-amber-50 text-amber-700",
+    };
+  }
+  if (isSubmitted) {
+    return {
+      label: "Submitted",
+      tone: "border-primary-300 bg-primary-50 text-primary-700",
+    };
+  }
+  if (requiresResubmission && isReady) {
+    return {
+      label: "Ready to re-send",
+      tone: "border-primary-300 bg-primary-50 text-primary-700",
+    };
+  }
+  if (isReady || missingCount === 0) {
+    return {
+      label: "Ready",
+      tone: "border-primary-300 bg-primary-50 text-primary-700",
+    };
+  }
+  if (missingCount > 0) {
+    return {
+      label: `Missing ${missingCount}`,
+      tone: "border-amber-300 bg-amber-50 text-amber-700",
+    };
+  }
+  return {
+    label: workspaceMode === "read_only_year" ? "Read-only" : "Draft",
+    tone: "border-slate-300 bg-slate-50 text-slate-600",
+  };
 }
 
 function deriveWorkspaceModeFromSubmission(
@@ -3133,6 +3208,7 @@ function SchoolIndicatorPanelComponent({
     requestResolvedWorkspaceRehydrate,
     shouldSuppressFallbackWorkspaceDetailHydration,
   ]);
+  const workspaceScopeStateFingerprint = buildSubmissionScopeStateFingerprint(latestActiveWorkspaceSubmission);
   const workspaceSubmissionFingerprint = useMemo(
     () => buildWorkspaceSubmissionFingerprint(activeAcademicYearId, latestActiveWorkspaceSubmission),
     [
@@ -3144,6 +3220,7 @@ function SchoolIndicatorPanelComponent({
       latestActiveWorkspaceSubmission?.submittedAt,
       latestActiveWorkspaceSubmission?.reviewedAt,
       buildSubmissionUploadedFileFingerprint(latestActiveWorkspaceSubmission),
+      workspaceScopeStateFingerprint,
     ],
   );
   const runCriticalWorkspaceMutation = useCallback(
@@ -3575,6 +3652,25 @@ function SchoolIndicatorPanelComponent({
     () => activeFormSubmission?.scopeProgress?.submittedScopeIds ?? [],
     [activeFormSubmission],
   );
+  const previouslySubmittedScopeIds = useMemo(
+    () => activeFormSubmission?.scopeProgress?.previouslySubmittedScopeIds ?? [],
+    [activeFormSubmission],
+  );
+  const requiresResubmissionScopeIds = useMemo(
+    () => activeFormSubmission?.scopeProgress?.requiresResubmissionScopeIds ?? [],
+    [activeFormSubmission],
+  );
+  const scopeReviewDecisionById = useMemo(() => {
+    const reviews = [...(activeFormSubmission?.scopeReviews ?? [])].sort((left, right) => {
+      const leftTime = Date.parse(left.updatedAt ?? left.reviewedAt ?? "");
+      const rightTime = Date.parse(right.updatedAt ?? right.reviewedAt ?? "");
+      return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+    });
+    return new Map(reviews.map((review) => [
+      String(review.scopeId ?? "").trim().toLowerCase(),
+      String(review.decision ?? "").trim().toLowerCase(),
+    ]));
+  }, [activeFormSubmission]);
   const workspaceProgressSummary = useMemo(
     () => buildWorkspaceProgressSummary({
       categoryProgressById,
@@ -3873,36 +3969,6 @@ function SchoolIndicatorPanelComponent({
       if (workspaceMode === "submitted_editing") return "Editing";
       if (workspaceMode === "read_only_year") return "Read-only";
       return progress ? `${progress.complete}/${progress.total} complete` : "Draft";
-    },
-    [workspaceMode],
-  );
-  const getCategoryRailBadge = useCallback(
-    (missingCount: number): { label: string; tone: string } => {
-      if (workspaceMode === "submitted_locked") {
-        return {
-          label: "Submitted",
-          tone: "border-primary-300 bg-primary-50 text-primary-700",
-        };
-      }
-      if (workspaceMode === "submitted_editing") {
-        return {
-          label: "Editing",
-          tone: "border-primary-300 bg-primary-50 text-primary-700",
-        };
-      }
-      if (workspaceMode === "read_only_year") {
-        return {
-          label: "Read-only",
-          tone: "border-slate-300 bg-slate-50 text-slate-600",
-        };
-      }
-      return {
-        label: `Missing ${missingCount}`,
-        tone:
-          missingCount > 0
-            ? "border-amber-300 bg-amber-50 text-amber-700"
-            : "border-primary-300 bg-primary-50 text-primary-700",
-      };
     },
     [workspaceMode],
   );
@@ -6529,9 +6595,26 @@ function SchoolIndicatorPanelComponent({
                       : null;
                     const isScopeSubmitted = workspaceProgressSummary.submittedScopeIds.includes(tab.id);
                     const isScopeReady = workspaceProgressSummary.readyScopeIds.includes(tab.id);
-                    const categoryRailBadge = tab.kind === "category"
-                      ? getCategoryRailBadge(missingCount ?? 0)
-                      : null;
+                    const normalizedScopeId = tab.id.trim().toLowerCase();
+                    const reviewDecision = activeFormSubmission?.status === "validated"
+                      ? "verified"
+                      : scopeReviewDecisionById.get(normalizedScopeId) ?? null;
+                    const scopeMissingCount = tab.kind === "category"
+                      ? (missingCount ?? 0)
+                      : (isScopeReady ? 0 : 1);
+                    const requiresResubmission = requiresResubmissionScopeIds.includes(normalizedScopeId)
+                      || (
+                        previouslySubmittedScopeIds.includes(normalizedScopeId)
+                        && !isScopeSubmitted
+                      );
+                    const categoryRailBadge = resolveCategoryRailBadgeState({
+                      missingCount: scopeMissingCount,
+                      isReady: isScopeReady,
+                      isSubmitted: isScopeSubmitted,
+                      requiresResubmission,
+                      reviewDecision,
+                      workspaceMode,
+                    });
 
                     return (
                       <button
@@ -6565,21 +6648,9 @@ function SchoolIndicatorPanelComponent({
                           )}
                         </span>
                         <span
-                          className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${
-                            isScopeSubmitted
-                              ? "border-primary-300 bg-primary-50 text-primary-700"
-                              : tab.kind === "category"
-                              ? (categoryRailBadge?.tone ?? "border-slate-300 bg-white text-slate-600")
-                              : (uploadSubmitted
-                                ? "border-primary-300 bg-primary-50 text-primary-700"
-                                : "border-amber-300 bg-amber-50 text-amber-700")
-                          }`}
+                          className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${categoryRailBadge.tone}`}
                         >
-                          {isScopeSubmitted
-                            ? "Submitted"
-                            : tab.kind === "category"
-                            ? (categoryRailBadge?.label ?? "Draft")
-                            : (isScopeReady ? "Ready" : workspaceFileDraftStatusLabel(Boolean(uploadSubmitted)))}
+                          {categoryRailBadge.label}
                         </span>
                       </button>
                     );

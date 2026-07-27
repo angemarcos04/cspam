@@ -15,6 +15,7 @@ import {
   resolveFinalPackageStatusLabel,
   resolveMetricFromIndicatorInWorkspace,
   resolveOptimisticSubmittedByTypeState,
+  resolveCategoryRailBadgeState,
   getSubmissionFreshnessScore,
   resolvePreferredWorkspaceSubmission,
   resolveEffectiveWorkspaceSubmission,
@@ -144,6 +145,41 @@ describe("resolveFinalPackageStatusLabel", () => {
     expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: undefined })).toBe("Draft");
     expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "" })).toBe("Draft");
     expect(resolveFinalPackageStatusLabel({ workspaceMode: "draft", status: "under_review" })).toBe("Unknown");
+  });
+});
+
+describe("resolveCategoryRailBadgeState", () => {
+  const resolve = (overrides: Partial<Parameters<typeof resolveCategoryRailBadgeState>[0]> = {}) =>
+    resolveCategoryRailBadgeState({
+      missingCount: 5,
+      isReady: false,
+      isSubmitted: false,
+      requiresResubmission: false,
+      reviewDecision: null,
+      workspaceMode: "draft",
+      ...overrides,
+    });
+
+  it("distinguishes incomplete, ready, submitted, returned, verified, and re-send states", () => {
+    expect(resolve().label).toBe("Missing 5");
+    expect(resolve({ missingCount: 0, isReady: true }).label).toBe("Ready");
+    expect(resolve({ isSubmitted: true }).label).toBe("Submitted");
+    expect(resolve({ reviewDecision: "returned" }).label).toBe("Returned");
+    expect(resolve({ missingCount: 0, isReady: true, reviewDecision: "returned" }).label).toBe("Ready to re-send");
+    expect(resolve({ reviewDecision: "verified" }).label).toBe("Verified");
+    expect(resolve({ missingCount: 0, isReady: true, requiresResubmission: true }).label).toBe("Ready to re-send");
+  });
+
+  it("never emits Missing 0", () => {
+    const states = [
+      resolve({ missingCount: 0 }),
+      resolve({ missingCount: 0, isReady: true }),
+      resolve({ missingCount: 0, isReady: true, requiresResubmission: true }),
+      resolve({ missingCount: 0, isSubmitted: true }),
+      resolve({ missingCount: 0, reviewDecision: "verified" }),
+    ];
+
+    expect(states.map((state) => state.label)).not.toContain("Missing 0");
   });
 });
 

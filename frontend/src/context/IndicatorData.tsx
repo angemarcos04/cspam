@@ -16,6 +16,10 @@ import {
   defaultRequiredSubmissionFileTypesForSchoolType,
   resolveSubmissionSchoolId,
 } from "@/utils/submissionRequirements";
+import {
+  compareSubmissionFreshness,
+  resolveFreshestSubmission,
+} from "@/utils/indicatorSubmissionState";
 import type {
   AcademicYearOption,
   GroupBWorkspaceResetTarget,
@@ -131,6 +135,8 @@ interface LightweightIndicatorSubmission {
     requiredScopeIds?: string[];
     submittedScopeIds?: string[];
     pendingScopeIds?: string[];
+    previouslySubmittedScopeIds?: string[];
+    requiresResubmissionScopeIds?: string[];
     submittedRequiredScopeCount?: number;
     totalRequiredScopeCount?: number;
   };
@@ -369,62 +375,11 @@ function toSubmissionSortTime(submission: IndicatorSubmission): number {
   return new Date(submission.updatedAt ?? submission.submittedAt ?? submission.createdAt ?? 0).getTime();
 }
 
-function parseSubmissionTimestamp(value: string | null | undefined): number | null {
-  if (!value) {
-    return null;
-  }
-
-  const timestamp = new Date(value).getTime();
-  return Number.isFinite(timestamp) ? timestamp : null;
-}
-
-function numericSubmissionVersion(submission: IndicatorSubmission): number | null {
-  if (typeof submission.version !== "number" || !Number.isFinite(submission.version)) {
-    return null;
-  }
-
-  return submission.version;
-}
-
-function submissionFreshnessValue(submission: IndicatorSubmission): number | null {
-  const version = numericSubmissionVersion(submission);
-  if (version !== null) {
-    return version;
-  }
-
-  const timestamps = [
-    parseSubmissionTimestamp(submission.updatedAt),
-    parseSubmissionTimestamp(submission.submittedAt),
-    parseSubmissionTimestamp(submission.reviewedAt),
-    parseSubmissionTimestamp(submission.createdAt),
-  ].filter((value): value is number => value !== null);
-
-  if (timestamps.length === 0) {
-    return null;
-  }
-
-  return Math.max(...timestamps);
-}
-
-function isIncomingSubmissionStale(
+export function isIncomingSubmissionStale(
   existing: IndicatorSubmission,
   incoming: IndicatorSubmission,
 ): boolean {
-  const existingVersion = numericSubmissionVersion(existing);
-  const incomingVersion = numericSubmissionVersion(incoming);
-
-  if (existingVersion !== null && incomingVersion !== null) {
-    return incomingVersion < existingVersion;
-  }
-
-  const existingFreshness = submissionFreshnessValue(existing);
-  const incomingFreshness = submissionFreshnessValue(incoming);
-
-  if (existingFreshness === null || incomingFreshness === null) {
-    return false;
-  }
-
-  return incomingFreshness < existingFreshness;
+  return compareSubmissionFreshness(incoming, existing) <= 0;
 }
 
 function sortSubmissionRows(rows: IndicatorSubmission[]): IndicatorSubmission[] {
@@ -983,7 +938,7 @@ export function materializeSubmissionFromLightweightPayload(
   };
 }
 
-function upsertSubmissionRow(
+export function upsertSubmissionRow(
   rows: IndicatorSubmission[],
   submission: IndicatorSubmission,
   options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
@@ -1107,6 +1062,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const lastLocalMutationAtRef = useRef(0);
   const lastLocalIndicatorMutationEchoRef = useRef<LocalIndicatorMutationEcho | null>(null);
   const missedRealtimeIndicatorUpdateRef = useRef(false);
+  const localSubmissionOverridesRef = useRef<Map<string, IndicatorSubmission>>(new Map());
 
   useEffect(() => {
     if (previousSessionKeyRef.current === sessionKey) {
@@ -1136,6 +1092,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     setLastSyncedAt(null);
     lastLocalIndicatorMutationEchoRef.current = null;
     missedRealtimeIndicatorUpdateRef.current = false;
+    localSubmissionOverridesRef.current.clear();
   }, [sessionKey]);
 
   const handleApiError = useCallback(
@@ -1171,7 +1128,13 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
           signal: params?.signal,
         });
 
-        const data = filterSchoolHeadScopedSubmissions(readSubmissionRows(response.data), user);
+        const data = filterSchoolHeadScopedSubmissions(readSubmissionRows(response.data), user)
+          .map((submission) => {
+            const existingOverride = localSubmissionOverridesRef.current.get(submission.id);
+            const freshest = resolveFreshestSubmission(existingOverride, submission);
+            localSubmissionOverridesRef.current.set(submission.id, freshest);
+            return freshest;
+          });
         const meta = normalizeSubmissionListMeta(response.data?.meta, normalized, data.length);
 
         return {
@@ -1432,7 +1395,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   const upsertSubmissionLocally = useCallback((
     submission: IndicatorSubmission,
     options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
-  ) => {
+  ): IndicatorSubmission => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
@@ -1441,20 +1404,26 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
     rememberLocalIndicatorMutationEcho(submission);
+    const freshest = resolveFreshestSubmission(
+      localSubmissionOverridesRef.current.get(submission.id),
+      submission,
+    );
+    localSubmissionOverridesRef.current.set(submission.id, freshest);
 
-    setSubmissions((current) => upsertSubmissionRow(current, submission, options));
+    setSubmissions((current) => upsertSubmissionRow(current, freshest, options));
     setAllSubmissions((current) => (
       shouldRefreshAllSubmissionsState || current.length > 0
-        ? upsertSubmissionRow(current, submission, options)
+        ? upsertSubmissionRow(current, freshest, options)
         : current
     ));
     setLastSyncedAt(new Date().toISOString());
+    return freshest;
   }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
 
   const patchSubmissionLocally = useCallback((
     patch: LightweightIndicatorSubmission,
     options: { resetWorkspace?: GroupBWorkspaceResetTarget | null } = {},
-  ) => {
+  ): IndicatorSubmission => {
     const shouldRefreshAllSubmissionsState = allSubmissionsCacheRef.current !== null || allSubmissions.length > 0;
     submissionsEtagRef.current = "";
     schoolSubmissionsCacheRef.current.clear();
@@ -1463,13 +1432,20 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
     allSubmissionsInFlightRef.current = null;
     lastLocalMutationAtRef.current = Date.now();
     rememberLocalIndicatorMutationEcho(patch);
+    const current = [
+      localSubmissionOverridesRef.current.get(patch.id),
+      submissions.find((row) => row.id === patch.id),
+      allSubmissions.find((row) => row.id === patch.id),
+    ].reduce<IndicatorSubmission | undefined>((freshest, candidate) => (
+      candidate ? resolveFreshestSubmission(freshest, candidate) : freshest
+    ), undefined);
+    const patched = current
+      ? patchSubmissionWithLightweightPayload(current, patch, options)
+      : materializeSubmissionFromLightweightPayload(patch);
+    localSubmissionOverridesRef.current.set(patch.id, patched);
 
     setSubmissions((current) => {
-      const existing = current.find((row) => row.id === patch.id);
-      if (!existing) {
-        return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
-      }
-      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch, options));
+      return upsertSubmissionRow(current, patched, options);
     });
 
     setAllSubmissions((current) => {
@@ -1477,16 +1453,12 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         return current;
       }
 
-      const existing = current.find((row) => row.id === patch.id);
-      if (!existing) {
-        return upsertSubmissionRow(current, materializeSubmissionFromLightweightPayload(patch));
-      }
-
-      return upsertSubmissionRow(current, patchSubmissionWithLightweightPayload(existing, patch, options));
+      return upsertSubmissionRow(current, patched, options);
     });
 
     setLastSyncedAt(new Date().toISOString());
-  }, [allSubmissions.length, rememberLocalIndicatorMutationEcho]);
+    return patched;
+  }, [allSubmissions, rememberLocalIndicatorMutationEcho, submissions]);
 
   const shouldSuppressRealtimeIndicatorEcho = useCallback((payload?: IndicatorRealtimePayload): boolean => {
     if (!isSchoolHeadLocalEchoEvent(payload)) {
@@ -1675,19 +1647,18 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       try {
         const submission = await action();
         if (isLightweightSubmission(submission)) {
-          patchSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
-          const materialized = materializeSubmissionFromLightweightPayload(submission);
+          const patched = patchSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
           if (shouldBackgroundSync) {
             void syncSubmissions(true);
           }
-          return materialized;
+          return patched;
         }
 
-        upsertSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
+        const freshest = upsertSubmissionLocally(submission, { resetWorkspace: options.resetWorkspace ?? null });
         if (shouldBackgroundSync) {
           void syncSubmissions(true);
         }
-        return submission;
+        return freshest;
       } catch (err) {
         await handleApiError(err);
         throw err;
@@ -1768,9 +1739,7 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const response = await apiRequest<FullIndicatorSubmissionResponse>(`/api/indicators/submissions/${id}`, {
           token,
         });
-        const submission = response.data;
-        upsertSubmissionLocally(submission);
-        return submission;
+        return upsertSubmissionLocally(response.data);
       } catch (err) {
         await handleApiError(err);
         throw err;

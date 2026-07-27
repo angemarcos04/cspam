@@ -255,6 +255,106 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+async function findRailTab(container: HTMLElement, categoryId: string) {
+  const tabs = await within(container).findAllByRole("button");
+  const tab = tabs.find((button) => button.getAttribute("data-category-id") === categoryId);
+  if (!tab) throw new Error(`Expected workspace rail tab ${categoryId}.`);
+  return tab;
+}
+
+describe("SchoolIndicatorPanel category rail badges", () => {
+  it("shows Ready, never Missing 0, for a complete unsent School Achievements scope", async () => {
+    const submission = buildSchoolAchievementDraftSubmission();
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    await waitFor(() => {
+      expect(within(tab).getByText("Ready")).not.toBeNull();
+    });
+    expect(within(tab).queryByText("Missing 0")).toBeNull();
+  });
+
+  it("shows Submitted for a sent School Achievements scope", async () => {
+    const submission = buildSchoolAchievementDraftSubmission();
+    Object.assign(submission.scopeProgress, {
+      submittedScopeIds: ["school_achievements_learning_outcomes"] as string[],
+      pendingScopeIds: [] as string[],
+      submittedRequiredScopeCount: 1,
+    });
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    expect(within(tab).getAllByText("Submitted").length).toBeGreaterThan(0);
+    expect(within(tab).queryByText("Missing 0")).toBeNull();
+  });
+
+  it("shows Ready to re-send after a previously submitted complete scope is edited", async () => {
+    const submission = buildSchoolAchievementDraftSubmission();
+    Object.assign(submission.scopeProgress, {
+      previouslySubmittedScopeIds: ["school_achievements_learning_outcomes"],
+      requiresResubmissionScopeIds: ["school_achievements_learning_outcomes"],
+    });
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    await waitFor(() => {
+      expect(within(tab).getByText("Ready to re-send")).not.toBeNull();
+    });
+    expect(within(tab).queryByText("Submitted")).toBeNull();
+    expect(within(tab).queryByText("Missing 0")).toBeNull();
+  });
+
+  it("preserves Returned while an incomplete returned scope needs correction", async () => {
+    const submission = {
+      ...buildHydratedSubmission("returned-scope"),
+      status: "returned",
+      scopeReviews: [{
+        id: "review-1",
+        scopeId: "school_achievements_learning_outcomes",
+        scopeType: "section",
+        decision: "returned",
+        notes: "Correct the section.",
+        reviewedAt: "2026-05-19T10:00:00.000Z",
+      }],
+    };
+    mockIndicatorPanelData([submission], { metrics: [buildSchoolAchievementMetric()] });
+
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const tab = await findRailTab(view.container, "school_achievements_learning_outcomes");
+
+    expect(within(tab).getByText("Returned")).not.toBeNull();
+  });
+
+  it("does not treat an uploaded FM-QAD file as submitted until its scope is sent", async () => {
+    const uploaded = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: [],
+    });
+    mockIndicatorPanelData([uploaded]);
+
+    const firstView = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const unsentTab = await findRailTab(firstView.container, "fm_qad_001");
+    expect(within(unsentTab).getAllByText("Ready").length).toBeGreaterThan(0);
+    expect(within(unsentTab).queryByText("Submitted")).toBeNull();
+    firstView.unmount();
+
+    const sent = buildFileWorkspaceSubmission({
+      uploadedFileTypes: ["fm_qad_001"],
+      submittedScopeIds: ["fm_qad_001"],
+    });
+    mockIndicatorPanelData([sent]);
+    const secondView = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const sentTab = await findRailTab(secondView.container, "fm_qad_001");
+    expect(within(sentTab).getAllByText("Submitted").length).toBeGreaterThan(0);
+  });
+});
+
 describe("SchoolIndicatorPanel optional note removal", () => {
   it("does not render the removed optional note controls in the School Head workspace", async () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
