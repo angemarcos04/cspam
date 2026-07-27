@@ -119,6 +119,10 @@ describe("useSchoolHeadAccountActions", () => {
         notifySchoolHead: true,
         includeReasonInEmail: false,
       });
+      expect(result.current.pendingAccountAction).toBeNull();
+      expect(result.current.openAccountRowMenuSchoolId).toBeNull();
+      expect(result.current.editingSchoolHeadAccountSchoolId).toBeNull();
+      expect(result.current.temporaryPasswordReceipt).toBeNull();
     } finally {
       vi.useRealTimers();
     }

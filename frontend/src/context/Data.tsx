@@ -12,6 +12,10 @@ import { useAuth } from "@/context/Auth";
 import { apiRequestRaw, displayMessageForApiError, isApiError } from "@/lib/api";
 import type { RefreshOptions } from "@/lib/runRefreshBatches";
 import { subscribeSharedSyncPolling } from "@/lib/sharedSyncPolling";
+import {
+  schoolRecordMatchesIdentity,
+  type SchoolIdentity,
+} from "@/utils/schoolRecordIdentity";
 import type {
   SessionUser,
   SchoolHeadAccountSummary,
@@ -43,6 +47,26 @@ import type {
 type SyncScope = "division" | "school" | null;
 type SyncStatus = "idle" | "updated" | "up_to_date" | "error";
 const ACCOUNT_STATUS_OVERRIDE_TTL_MS = 5 * 60 * 1000;
+const DELETED_SCHOOL_TOMBSTONE_TTL_MS = 10 * 60 * 1000;
+
+interface DeletedSchoolTombstone {
+  identity: SchoolIdentity;
+  deletedAt: number;
+  requestSequenceAtDeletion: number;
+  mutationId?: string;
+  decrementedRecordCount: boolean;
+}
+
+interface QueuedRecordSyncWaiter {
+  resolve: () => void;
+  reject: (reason?: unknown) => void;
+  throwOnError: boolean;
+}
+
+type RecordSyncOperation =
+  | "background-refresh"
+  | "manual-refresh"
+  | "post-mutation-reconciliation";
 
 export interface SchoolRecordRefreshFilters {
   search?: string | null;
@@ -159,10 +183,18 @@ interface SchoolHeadAccountProfileResponse {
 
 interface SchoolHeadAccountRemovalResponse {
   data: SchoolHeadAccountRemovalResult;
+  meta?: {
+    divisionRecordCount?: number;
+    syncedAt?: string;
+  };
 }
 
 interface SchoolHeadAccountBatchRemovalResponse {
   data: SchoolHeadAccountBatchRemovalResult;
+  meta?: {
+    divisionRecordCount?: number;
+    syncedAt?: string;
+  };
 }
 
 interface DataContextType {
@@ -173,6 +205,7 @@ interface DataContextType {
   isLoading: boolean;
   isSaving: boolean;
   error: string;
+  reconciliationWarning: string;
   lastSyncedAt: string | null;
   syncScope: SyncScope;
   syncStatus: SyncStatus;
@@ -408,6 +441,7 @@ export function DataProvider({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
+  const [reconciliationWarning, setReconciliationWarning] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [syncScope, setSyncScope] = useState<SyncScope>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
@@ -415,12 +449,18 @@ export function DataProvider({
   const syncInFlightRef = useRef(false);
   const syncQueuedRef = useRef(false);
   const syncQueuedForceRef = useRef(false);
+  const syncQueuedOperationRef = useRef<RecordSyncOperation>("background-refresh");
+  const syncQueuedWaitersRef = useRef<QueuedRecordSyncWaiter[]>([]);
   const etagRef = useRef<string>("");
   const syncScopeKeyRef = useRef<string>("");
   const previousSessionKeyRef = useRef<string>("");
   const syncGenerationRef = useRef(0);
   const realtimeSyncTimerRef = useRef<number | null>(null);
   const recordsRef = useRef<SchoolRecord[]>([]);
+  const recordCountRef = useRef(0);
+  const recordRequestSequenceRef = useRef(0);
+  const deletedSchoolTombstonesRef = useRef<DeletedSchoolTombstone[]>([]);
+  const localDeletionMutationIdsRef = useRef<Map<string, number>>(new Map());
   const accountStatusOverridesRef = useRef<AccountStatusOverride[]>([]);
   const emptyRecordsRecoveryRef = useRef(false);
   const activeRecordFiltersRef = useRef<NormalizedSchoolRecordRefreshFilters>(
@@ -445,14 +485,119 @@ export function DataProvider({
   }, [records]);
 
   useEffect(() => {
+    recordCountRef.current = recordCount;
+  }, [recordCount]);
+
+  useEffect(() => {
     accountStatusOverridesRef.current = accountStatusOverrides;
   }, [accountStatusOverrides]);
 
-  const applyRecordSyncPayload = useCallback((nextRecords: SchoolRecord[]) => {
-    const prunedOverrides = pruneAccountStatusOverrides(nextRecords, accountStatusOverridesRef.current);
+  const filterRecordSyncPayload = useCallback((
+    nextRecords: SchoolRecord[],
+    requestSequence: number,
+  ): { records: SchoolRecord[]; suppressedCount: number } => {
+    const now = Date.now();
+    const tombstones = deletedSchoolTombstonesRef.current;
+    const safeRecords = nextRecords.filter((record) => !tombstones.some((tombstone) =>
+      schoolRecordMatchesIdentity(record, tombstone.identity)));
+
+    deletedSchoolTombstonesRef.current = tombstones.filter((tombstone) => {
+      if (requestSequence <= tombstone.requestSequenceAtDeletion) {
+        return true;
+      }
+
+      const serverStillContainsSchool = nextRecords.some((record) =>
+        schoolRecordMatchesIdentity(record, tombstone.identity));
+      if (!serverStillContainsSchool) {
+        return false;
+      }
+
+      return now - tombstone.deletedAt < DELETED_SCHOOL_TOMBSTONE_TTL_MS;
+    });
+
+    return {
+      records: safeRecords,
+      suppressedCount: Math.max(0, nextRecords.length - safeRecords.length),
+    };
+  }, []);
+
+  const applyRecordSyncPayload = useCallback((
+    nextRecords: SchoolRecord[],
+    requestSequence: number,
+  ) => {
+    const filtered = filterRecordSyncPayload(nextRecords, requestSequence);
+    const prunedOverrides = pruneAccountStatusOverrides(filtered.records, accountStatusOverridesRef.current);
     accountStatusOverridesRef.current = prunedOverrides;
     setAccountStatusOverrides(prunedOverrides);
-    setRecords(applyAccountStatusOverrides(nextRecords, prunedOverrides));
+    const recordsWithOverrides = applyAccountStatusOverrides(filtered.records, prunedOverrides);
+    recordsRef.current = recordsWithOverrides;
+    setRecords(recordsWithOverrides);
+    return filtered;
+  }, [filterRecordSyncPayload]);
+
+  const applyConfirmedSchoolDeletion = useCallback((
+    identity: SchoolIdentity,
+    options?: { mutationId?: string | null },
+  ): boolean => {
+    const currentRecords = recordsRef.current;
+    const existed = currentRecords.some((record) => schoolRecordMatchesIdentity(record, identity));
+    const nextRecords = currentRecords.filter((record) => !schoolRecordMatchesIdentity(record, identity));
+    const mutationId = String(options?.mutationId ?? "").trim();
+    const existingTombstone = deletedSchoolTombstonesRef.current.find((tombstone) =>
+      (mutationId && tombstone.mutationId === mutationId)
+      || schoolRecordMatchesIdentity({
+        id: String(tombstone.identity.id ?? ""),
+        schoolId: tombstone.identity.schoolId === undefined ? null : String(tombstone.identity.schoolId ?? ""),
+        schoolCode: tombstone.identity.schoolCode === undefined ? null : String(tombstone.identity.schoolCode ?? ""),
+      }, identity));
+
+    if (!existingTombstone) {
+      deletedSchoolTombstonesRef.current = [
+        ...deletedSchoolTombstonesRef.current,
+        {
+          identity,
+          deletedAt: Date.now(),
+          requestSequenceAtDeletion: recordRequestSequenceRef.current,
+          mutationId: mutationId || undefined,
+          decrementedRecordCount: existed,
+        },
+      ];
+    }
+
+    if (mutationId) {
+      localDeletionMutationIdsRef.current.set(mutationId, Date.now());
+    }
+
+    if (existed) {
+      recordsRef.current = nextRecords;
+      setRecords(nextRecords);
+      setRecordCount((current) => {
+        const next = Math.max(0, current - 1);
+        recordCountRef.current = next;
+        return next;
+      });
+    }
+
+    const nextOverrides = accountStatusOverridesRef.current.filter((override) => !schoolRecordMatchesIdentity({
+      id: override.schoolId,
+      schoolId: override.schoolId,
+      schoolCode: override.schoolCode,
+    }, identity));
+    accountStatusOverridesRef.current = nextOverrides;
+    setAccountStatusOverrides(nextOverrides);
+    etagRef.current = "";
+    setError("");
+    setReconciliationWarning("");
+    setLastSyncedAt(new Date().toISOString());
+    setSyncStatus("updated");
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: { ...identity, mutationId: mutationId || undefined },
+      }));
+    }
+
+    return existed;
   }, []);
 
   const rememberAccountStatusOverride = useCallback((schoolId: string, record: SchoolRecord | undefined, account: SchoolHeadAccountSummary) => {
@@ -507,11 +652,25 @@ export function DataProvider({
     syncInFlightRef.current = false;
     syncQueuedRef.current = false;
     syncQueuedForceRef.current = false;
+    const sessionChangedError = new Error("School record synchronization was cancelled because the session changed.");
+    for (const waiter of syncQueuedWaitersRef.current) {
+      if (waiter.throwOnError) {
+        waiter.reject(sessionChangedError);
+      } else {
+        waiter.resolve();
+      }
+    }
+    syncQueuedWaitersRef.current = [];
+    syncQueuedOperationRef.current = "background-refresh";
     etagRef.current = "";
     syncScopeKeyRef.current = "";
     activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters();
     recordsEndpointRef.current = "/api/dashboard/records";
     accountStatusOverridesRef.current = [];
+    deletedSchoolTombstonesRef.current = [];
+    localDeletionMutationIdsRef.current.clear();
+    recordRequestSequenceRef.current = 0;
+    recordCountRef.current = 0;
     clearRealtimeSyncTimer();
     setRecords([]);
     setAccountStatusOverrides([]);
@@ -521,11 +680,27 @@ export function DataProvider({
     setIsLoading(false);
     setIsSaving(false);
     setError("");
+    setReconciliationWarning("");
     setLastSyncedAt(null);
     setSyncScope(null);
     setSyncStatus("idle");
     emptyRecordsRecoveryRef.current = false;
   }, [sessionKey]);
+
+  useEffect(() => () => {
+    syncGenerationRef.current += 1;
+    const unmountedError = new Error("School record synchronization was cancelled because the data provider unmounted.");
+    for (const waiter of syncQueuedWaitersRef.current) {
+      if (waiter.throwOnError) {
+        waiter.reject(unmountedError);
+      } else {
+        waiter.resolve();
+      }
+    }
+    syncQueuedWaitersRef.current = [];
+    deletedSchoolTombstonesRef.current = [];
+    localDeletionMutationIdsRef.current.clear();
+  }, []);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -555,6 +730,7 @@ export function DataProvider({
       force = false,
       throwOnError = false,
       filters?: SchoolRecordRefreshFilters | null,
+      operation: RecordSyncOperation = silent ? "background-refresh" : "manual-refresh",
     ) => {
       if (filters !== undefined) {
         activeRecordFiltersRef.current = normalizeSchoolRecordRefreshFilters(filters);
@@ -563,7 +739,13 @@ export function DataProvider({
       if (syncInFlightRef.current) {
         syncQueuedRef.current = true;
         syncQueuedForceRef.current = syncQueuedForceRef.current || force;
-        return;
+        if (operation === "post-mutation-reconciliation") {
+          syncQueuedOperationRef.current = operation;
+        }
+
+        return await new Promise<void>((resolve, reject) => {
+          syncQueuedWaitersRef.current.push({ resolve, reject, throwOnError });
+        });
       }
 
       if (!token) {
@@ -574,6 +756,7 @@ export function DataProvider({
         setIsLoading(false);
         setIsSaving(false);
         setError("");
+        setReconciliationWarning("");
         setLastSyncedAt(null);
         setSyncScope(null);
         setSyncStatus("idle");
@@ -597,12 +780,16 @@ export function DataProvider({
       syncInFlightRef.current = true;
       syncQueuedRef.current = false;
       syncQueuedForceRef.current = false;
+      const requestSequence = recordRequestSequenceRef.current + 1;
+      recordRequestSequenceRef.current = requestSequence;
       const requestGeneration = syncGenerationRef.current;
 
       if (!silent) {
         setIsLoading(true);
       }
-      setError("");
+      if (operation !== "post-mutation-reconciliation") {
+        setError("");
+      }
 
       try {
         const response = await apiRequestRaw<SchoolRecordsResponse>(recordsEndpoint, {
@@ -632,7 +819,15 @@ export function DataProvider({
         }
 
         if (response.status === 304) {
-          const nextRecordCount = normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), recordCount);
+          const staleDeletionAdjustment = deletedSchoolTombstonesRef.current.filter((tombstone) =>
+            tombstone.decrementedRecordCount
+            && requestSequence <= tombstone.requestSequenceAtDeletion).length;
+          const nextRecordCount = Math.max(
+            0,
+            normalizeRecordCount(response.headers.get("X-Sync-Record-Count"), recordCountRef.current)
+              - staleDeletionAdjustment,
+          );
+          recordCountRef.current = nextRecordCount;
           setRecordCount(nextRecordCount);
           if (!silent) {
             setLastSyncedAt(response.headers.get("X-Synced-At") || new Date().toISOString());
@@ -656,6 +851,9 @@ export function DataProvider({
           }
 
           setSyncStatus("up_to_date");
+          if (operation === "post-mutation-reconciliation") {
+            setReconciliationWarning("");
+          }
           return;
         }
 
@@ -671,16 +869,24 @@ export function DataProvider({
         }
 
         const nextRecords = Array.isArray(payload?.data) ? payload.data : [];
-        const nextRecordCount = normalizeRecordCount(payload?.meta?.recordCount, nextRecords.length);
+        const filtered = applyRecordSyncPayload(nextRecords, requestSequence);
+        const staleDeletionAdjustment = deletedSchoolTombstonesRef.current.filter((tombstone) =>
+          tombstone.decrementedRecordCount
+          && requestSequence <= tombstone.requestSequenceAtDeletion).length;
+        const countAdjustment = Math.max(filtered.suppressedCount, staleDeletionAdjustment);
+        const nextRecordCount = Math.max(
+          0,
+          normalizeRecordCount(payload?.meta?.recordCount, nextRecords.length) - countAdjustment,
+        );
 
-        applyRecordSyncPayload(nextRecords);
+        recordCountRef.current = nextRecordCount;
         setRecordCount(nextRecordCount);
         setTargetsMet(payload?.meta?.targetsMet ?? null);
         setSyncAlerts(Array.isArray(payload?.meta?.alerts) ? payload.meta.alerts : []);
         setLastSyncedAt(response.headers.get("X-Synced-At") ?? payload?.meta?.syncedAt ?? new Date().toISOString());
         setSyncScope(normalizeScope(payload?.meta?.scope) ?? scopeFromHeaders);
 
-        if (nextRecordCount === 0 || nextRecords.length > 0) {
+        if (nextRecordCount === 0 || filtered.records.length > 0) {
           emptyRecordsRecoveryRef.current = false;
         } else if (!emptyRecordsRecoveryRef.current) {
           emptyRecordsRecoveryRef.current = true;
@@ -689,11 +895,22 @@ export function DataProvider({
         }
 
         setSyncStatus("updated");
+        if (operation === "post-mutation-reconciliation") {
+          setReconciliationWarning("");
+        }
       } catch (err) {
         if (requestGeneration !== syncGenerationRef.current) {
           return;
         }
-        await handleApiError(err);
+        const requestPredatesConfirmedDeletion = deletedSchoolTombstonesRef.current.some((tombstone) =>
+          requestSequence <= tombstone.requestSequenceAtDeletion);
+        if (operation === "post-mutation-reconciliation" || requestPredatesConfirmedDeletion) {
+          setError("");
+          setReconciliationWarning("School and account removed. Background synchronization will retry automatically.");
+          setSyncStatus("updated");
+        } else {
+          await handleApiError(err);
+        }
         if (throwOnError) {
           throw err;
         }
@@ -707,9 +924,26 @@ export function DataProvider({
 
         if (requestGeneration === syncGenerationRef.current && syncQueuedRef.current) {
           const queuedForce = syncQueuedForceRef.current;
+          const queuedOperation = syncQueuedOperationRef.current;
+          const queuedWaiters = syncQueuedWaitersRef.current;
           syncQueuedRef.current = false;
           syncQueuedForceRef.current = false;
-          void syncRecords(true, queuedForce);
+          syncQueuedOperationRef.current = "background-refresh";
+          syncQueuedWaitersRef.current = [];
+          void syncRecords(true, queuedForce, true, undefined, queuedOperation).then(
+            () => {
+              queuedWaiters.forEach((waiter) => waiter.resolve());
+            },
+            (queuedError) => {
+              queuedWaiters.forEach((waiter) => {
+                if (waiter.throwOnError) {
+                  waiter.reject(queuedError);
+                } else {
+                  waiter.resolve();
+                }
+              });
+            },
+          );
         }
       }
     },
@@ -1476,16 +1710,29 @@ export function DataProvider({
           },
         );
 
-        const result = response.data?.data;
+        const responseResult = response.data?.data;
+        const result = responseResult
+          ? {
+              ...responseResult,
+              divisionRecordCount: response.data?.meta?.divisionRecordCount,
+              syncedAt: response.data?.meta?.syncedAt,
+            }
+          : null;
         if (!result?.message) {
           throw new Error("Remove account and school response is empty.");
         }
 
-        setRecords((current) => current.filter((record) => record.id !== schoolId));
-        setLastSyncedAt(new Date().toISOString());
-        setSyncStatus("updated");
-        etagRef.current = "";
-        await syncRecords(true);
+        applyConfirmedSchoolDeletion(
+          result.deletedSchool ?? { id: schoolId },
+          { mutationId: result.mutationId },
+        );
+        void syncRecords(
+          true,
+          true,
+          false,
+          undefined,
+          "post-mutation-reconciliation",
+        );
 
         return result;
       } catch (err) {
@@ -1495,7 +1742,7 @@ export function DataProvider({
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, syncRecords, applyConfirmedSchoolDeletion],
   );
 
   const removeSchoolHeadAccountsBatch = useCallback(
@@ -1536,19 +1783,33 @@ export function DataProvider({
           },
         );
 
-        const result = response.data?.data;
+        const responseResult = response.data?.data;
+        const result = responseResult
+          ? {
+              ...responseResult,
+              divisionRecordCount: response.data?.meta?.divisionRecordCount,
+              syncedAt: response.data?.meta?.syncedAt,
+            }
+          : null;
         if (!result) {
           throw new Error("Batch remove schools response is empty.");
         }
 
-        if (result.deletedSchoolIds.length > 0) {
-          const deletedIdSet = new Set(result.deletedSchoolIds);
-          setRecords((current) => current.filter((record) => !deletedIdSet.has(record.id)));
-        }
-        setLastSyncedAt(new Date().toISOString());
-        setSyncStatus("updated");
-        etagRef.current = "";
-        await syncRecords(true);
+        const deletedSchools = result.deletedSchools?.length > 0
+          ? result.deletedSchools
+          : result.deletedSchoolIds.map((id) => ({ id }));
+        deletedSchools.forEach((identity, index) => {
+          applyConfirmedSchoolDeletion(identity, {
+            mutationId: result.mutationIds?.[index],
+          });
+        });
+        void syncRecords(
+          true,
+          true,
+          false,
+          undefined,
+          "post-mutation-reconciliation",
+        );
 
         return result;
       } catch (err) {
@@ -1558,7 +1819,7 @@ export function DataProvider({
         setIsSaving(false);
       }
     },
-    [token, handleApiError, syncRecords],
+    [token, handleApiError, syncRecords, applyConfirmedSchoolDeletion],
   );
 
   const bulkImportRecords = useCallback(
@@ -1650,6 +1911,31 @@ export function DataProvider({
           return;
         }
 
+        if (
+          entity === "dashboard"
+          && payload?.eventType === "school_head_account_and_school.removed"
+        ) {
+          const mutationId = String(payload.mutationId ?? "").trim();
+          const now = Date.now();
+          for (const [candidateMutationId, recordedAt] of localDeletionMutationIdsRef.current) {
+            if (now - recordedAt > DELETED_SCHOOL_TOMBSTONE_TTL_MS) {
+              localDeletionMutationIdsRef.current.delete(candidateMutationId);
+            }
+          }
+
+          if (mutationId && localDeletionMutationIdsRef.current.has(mutationId)) {
+            return;
+          }
+
+          applyConfirmedSchoolDeletion({
+            id: payload.schoolId,
+            schoolId: payload.schoolId,
+            schoolCode: payload.schoolCode,
+          }, { mutationId });
+          scheduleSync(220, true);
+          return;
+        }
+
         if (role === "school_head" && (entity === "students" || entity === "teachers")) {
           const incomingSchoolCode = String(payload?.schoolCode ?? "").trim().toUpperCase();
           const userSchoolCode = String(user?.schoolCode ?? "").trim().toUpperCase();
@@ -1681,7 +1967,7 @@ export function DataProvider({
       unsubscribe();
       clearRealtimeSyncTimer();
     };
-  }, [token, syncRecords, role, user?.schoolId, user?.schoolCode]);
+  }, [token, syncRecords, role, user?.schoolId, user?.schoolCode, applyConfirmedSchoolDeletion]);
 
   const value = useMemo<DataContextType>(
     () => ({
@@ -1692,6 +1978,7 @@ export function DataProvider({
       isLoading,
       isSaving,
       error,
+      reconciliationWarning,
       lastSyncedAt,
       syncScope,
       syncStatus,
@@ -1723,6 +2010,7 @@ export function DataProvider({
       isLoading,
       isSaving,
       error,
+      reconciliationWarning,
       lastSyncedAt,
       syncScope,
       syncStatus,

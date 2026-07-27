@@ -83,6 +83,10 @@ import {
   statusLabel,
 } from "@/utils/analytics";
 import type { IndicatorSubmission, SchoolRecord, WorkflowStatus } from "@/types";
+import {
+  schoolRecordMatchesIdentity,
+  type SchoolIdentity,
+} from "@/utils/schoolRecordIdentity";
 
 type MonitorReviewStatusOverride = {
   schoolCode: string;
@@ -218,6 +222,7 @@ export function MonitorDashboard() {
     isLoading,
     isSaving,
     error: recordError,
+    reconciliationWarning,
     lastSyncedAt,
     syncScope,
     syncStatus,
@@ -320,6 +325,16 @@ export function MonitorDashboard() {
     sectionFocusClass,
   } = useMonitorDashboardShell();
   const isMonitorManualOpen = resolveMonitorUserManualOpen(showNavigatorManual);
+  const displayedReconciliationWarningRef = useRef("");
+
+  useEffect(() => {
+    if (!reconciliationWarning || displayedReconciliationWarningRef.current === reconciliationWarning) {
+      return;
+    }
+
+    displayedReconciliationWarningRef.current = reconciliationWarning;
+    pushToast(reconciliationWarning, "warning");
+  }, [pushToast, reconciliationWarning]);
 
   useEffect(() => {
     if (!MONITOR_USER_MANUAL_VISIBLE && showNavigatorManual) {
@@ -354,6 +369,27 @@ export function MonitorDashboard() {
     showMoreFilters,
     showAdvancedFilters,
   });
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedSchoolScope) {
+      return;
+    }
+
+    const handleConfirmedDeletion = (event: Event) => {
+      const identity = (event as CustomEvent<SchoolIdentity>).detail;
+      if (!identity || !schoolRecordMatchesIdentity({
+        id: selectedSchoolScope.id,
+        schoolId: selectedSchoolScope.code,
+        schoolCode: selectedSchoolScope.code,
+      }, identity)) {
+        return;
+      }
+
+      setSelectedSchoolScopeKey(ALL_SCHOOL_SCOPE);
+    };
+
+    window.addEventListener("cspams:school-deleted", handleConfirmedDeletion);
+    return () => window.removeEventListener("cspams:school-deleted", handleConfirmedDeletion);
+  }, [selectedSchoolScope, setSelectedSchoolScopeKey]);
   const { monitorRadarTotals } = useMonitorRadarTotals({
     authSessionKey,
     activeTopNavigator,

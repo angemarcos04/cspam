@@ -821,10 +821,19 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'message' => (string) $result['message'],
+                'deletedSchool' => $result['deletedSchool'],
+                'deletedSchoolCount' => 1,
+                'deletedAccountCount' => (int) $result['deletedAccountCount'],
+                'mutationId' => (string) $result['mutationId'],
+                // Legacy contract: deletedCount is the number of linked account rows.
                 'deletedCount' => (int) $result['deletedCount'],
                 'notificationDeliveryStatus' => $result['notificationDeliveryStatus'] ?? null,
                 'notificationDeliveryMessage' => $result['notificationDeliveryMessage'] ?? null,
                 'notificationDeliveryFailureCategory' => $result['notificationDeliveryFailureCategory'] ?? null,
+            ],
+            'meta' => [
+                'divisionRecordCount' => (int) $result['divisionRecordCount'],
+                'syncedAt' => (string) $result['syncedAt'],
             ],
         ]);
     }
@@ -871,6 +880,9 @@ class SchoolHeadAccountController extends Controller
             ->keyBy(static fn (School $school): int => (int) $school->id);
 
         $deletedSchoolIds = [];
+        $deletedSchools = [];
+        $mutationIds = [];
+        $deletedAccountCount = 0;
         $blocked = [];
 
         foreach ($requestedIds as $schoolId) {
@@ -892,6 +904,9 @@ class SchoolHeadAccountController extends Controller
 
             if (($result['status'] ?? '') === 'deleted') {
                 $deletedSchoolIds[] = (string) $schoolId;
+                $deletedSchools[] = $result['deletedSchool'];
+                $mutationIds[] = (string) $result['mutationId'];
+                $deletedAccountCount += (int) $result['deletedAccountCount'];
                 continue;
             }
 
@@ -911,10 +926,19 @@ class SchoolHeadAccountController extends Controller
         return response()->json([
             'data' => [
                 'deletedSchoolIds' => array_values($deletedSchoolIds),
+                'deletedSchools' => array_values($deletedSchools),
                 'blocked' => array_values($blocked),
                 'missingSchoolIds' => $missingSchoolIds,
                 'requestedCount' => $requestedIds->count(),
+                'deletedSchoolCount' => count($deletedSchoolIds),
+                'deletedAccountCount' => $deletedAccountCount,
+                'mutationIds' => array_values($mutationIds),
+                // Legacy batch contract: deletedCount is the number of schools.
                 'deletedCount' => count($deletedSchoolIds),
+            ],
+            'meta' => [
+                'divisionRecordCount' => School::query()->count(),
+                'syncedAt' => now()->toISOString(),
             ],
         ]);
     }
@@ -1470,7 +1494,7 @@ class SchoolHeadAccountController extends Controller
     }
 
     /**
-     * @return array{status: 'deleted'|'blocked', message: string, deletedCount?: int}
+     * @return array<string, mixed>
      */
     private function removeSchoolAndLinkedAccounts(
         School $school,
@@ -1500,6 +1524,16 @@ class SchoolHeadAccountController extends Controller
             ];
         }
 
+        $deletedSchool = [
+            'id' => (string) $school->id,
+            'schoolId' => (string) $school->school_code,
+            'schoolCode' => (string) $school->school_code,
+            'schoolName' => (string) $school->name,
+            'type' => $school->type !== null ? (string) $school->type : null,
+            'level' => $school->level !== null ? (string) $school->level : null,
+        ];
+        $mutationId = (string) Str::uuid();
+
         $schoolDependencies = [
             'students' => Student::query()->where('school_id', $school->id)->count(),
             'sections' => Section::query()->where('school_id', $school->id)->count(),
@@ -1517,41 +1551,6 @@ class SchoolHeadAccountController extends Controller
         $notificationDeliveryStatus = null;
         $notificationDeliveryMessage = null;
         $notificationDeliveryFailureCategory = null;
-
-        if ($notifySchoolHead && $notificationTarget instanceof User) {
-            $notificationDeliveryStatus = 'sent';
-            $notificationDeliveryMessage = 'School Head removal notification sent.';
-            if (MailDelivery::isSimulated()) {
-                $notificationDeliveryStatus = MailDelivery::simulatedStatus();
-                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Removal notification was generated, but will not reach real inboxes.');
-            }
-
-            try {
-                Notification::route('mail', (string) $notificationTarget->email)->notify(
-                    new SchoolHeadAccountRemovedNotification(
-                        (string) $school->name,
-                        (string) $school->school_code,
-                        (string) $notificationTarget->name,
-                        $includeReasonInEmail ? $reason : null,
-                    ),
-                );
-            } catch (\Throwable $exception) {
-                report($exception);
-                $notificationDeliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
-                $notificationDeliveryStatus = 'failed';
-                $notificationDeliveryMessage = MailDelivery::deliveryFailureMessage($notificationDeliveryFailureCategory, 'Removal notification email');
-
-                Log::warning('School Head removal notification failed.', [
-                    'school_id' => (string) $school->id,
-                    'school_code' => (string) $school->school_code,
-                    'target_email' => MailDelivery::maskEmail((string) $notificationTarget->email),
-                    'target_email_domain' => MailDelivery::emailDomain((string) $notificationTarget->email),
-                    'mailer' => MailDelivery::currentMailer(),
-                    'delivery_failure_category' => $notificationDeliveryFailureCategory,
-                    'exception_class' => $exception::class,
-                ]);
-            }
-        }
         $accountIds = $linkedUsers
             ->map(static fn (User $account): string => (string) $account->id)
             ->values()
@@ -1574,32 +1573,48 @@ class SchoolHeadAccountController extends Controller
                 ->groupBy('tokenable_id')
                 ->pluck('aggregate_count', 'tokenable_id');
 
-            PersonalAccessToken::query()
-                ->where('tokenable_type', User::class)
-                ->whereIn('tokenable_id', $accountIdInts)
-                ->delete();
         }
 
         $sessionRevocationsByUserId = collect();
-        if ($this->sessionsTableExists() && $accountIdInts !== []) {
+        $sessionsTableAvailable = $this->sessionsTableExists();
+        if ($sessionsTableAvailable && $accountIdInts !== []) {
             $sessionRevocationsByUserId = DB::table('sessions')
                 ->whereIn('user_id', $accountIdInts)
                 ->selectRaw('user_id, COUNT(*) as aggregate_count')
                 ->groupBy('user_id')
                 ->pluck('aggregate_count', 'user_id');
-
-            DB::table('sessions')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
         }
 
-        if ($setupTokenStorageAvailable && $accountIdInts !== []) {
-            DB::table('account_setup_tokens')
-                ->whereIn('user_id', $accountIdInts)
-                ->delete();
-        }
+        DB::transaction(function () use (
+            $linkedUsers,
+            $school,
+            $accountIdInts,
+            $setupTokenStorageAvailable,
+            $sessionsTableAvailable,
+            $tokenRevocationsByUserId,
+            $sessionRevocationsByUserId,
+            &$removedCount,
+            &$revocationSummaries,
+        ): void {
+            if ($accountIdInts !== []) {
+                PersonalAccessToken::query()
+                    ->where('tokenable_type', User::class)
+                    ->whereIn('tokenable_id', $accountIdInts)
+                    ->delete();
 
-        DB::transaction(function () use ($linkedUsers, $school, $tokenRevocationsByUserId, $sessionRevocationsByUserId, &$removedCount, &$revocationSummaries): void {
+                if ($sessionsTableAvailable) {
+                    DB::table('sessions')
+                        ->whereIn('user_id', $accountIdInts)
+                        ->delete();
+                }
+
+                if ($setupTokenStorageAvailable) {
+                    DB::table('account_setup_tokens')
+                        ->whereIn('user_id', $accountIdInts)
+                        ->delete();
+                }
+            }
+
             foreach ($linkedUsers as $account) {
                 $account->syncPermissions([]);
                 $account->syncRoles([]);
@@ -1616,6 +1631,41 @@ class SchoolHeadAccountController extends Controller
 
             $school->forceDelete();
         });
+
+        if ($notifySchoolHead && $notificationTarget instanceof User) {
+            $notificationDeliveryStatus = 'sent';
+            $notificationDeliveryMessage = 'School Head removal notification sent.';
+            if (MailDelivery::isSimulated()) {
+                $notificationDeliveryStatus = MailDelivery::simulatedStatus();
+                $notificationDeliveryMessage = MailDelivery::simulatedMessage('Removal notification was generated, but will not reach real inboxes.');
+            }
+
+            try {
+                Notification::route('mail', (string) $notificationTarget->email)->notify(
+                    new SchoolHeadAccountRemovedNotification(
+                        (string) $deletedSchool['schoolName'],
+                        (string) $deletedSchool['schoolCode'],
+                        (string) $notificationTarget->name,
+                        $includeReasonInEmail ? $reason : null,
+                    ),
+                );
+            } catch (\Throwable $exception) {
+                report($exception);
+                $notificationDeliveryFailureCategory = MailDelivery::deliveryFailureCategory($exception);
+                $notificationDeliveryStatus = 'failed';
+                $notificationDeliveryMessage = MailDelivery::deliveryFailureMessage($notificationDeliveryFailureCategory, 'Removal notification email');
+
+                Log::warning('School Head removal notification failed.', [
+                    'school_id' => $deletedSchool['id'],
+                    'school_code' => $deletedSchool['schoolCode'],
+                    'target_email' => MailDelivery::maskEmail((string) $notificationTarget->email),
+                    'target_email_domain' => MailDelivery::emailDomain((string) $notificationTarget->email),
+                    'mailer' => MailDelivery::currentMailer(),
+                    'delivery_failure_category' => $notificationDeliveryFailureCategory,
+                    'exception_class' => $exception::class,
+                ]);
+            }
+        }
 
         AuditLog::query()->create([
             'user_id' => $monitor->id,
@@ -1648,16 +1698,26 @@ class SchoolHeadAccountController extends Controller
         event(new CspamsUpdateBroadcast([
             'entity' => 'dashboard',
             'eventType' => 'school_head_account_and_school.removed',
-            'schoolId' => (string) $school->id,
-            'schoolCode' => (string) $school->school_code,
+            'schoolId' => $deletedSchool['id'],
+            'schoolCode' => $deletedSchool['schoolCode'],
+            'mutationId' => $mutationId,
             'removedCount' => $removedCount,
+            'deletedAccountCount' => $removedCount,
         ]));
+
+        $syncedAt = now()->toISOString();
 
         return [
             'status' => 'deleted',
             'message' => $notificationDeliveryStatus === 'failed'
                 ? 'School record, linked School Head account, and school data permanently deleted, but notification email failed.'
                 : 'School record, linked School Head account, and school data permanently deleted.',
+            'deletedSchool' => $deletedSchool,
+            'deletedAccountCount' => $removedCount,
+            'mutationId' => $mutationId,
+            'divisionRecordCount' => School::query()->count(),
+            'syncedAt' => $syncedAt,
+            // Legacy contract: deletedCount is the number of linked account rows.
             'deletedCount' => $removedCount,
             'notificationDeliveryStatus' => $notificationDeliveryStatus,
             'notificationDeliveryMessage' => $notificationDeliveryMessage,

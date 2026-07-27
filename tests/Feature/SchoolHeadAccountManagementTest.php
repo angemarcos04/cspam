@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Models\AccountSetupToken;
 use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
@@ -18,6 +19,7 @@ use App\Support\Domain\AccountStatus;
 use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
@@ -1287,6 +1289,15 @@ class SchoolHeadAccountManagementTest extends TestCase
         /** @var School $school */
         $school = School::query()->findOrFail($schoolHead->school_id);
         $removedEmail = (string) $schoolHead->email;
+        $schoolIdentity = [
+            'id' => (string) $school->id,
+            'schoolId' => (string) $school->school_code,
+            'schoolCode' => (string) $school->school_code,
+            'schoolName' => (string) $school->name,
+            'type' => (string) $school->type,
+            'level' => $school->level !== null ? (string) $school->level : null,
+        ];
+        Event::fake([CspamsUpdateBroadcast::class]);
 
         $remove = $this->withToken($monitorToken)->deleteJson(
             "/api/dashboard/records/{$school->id}/school-head-account",
@@ -1304,7 +1315,23 @@ class SchoolHeadAccountManagementTest extends TestCase
         );
 
         $remove->assertOk()
-            ->assertJsonPath('data.deletedCount', 1);
+            ->assertJsonPath('data.deletedSchool', $schoolIdentity)
+            ->assertJsonPath('data.deletedSchoolCount', 1)
+            ->assertJsonPath('data.deletedAccountCount', 1)
+            ->assertJsonPath('data.deletedCount', 1)
+            ->assertJsonStructure([
+                'data' => ['mutationId'],
+                'meta' => ['divisionRecordCount', 'syncedAt'],
+            ]);
+
+        Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event) use ($schoolIdentity): bool {
+            return $event->payload['eventType'] === 'school_head_account_and_school.removed'
+                && $event->payload['schoolId'] === $schoolIdentity['id']
+                && $event->payload['schoolCode'] === $schoolIdentity['schoolCode']
+                && $event->payload['deletedAccountCount'] === 1
+                && is_string($event->payload['mutationId'])
+                && $event->payload['mutationId'] !== '';
+        });
 
         $this->assertDatabaseMissing('users', [
             'id' => $schoolHead->id,
@@ -1459,6 +1486,67 @@ class SchoolHeadAccountManagementTest extends TestCase
         $this->assertDatabaseMissing('schools', [
             'id' => $school->id,
         ]);
+    }
+
+    public function test_failed_remove_transaction_does_not_report_or_notify_success(): void
+    {
+        $this->seed();
+        Notification::fake();
+        Event::fake([CspamsUpdateBroadcast::class]);
+        config()->set('auth_mfa.monitor.test_code', '123456');
+
+        $monitorLogin = $this->postJson('/api/auth/login', [
+            'role' => 'monitor',
+            'login' => 'cspamsmonitor@gmail.com',
+            'password' => $this->demoPasswordForLogin('monitor', 'cspamsmonitor@gmail.com'),
+        ]);
+        $monitorLogin->assertOk();
+        $monitorToken = (string) $monitorLogin->json('token');
+
+        /** @var User $schoolHead */
+        $schoolHead = User::query()->where('email', 'schoolhead1@cspams.local')->firstOrFail();
+        /** @var School $school */
+        $school = School::query()->findOrFail($schoolHead->school_id);
+        $schoolHeadToken = $schoolHead->createToken('transaction-rollback-token');
+        $payload = array_merge(
+            $this->deletedAccountPayload(
+                $monitorToken,
+                $school,
+                'Exercise transaction rollback guarantees.',
+            ),
+            [
+                'notifySchoolHead' => true,
+                'includeReasonInEmail' => true,
+            ],
+        );
+        Event::fake([CspamsUpdateBroadcast::class]);
+
+        School::deleting(static function (School $deletingSchool) use ($school): void {
+            if ((int) $deletingSchool->id === (int) $school->id) {
+                throw new \RuntimeException('Forced school deletion failure.');
+            }
+        });
+
+        $this->withoutExceptionHandling();
+        try {
+            $this->withToken($monitorToken)->deleteJson(
+                "/api/dashboard/records/{$school->id}/school-head-account",
+                $payload,
+            );
+            $this->fail('The forced deletion failure should escape the controller.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Forced school deletion failure.', $exception->getMessage());
+        }
+
+        $this->assertDatabaseHas('schools', ['id' => $school->id]);
+        $this->assertDatabaseHas('users', ['id' => $schoolHead->id]);
+        $this->assertDatabaseHas('personal_access_tokens', ['id' => $schoolHeadToken->accessToken->id]);
+        $this->assertDatabaseMissing('audit_logs', [
+            'action' => 'account_and_school.removed',
+            'auditable_id' => $school->id,
+        ]);
+        Notification::assertSentOnDemandTimes(SchoolHeadAccountRemovedNotification::class, 0);
+        Event::assertNotDispatched(CspamsUpdateBroadcast::class);
     }
 
     public function test_monitor_can_remove_pending_verification_school_head_account(): void
@@ -1682,7 +1770,14 @@ class SchoolHeadAccountManagementTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.deletedCount', 2)
+            ->assertJsonPath('data.deletedSchoolCount', 2)
+            ->assertJsonPath('data.deletedAccountCount', 2)
             ->assertJsonPath('data.deletedSchoolIds', [(string) $firstSchool->id, (string) $secondSchool->id])
+            ->assertJsonCount(2, 'data.deletedSchools')
+            ->assertJsonCount(2, 'data.mutationIds')
+            ->assertJsonStructure([
+                'meta' => ['divisionRecordCount', 'syncedAt'],
+            ])
             ->assertJsonPath('data.missingSchoolIds', [])
             ->assertJsonPath('data.blocked', []);
 

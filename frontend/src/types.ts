@@ -175,7 +175,21 @@ export interface SchoolHeadAccountRemovalPayload {
 
 export interface SchoolHeadAccountRemovalResult {
   message: string;
+  deletedSchool: {
+    id: string;
+    schoolId: string;
+    schoolCode: string;
+    schoolName: string;
+    type?: string | null;
+    level?: string | null;
+  };
+  deletedSchoolCount: number;
+  deletedAccountCount: number;
+  mutationId?: string | null;
+  /** Legacy field: number of linked account rows deleted. */
   deletedCount: number;
+  divisionRecordCount?: number | null;
+  syncedAt?: string | null;
   notificationDeliveryStatus?: "queued" | "sent" | "failed" | string | null;
   notificationDeliveryMessage?: string | null;
   notificationDeliveryFailureCategory?: string | null;
@@ -189,9 +203,16 @@ export interface SchoolHeadAccountBatchRemovalBlockedResult {
 
 export interface SchoolHeadAccountBatchRemovalResult {
   deletedSchoolIds: string[];
+  deletedSchools: SchoolHeadAccountRemovalResult["deletedSchool"][];
   blocked: SchoolHeadAccountBatchRemovalBlockedResult[];
   missingSchoolIds: string[];
   requestedCount: number;
+  deletedSchoolCount: number;
+  deletedAccountCount: number;
+  mutationIds?: string[];
+  divisionRecordCount?: number | null;
+  syncedAt?: string | null;
+  /** Legacy field: number of schools deleted by this batch. */
   deletedCount: number;
 }
 

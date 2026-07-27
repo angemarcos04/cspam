@@ -6,6 +6,7 @@ export interface SharedSyncPayload {
   submissionId?: string | number;
   schoolId?: string | number;
   schoolCode?: string;
+  mutationId?: string;
   academicYearId?: string | number;
   touchedScopes?: unknown[];
 }

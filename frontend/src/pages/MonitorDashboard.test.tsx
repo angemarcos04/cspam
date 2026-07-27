@@ -404,6 +404,7 @@ describe("MonitorDashboard School Head delivery flows", () => {
       isLoading: false,
       isSaving: false,
       error: "",
+      reconciliationWarning: "",
       lastSyncedAt: "2026-03-27T09:00:00.000Z",
       syncScope: "division",
       syncStatus: "updated",
@@ -986,6 +987,37 @@ describe("MonitorDashboard School Head delivery flows", () => {
       expect(reviewInboxUrl).toContain("school_id=1");
       expect(reviewInboxUrl).toContain("page=1");
       expect(reviewInboxUrl).toContain("per_page=10");
+    });
+  });
+
+  it("clears the selected school scope when that school is confirmed deleted", async () => {
+    window.history.replaceState(
+      null,
+      "",
+      "/monitor/dashboard?tab=schools&school=code%3A900001",
+    );
+    render(<MonitorDashboard />);
+
+    await waitFor(() => {
+      expect(refreshRecordsMock.mock.calls.some(([options]) =>
+        options?.filters?.schoolId === "1")).toBe(true);
+    });
+    refreshRecordsMock.mockClear();
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: {
+          id: "1",
+          schoolId: "900001",
+          schoolCode: "900001",
+          mutationId: "mutation-selected-school",
+        },
+      }));
+    });
+
+    await waitFor(() => {
+      expect(refreshRecordsMock.mock.calls.some(([options]) =>
+        options?.force === true && options?.filters?.schoolId === null)).toBe(true);
     });
   });
 

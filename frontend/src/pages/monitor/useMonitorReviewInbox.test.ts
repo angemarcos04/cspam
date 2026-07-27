@@ -289,6 +289,30 @@ describe("useMonitorReviewInbox", () => {
     expect(apiRequest).toHaveBeenCalledTimes(1);
   });
 
+  it("removes a confirmed deleted school locally without waiting for another inbox request", async () => {
+    vi.mocked(apiRequest).mockResolvedValue(submittedResponse);
+    const { result } = renderReviewInbox();
+
+    await waitFor(() => {
+      expect(result.current.rows).toHaveLength(1);
+      expect(result.current.meta.total).toBe(1);
+    });
+
+    act(() => {
+      window.dispatchEvent(new CustomEvent("cspams:school-deleted", {
+        detail: {
+          id: "12",
+          schoolId: "SCH-001",
+          schoolCode: "SCH-001",
+        },
+      }));
+    });
+
+    expect(result.current.rows).toHaveLength(0);
+    expect(result.current.meta.total).toBe(0);
+    expect(apiRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("stops shared refreshes when the review inbox is disabled", async () => {
     vi.mocked(apiRequest).mockResolvedValue(emptyResponse);
 

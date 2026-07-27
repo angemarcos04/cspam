@@ -12,6 +12,10 @@ import type {
   SchoolSectorFilter,
 } from "@/pages/monitor/monitorFilters";
 import type { SchoolStatus } from "@/types";
+import {
+  schoolRecordMatchesIdentity,
+  type SchoolIdentity,
+} from "@/utils/schoolRecordIdentity";
 
 export interface MonitorReviewInboxFilters {
   search?: string;
@@ -268,6 +272,43 @@ export function useMonitorReviewInbox({
     requestIdRef.current += 1;
     inFlightRequestRef.current?.controller.abort();
     inFlightRequestRef.current = null;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const handleConfirmedDeletion = (event: Event) => {
+      const identity = (event as CustomEvent<SchoolIdentity>).detail;
+      if (!identity) {
+        return;
+      }
+
+      const nextRows = rowsRef.current.filter((row) => !schoolRecordMatchesIdentity({
+        id: row.schoolKey,
+        schoolId: row.schoolCode,
+        schoolCode: row.schoolCode,
+      }, identity));
+      const removedCount = rowsRef.current.length - nextRows.length;
+      if (removedCount === 0) {
+        return;
+      }
+
+      rowsRef.current = nextRows;
+      setRows(nextRows);
+      setMeta((current) => ({
+        ...current,
+        total: Math.max(0, current.total - removedCount),
+        from: nextRows.length === 0 ? null : current.from,
+        to: nextRows.length === 0
+          ? null
+          : Math.max(current.from ?? 1, (current.to ?? nextRows.length) - removedCount),
+      }));
+    };
+
+    window.addEventListener("cspams:school-deleted", handleConfirmedDeletion);
+    return () => window.removeEventListener("cspams:school-deleted", handleConfirmedDeletion);
   }, []);
 
   useEffect(() => {
