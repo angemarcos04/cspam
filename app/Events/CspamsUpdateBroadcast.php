@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Models\School;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Contracts\Events\ShouldDispatchAfterCommit;
@@ -36,8 +37,16 @@ class CspamsUpdateBroadcast implements ShouldBroadcast, ShouldDispatchAfterCommi
         if ($schoolId !== null) {
             $channels[] = new PrivateChannel('cspams-updates.school.'.$schoolId);
         }
+        if (($this->payload['broadcastToPrivateSchools'] ?? false) === true) {
+            School::query()
+                ->whereRaw('LOWER(type) = ?', ['private'])
+                ->pluck('id')
+                ->each(function ($id) use (&$channels): void {
+                    $channels[] = new PrivateChannel('cspams-updates.school.'.(int) $id);
+                });
+        }
 
-        return $channels;
+        return array_values(array_unique($channels, SORT_REGULAR));
     }
 
     public function broadcastAs(): string

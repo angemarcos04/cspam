@@ -10,6 +10,7 @@ class DatabaseSeeder extends Seeder
     {
         $seeders = [
             RolesAndPermissionsSeeder::class,
+            FmQadFormSeeder::class,
         ];
 
         if ($this->shouldSeedDemoData()) {

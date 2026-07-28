@@ -218,7 +218,12 @@ export interface IndicatorDataContextType {
   ) => Promise<IndicatorSubmission>;
   fetchSubmission: (id: string) => Promise<IndicatorSubmission>;
   resetSubmissionWorkspace: (id: string, workspace: GroupBWorkspaceResetTarget) => Promise<IndicatorSubmission>;
-  uploadSubmissionFile: (id: string, type: IndicatorSubmissionFileType, file: File) => Promise<IndicatorSubmission>;
+  uploadSubmissionFile: (
+    id: string,
+    type: IndicatorSubmissionFileType,
+    file: File,
+    fmQadTemplateVersionId?: string | null,
+  ) => Promise<IndicatorSubmission>;
   downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
   submitSubmissionScopes: (id: string, targets: string[]) => Promise<IndicatorSubmission>;
@@ -1838,7 +1843,12 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
   );
 
   const uploadSubmissionFile = useCallback(
-    async (id: string, type: IndicatorSubmissionFileType, file: File): Promise<IndicatorSubmission> => {
+    async (
+      id: string,
+      type: IndicatorSubmissionFileType,
+      file: File,
+      fmQadTemplateVersionId?: string | null,
+    ): Promise<IndicatorSubmission> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
       }
@@ -1847,6 +1857,9 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const formData = new FormData();
         formData.append("type", type);
         formData.append("file", file);
+        if (fmQadTemplateVersionId) {
+          formData.append("fmQadTemplateVersionId", fmQadTemplateVersionId);
+        }
 
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/submissions/${id}/upload-file`, {
           method: "POST",

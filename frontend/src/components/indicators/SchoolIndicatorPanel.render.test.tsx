@@ -2471,7 +2471,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     fireEvent.click(bottomFileSaveButton);
 
     await waitFor(() => {
-      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File));
+      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File), null);
     });
     await waitFor(() => {
       expect(fetchSubmission).toHaveBeenCalledWith("submission-1");

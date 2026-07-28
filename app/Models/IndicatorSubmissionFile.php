@@ -16,6 +16,7 @@ class IndicatorSubmissionFile extends Model
     protected $fillable = [
         'indicator_submission_id',
         'type',
+        'fm_qad_template_version_id',
         'path',
         'original_filename',
         'size_bytes',
@@ -36,5 +37,10 @@ class IndicatorSubmissionFile extends Model
     public function submission(): BelongsTo
     {
         return $this->belongsTo(IndicatorSubmission::class, 'indicator_submission_id');
+    }
+
+    public function fmQadTemplateVersion(): BelongsTo
+    {
+        return $this->belongsTo(FmQadTemplateVersion::class);
     }
 }

@@ -8,6 +8,8 @@ use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionStorageAudit;
+use App\Support\FmQad\LegacyFmQadTemplateImporter;
+use App\Support\FmQad\FmQadTemplateAudit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -18,6 +20,23 @@ use Illuminate\Support\Facades\Storage;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('cspams:import-fm-qad-templates {--dry-run} {--force} {--form=}', function (LegacyFmQadTemplateImporter $importer): int {
+    $result = $importer->run((bool) $this->option('dry-run'), $this->option('form') ?: null, (bool) $this->option('force'));
+    $this->table(['Checked', 'Imported', 'Skipped', 'Missing', 'Invalid'], [[
+        $result['checked'], $result['imported'], $result['skipped'], implode(', ', $result['missing']), implode(', ', array_keys($result['invalid'])),
+    ]]);
+    foreach ($result['invalid'] as $scope => $message) $this->error($scope.': '.$message);
+    return ($result['missing'] === [] && $result['invalid'] === []) ? self::SUCCESS : self::FAILURE;
+})->purpose('Import the bundled FM-QAD DOCX files into persistent version storage.');
+
+Artisan::command('cspams:audit-fm-qad-templates', function (FmQadTemplateAudit $audit): int {
+    $issues = $audit->run();
+    foreach ($issues as $label => $values) {
+        $this->line($label.': '.($values === [] ? 'OK' : implode(', ', $values)));
+    }
+    return collect($issues)->every(fn ($values) => $values === []) ? self::SUCCESS : self::FAILURE;
+})->purpose('Read-only integrity audit for the FM-QAD template library.');
 
 Artisan::command('cspams:sync-rolling-years', function (): int {
     $result = app(RollingIndicatorYearWindow::class)->sync();

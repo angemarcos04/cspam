@@ -3,6 +3,7 @@
 namespace App\Http\Resources;
 
 use App\Models\IndicatorSubmission;
+use App\Models\FmQadTemplateVersion;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
@@ -194,6 +195,12 @@ class IndicatorSubmissionResource extends JsonResource
             $visibleUploaded = $uploaded && $visible;
             $available = $visibleUploaded && app(SubmissionFileStorage::class)->exists($this->resource, $type);
             $missingFromStorage = $visibleUploaded && app(SubmissionFileStorage::class)->missingFromStorage($this->resource, $type);
+            $submissionFile = $this->relationLoaded('submissionFiles')
+                ? $this->submissionFiles->firstWhere('type', $type)
+                : null;
+            $templateVersion = $submissionFile?->fm_qad_template_version_id
+                ? FmQadTemplateVersion::query()->find($submissionFile->fm_qad_template_version_id)
+                : null;
             $files[$type] = [
                 'type' => $type,
                 'uploaded' => $visibleUploaded,
@@ -205,6 +212,8 @@ class IndicatorSubmissionResource extends JsonResource
                 'uploadedAt' => $visibleUploaded ? optional($this->submissionFileUploadedAtForType($type))->toISOString() : null,
                 'downloadUrl' => $available ? "/api/submissions/{$this->id}/download/{$type}" : null,
                 'viewUrl' => $available ? "/api/submissions/{$this->id}/view/{$type}" : null,
+                'fmQadTemplateVersionId' => $visibleUploaded && $templateVersion ? (string) $templateVersion->id : null,
+                'fmQadTemplateRevisionLabel' => $visibleUploaded ? $templateVersion?->revision_label : null,
             ];
         }
 

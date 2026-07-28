@@ -3,10 +3,11 @@ import {
   ChevronDown,
   Download,
   FileUp,
+  Files,
   Search,
   Users,
 } from "lucide-react";
-import type { ChangeEvent, MutableRefObject, Ref } from "react";
+import { useState, type ChangeEvent, type MutableRefObject, type Ref } from "react";
 import { MonitorArchivedSchools, type MonitorArchivedSchoolsProps } from "@/pages/monitor/MonitorArchivedSchools";
 import { MonitorSchoolHeadAccountsPanel, type MonitorSchoolHeadAccountsPanelProps } from "@/pages/monitor/MonitorSchoolHeadAccountsPanel";
 import { MonitorSchoolMessages, type MonitorSchoolMessagesProps } from "@/pages/monitor/MonitorSchoolMessages";
@@ -16,6 +17,7 @@ import type { SchoolCategoryCounts } from "@/pages/monitor/useMonitorRequirement
 import type { MonitorRadarTotals } from "@/pages/monitor/useMonitorRadarTotals";
 import type { SchoolLevelFilter, SchoolSectorFilter } from "@/pages/monitor/monitorFilters";
 import { formatSchoolCoverageLabel } from "@/pages/monitor/schoolLevelLabels";
+import { MonitorFmQadTemplateManager } from "@/pages/monitor/MonitorFmQadTemplateManager";
 
 interface MonitorSchoolsSectionProps {
   sectionFocusClass: (targetId: string) => string;
@@ -76,6 +78,7 @@ export function MonitorSchoolsSection({
   downloadCsvFormat,
   openBulkImportPicker,
 }: MonitorSchoolsSectionProps) {
+  const [showFmQadTemplates, setShowFmQadTemplates] = useState(false);
   const currentPublicLevel = schoolSectorFilter === "public" ? schoolLevelFilter : "all";
   const currentPrivateLevel = schoolSectorFilter === "private" ? schoolLevelFilter : "all";
   const hasCategoryFilter = schoolSectorFilter !== "all" || schoolLevelFilter !== "all";
@@ -252,6 +255,18 @@ export function MonitorSchoolsSection({
                       <FileUp className="h-3.5 w-3.5 text-slate-500" />
                       Import CSV
                     </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowFmQadTemplates(true);
+                        toggleActionsMenu();
+                      }}
+                      className={menuItemClass}
+                    >
+                      <Files className="h-3.5 w-3.5 text-slate-500" />
+                      Manage FM-QAD Templates
+                    </button>
                   </div>
                 )}
               </div>
@@ -284,6 +299,7 @@ export function MonitorSchoolsSection({
         </div>
 
         <MonitorSchoolMessages {...messages} />
+        {showFmQadTemplates && <MonitorFmQadTemplateManager onClose={() => setShowFmQadTemplates(false)} />}
         {schoolHeadAccountsPanelProps ? (
           <MonitorSchoolHeadAccountsPanel {...schoolHeadAccountsPanelProps} />
         ) : null}

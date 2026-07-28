@@ -3,6 +3,8 @@
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\IndicatorSubmissionController;
+use App\Http\Controllers\Api\FmQadTemplateController;
+use App\Http\Controllers\Api\MonitorFmQadTemplateController;
 use App\Http\Controllers\Api\MailDiagnosticsController;
 use App\Http\Controllers\Api\MonitorReviewInboxController;
 use App\Http\Controllers\Api\NotificationController;
@@ -68,6 +70,21 @@ Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->post('/broadcas
 });
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->get('/audit-logs', [AuditLogController::class, 'index']);
+
+Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->group(function (): void {
+    Route::get('/fm-qad/templates', [FmQadTemplateController::class, 'index']);
+    Route::get('/fm-qad/template-versions/{version}/download', [FmQadTemplateController::class, 'download']);
+
+    Route::prefix('monitor/fm-qad')->group(function (): void {
+        Route::get('/forms', [MonitorFmQadTemplateController::class, 'forms']);
+        Route::get('/forms/{form}/versions', [MonitorFmQadTemplateController::class, 'versions']);
+        Route::post('/forms/{form}/versions', [MonitorFmQadTemplateController::class, 'store']);
+        Route::patch('/template-versions/{version}', [MonitorFmQadTemplateController::class, 'update']);
+        Route::post('/template-versions/{version}/activate', [MonitorFmQadTemplateController::class, 'activate']);
+        Route::post('/template-versions/{version}/archive', [MonitorFmQadTemplateController::class, 'archive']);
+        Route::get('/template-versions/{version}/download', [FmQadTemplateController::class, 'download']);
+    });
+});
 
 Route::middleware(['auth:sanctum', EnsureActiveAccount::class])->prefix('dashboard')->group(function (): void {
     Route::get('/review-inbox', [MonitorReviewInboxController::class, 'index'])

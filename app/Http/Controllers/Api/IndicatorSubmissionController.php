@@ -11,6 +11,8 @@ use App\Http\Resources\FormSubmissionHistoryResource;
 use App\Http\Resources\IndicatorSubmissionResource;
 use App\Models\AcademicYear;
 use App\Models\FormSubmissionHistory;
+use App\Models\FmQadForm;
+use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionScopeReview;
 use App\Models\IndicatorSubmissionScopeSubmission;
@@ -26,6 +28,7 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
+use App\Support\FmQad\FmQadTemplateVersionManager;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileDefinition;
@@ -154,7 +157,7 @@ class IndicatorSubmissionController extends Controller
                 'school:id,school_code,name,type',
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-                'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+                'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
                 'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
                 'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
                 'scopeReviews.reviewedBy:id,name,email',
@@ -191,7 +194,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
@@ -341,7 +344,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -351,7 +354,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -438,7 +441,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -607,9 +610,34 @@ class IndicatorSubmissionController extends Controller
         $validated = $request->validate([
             'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
             'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:pdf,docx,xlsx'],
+            'fmQadTemplateVersionId' => ['nullable', 'integer', 'exists:fm_qad_template_versions,id'],
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
+        $fmQadTemplateVersionId = null;
+        if (str_starts_with($fileType, 'fm_qad_')) {
+            $form = FmQadForm::query()->where('scope_id', $fileType)->first();
+            if ($form) {
+                $manager = app(FmQadTemplateVersionManager::class);
+                $version = isset($validated['fmQadTemplateVersionId'])
+                    ? FmQadTemplateVersion::query()->find((int) $validated['fmQadTemplateVersionId'])
+                    : $manager->effective($form, (int) $submission->academic_year_id);
+                $isPinnedToDraft = $version && $submission->submissionFiles()
+                    ->where('type', $fileType)
+                    ->where('fm_qad_template_version_id', $version->id)
+                    ->exists();
+                if ($version && ! $manager->isApplicable($version, $form, (int) $submission->academic_year_id) && ! $isPinnedToDraft) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateVersionId' => 'The selected template revision is not active for this FM-QAD form and Academic Year.',
+                    ]);
+                }
+                $fmQadTemplateVersionId = $version?->id;
+            }
+        } elseif (! empty($validated['fmQadTemplateVersionId'])) {
+            throw ValidationException::withMessages([
+                'fmQadTemplateVersionId' => 'Template revisions may only be associated with FM-QAD uploads.',
+            ]);
+        }
         $this->assertScopesAreNotVerified($submission, [$fileType]);
         $file = $request->file('file');
         if (! $file) {
@@ -635,6 +663,7 @@ class IndicatorSubmissionController extends Controller
                 $file,
                 $path,
                 $storedFilename,
+                $fmQadTemplateVersionId,
                 &$sizeBytes,
                 &$uploadedAt,
             ): void {
@@ -660,6 +689,7 @@ class IndicatorSubmissionController extends Controller
                     $submission->submissionFiles()->updateOrCreate(
                         ['type' => $fileType],
                         [
+                            'fm_qad_template_version_id' => $fmQadTemplateVersionId,
                             'path' => $path,
                             'original_filename' => $storedFilename,
                             'size_bytes' => $sizeBytes,
@@ -718,6 +748,7 @@ class IndicatorSubmissionController extends Controller
                 'filename' => $storedFilename,
                 'size_bytes' => $sizeBytes,
                 'touchedScopes' => [$fileType],
+                'fmQadTemplateVersionId' => $fmQadTemplateVersionId ? (string) $fmQadTemplateVersionId : null,
             ],
         );
 
@@ -729,6 +760,7 @@ class IndicatorSubmissionController extends Controller
             'file_type' => $fileType,
             'original_filename' => $storedFilename,
             'file_size_bytes' => $sizeBytes,
+            'fm_qad_template_version_id' => $fmQadTemplateVersionId,
         ]);
 
         event(new CspamsUpdateBroadcast(
@@ -1430,7 +1462,7 @@ class IndicatorSubmissionController extends Controller
     {
         $submission->refresh()->loadMissing([
             'school:id,school_code,name,type',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
@@ -1494,7 +1526,7 @@ class IndicatorSubmissionController extends Controller
             'school:id,school_code,name,type',
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
-            'submissionFiles:id,indicator_submission_id,type,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',

@@ -571,6 +571,8 @@ export interface IndicatorSubmissionFileEntry {
   uploadedAt: string | null;
   downloadUrl: string | null;
   viewUrl?: string | null;
+  fmQadTemplateVersionId?: string | null;
+  fmQadTemplateRevisionLabel?: string | null;
 }
 
 export type IndicatorSubmissionFiles = Partial<Record<IndicatorSubmissionFileType, IndicatorSubmissionFileEntry>>;
