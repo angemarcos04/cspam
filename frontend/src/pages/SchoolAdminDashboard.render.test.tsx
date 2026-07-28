@@ -31,7 +31,23 @@ vi.mock("@/context/IndicatorData", () => ({
 }));
 
 vi.mock("@/components/Shell", () => ({
-  Shell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  Shell: ({
+    children,
+    title,
+    showWorkspaceLabel = true,
+  }: {
+    children: ReactNode;
+    title: string;
+    showWorkspaceLabel?: boolean;
+  }) => (
+    <div>
+      <header>
+        {showWorkspaceLabel && <p>School Head Workspace</p>}
+        <h1>{title}</h1>
+      </header>
+      {children}
+    </div>
+  ),
 }));
 
 vi.mock("@/components/DashboardHelpDialog", () => ({
@@ -272,6 +288,51 @@ function buildLegacySaloIndicator(value: string) {
   };
 }
 
+function mockSchoolIdentityDashboard(options: {
+  authName?: string | null;
+  authType?: string | null;
+  records?: Array<{
+    schoolId: string;
+    schoolName: string;
+    schoolCode?: string;
+    address?: string;
+    level?: string | null;
+    type?: string | null;
+  }>;
+}) {
+  useAuthMock.mockReturnValue({
+    user: {
+      id: 7,
+      role: "school_head",
+      schoolId: "school-1",
+      schoolName: options.authName ?? null,
+      schoolType: options.authType ?? null,
+      schoolCode: "401777",
+      schoolAddress: "Herritage Bldg.",
+      schoolCoverage: "Kindergarten / Elementary / Junior High / Senior High",
+    },
+    apiToken: "token",
+  });
+  useDataMock.mockReturnValue({
+    records: options.records ?? [],
+    error: "",
+    lastSyncedAt: "2026-05-17T00:00:00.000Z",
+    syncScope: "records",
+    syncStatus: "up_to_date",
+    refreshRecords: refreshRecordsMock,
+  });
+  useIndicatorDataMock.mockReturnValue({
+    submissions: [],
+    allSubmissions: [],
+    academicYears: [{ id: "year-1", name: "20262027", isCurrent: true }],
+    downloadSubmissionFile: vi.fn(),
+    fetchSubmission: vi.fn(async () => null),
+    loadSubmissionsForYear: vi.fn(async () => []),
+    refreshAllSubmissions: refreshAllSubmissionsMock,
+    refreshSubmissions: refreshSubmissionsMock,
+  });
+}
+
 describe("SchoolAdminDashboard submitted report view", () => {
   beforeEach(() => {
     cleanup();
@@ -287,6 +348,96 @@ describe("SchoolAdminDashboard submitted report view", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it("renders only the fresher assigned School Record name as the h1 and School Type as the first card", () => {
+    mockSchoolIdentityDashboard({
+      authName: "Old School Name",
+      authType: "public",
+      records: [{
+        schoolId: "school-1",
+        schoolName: "Top Achiever",
+        schoolCode: "111111",
+        address: "eworhoeiht8w",
+        level: "Kindergarten / Elementary / Junior High / Senior High",
+        type: "private",
+      }],
+    });
+
+    const view = render(<SchoolAdminDashboard />);
+    const heading = screen.getByRole("heading", { level: 1, name: "Top Achiever" });
+    const schoolInfo = view.container.querySelector("#school-info") as HTMLElement;
+    const cardLabels = Array.from(schoolInfo.querySelectorAll("article > p:first-child")).map(
+      (label) => label.textContent,
+    );
+
+    expect(heading.textContent).toBe("Top Achiever");
+    expect(screen.queryByRole("heading", { name: /school dashboard/i })).toBeNull();
+    expect(screen.queryByText(/school head workspace/i)).toBeNull();
+    expect(heading.textContent).not.toMatch(/dashboard|workspace|school head/i);
+    expect(cardLabels).toEqual(["School Type", "School Code", "Address", "School Coverage", "Academic Year"]);
+    expect(within(schoolInfo).getByLabelText("School Type: Private")).not.toBeNull();
+    expect(within(schoolInfo).getByText("Private")).not.toBeNull();
+    expect(within(schoolInfo).queryByText("Assigned School")).toBeNull();
+    expect(within(schoolInfo).queryByText("Top Achiever")).toBeNull();
+    expect(within(schoolInfo).getByText("111111")).not.toBeNull();
+    expect(within(schoolInfo).getByText("eworhoeiht8w")).not.toBeNull();
+    expect(within(schoolInfo).getByText("Kindergarten / Elementary / Junior High / Senior High")).not.toBeNull();
+    expect(within(schoolInfo).getByRole("combobox", { name: "Academic year filter" })).not.toBeNull();
+  });
+
+  it("uses auth identity immediately and updates when a fresher assigned School Record arrives", () => {
+    mockSchoolIdentityDashboard({ authName: "Old School Name", authType: "private" });
+    const view = render(<SchoolAdminDashboard />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Old School Name" })).not.toBeNull();
+    expect(screen.queryByText("School Dashboard")).toBeNull();
+    expect(screen.getByLabelText("School Type: Private")).not.toBeNull();
+
+    mockSchoolIdentityDashboard({
+      authName: "Old School Name",
+      authType: "private",
+      records: [{
+        schoolId: "school-1",
+        schoolName: "New School Name",
+        schoolCode: "401777",
+        address: "Herritage Bldg.",
+        level: "Kindergarten",
+        type: "public",
+      }],
+    });
+    view.rerender(<SchoolAdminDashboard />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "New School Name" })).not.toBeNull();
+    expect(screen.queryByRole("heading", { level: 1, name: "Old School Name" })).toBeNull();
+    expect(screen.getByLabelText("School Type: Public")).not.toBeNull();
+  });
+
+  it("renders safe missing-data fallbacks and preserves a complete long legal school name", () => {
+    mockSchoolIdentityDashboard({ authName: null, authType: null });
+    const view = render(<SchoolAdminDashboard />);
+
+    expect(screen.getByRole("heading", { level: 1, name: "Assigned School" })).not.toBeNull();
+    expect(screen.getByLabelText("School Type: Not available")).not.toBeNull();
+
+    const longName = "Infant Jesus Montessori School, Inc.";
+    mockSchoolIdentityDashboard({
+      authName: null,
+      authType: null,
+      records: [{
+        schoolId: "school-1",
+        schoolName: longName,
+        schoolCode: "401777",
+        address: "Herritage Bldg.",
+        level: "Kindergarten",
+        type: "private",
+      }],
+    });
+    view.rerender(<SchoolAdminDashboard />);
+
+    const heading = screen.getByRole("heading", { level: 1, name: longName });
+    expect(heading.textContent).toBe(longName);
+    expect(heading.textContent).not.toContain("Dashboard");
   });
 
   it("ignores stale manual-year storage on fresh login and restores the latest saved package year", async () => {

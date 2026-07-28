@@ -89,7 +89,7 @@ function AppRoutes() {
             <DashboardRouteErrorBoundary>
               <AuthenticatedAppProviders>
                 <DashboardDataProviders>
-                  <LazyRoute message="Opening School Dashboard...">
+                  <LazyRoute message="Opening assigned school...">
                     <SchoolAdminDashboard />
                   </LazyRoute>
                 </DashboardDataProviders>

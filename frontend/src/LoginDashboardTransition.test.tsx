@@ -14,7 +14,7 @@ vi.mock("@/pages/MonitorDashboard", () => ({
 }));
 
 vi.mock("@/pages/SchoolAdminDashboard", () => ({
-  SchoolAdminDashboard: () => <h1>School Dashboard</h1>,
+  SchoolAdminDashboard: () => <h1>Assigned School</h1>,
 }));
 
 vi.mock("@/context/Data", () => ({
@@ -181,7 +181,7 @@ describe("authenticated login-to-dashboard transition", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Sign In" }));
 
-    expect(await screen.findByRole("heading", { name: "School Dashboard" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "Assigned School" })).toBeTruthy();
     expect(window.location.hash).toBe("#/school-admin");
 
     const paths = fetchMock.mock.calls.map(([input]) => requestPath(input));

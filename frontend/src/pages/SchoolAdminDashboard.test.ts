@@ -991,6 +991,48 @@ describe("buildSchoolHeadCurrentReportSourceContext", () => {
 });
 
 describe("resolveSchoolAdminHeaderContext", () => {
+  it("prefers the assigned School Record identity and formats its school type", () => {
+    const result = resolveSchoolAdminHeaderContext(
+      {
+        schoolName: "Infant Jesus Montessori School, Inc.",
+        schoolCode: "900123",
+        address: "Santiago City, Isabela",
+        level: "Kindergarten / Elementary",
+        type: "private",
+      },
+      {
+        schoolName: "Stale Auth School",
+        schoolCode: "111111",
+        schoolType: "public",
+      } as never,
+    );
+
+    expect(result.schoolName).toBe("Infant Jesus Montessori School, Inc.");
+    expect(result.schoolType).toBe("Private");
+  });
+
+  it("uses authenticated school identity while the assigned record is unavailable", () => {
+    const result = resolveSchoolAdminHeaderContext(null, {
+      schoolName: "Top Achiever",
+      schoolCode: "111111",
+      schoolType: "PUBLIC",
+    } as never);
+
+    expect(result.schoolName).toBe("Top Achiever");
+    expect(result.schoolType).toBe("Public");
+  });
+
+  it("uses safe identity fallbacks without guessing a school type", () => {
+    const result = resolveSchoolAdminHeaderContext(null, {
+      schoolName: " ",
+      schoolCode: null,
+      schoolType: null,
+    } as never);
+
+    expect(result.schoolName).toBe("Assigned School");
+    expect(result.schoolType).toBe("Not available");
+  });
+
   it("formats Kindergarten coverage and prefers the assigned record over stale authentication coverage", () => {
     expect(
       resolveSchoolAdminHeaderContext(
@@ -1034,6 +1076,7 @@ describe("resolveSchoolAdminHeaderContext", () => {
 
     expect(result).toEqual({
       schoolName: "Private Academy",
+      schoolType: "Not available",
       schoolCode: "900123",
       schoolAddress: "Santiago City, Isabela",
       schoolCoverage: "Elementary / Junior High",

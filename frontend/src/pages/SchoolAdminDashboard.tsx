@@ -176,16 +176,29 @@ export function resolveInitialSchoolHeadReportAcademicYearId(
 }
 
 export function resolveSchoolAdminHeaderContext(
-  assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address" | "level"> | null,
-  user: Pick<SessionUser, "schoolName" | "schoolCode" | "schoolAddress" | "schoolCoverage" | "schoolLevel"> | null,
+  assignedRecord: Pick<SchoolRecord, "schoolName" | "schoolCode" | "address" | "level" | "type"> | null,
+  user: Pick<
+    SessionUser,
+    "schoolName" | "schoolCode" | "schoolAddress" | "schoolCoverage" | "schoolLevel" | "schoolType"
+  > | null,
 ): {
   schoolName: string;
+  schoolType: string;
   schoolCode: string;
   schoolAddress: string;
   schoolCoverage: string;
 } {
+  const assignedSchoolName = assignedRecord?.schoolName?.trim() || user?.schoolName?.trim() || "Assigned School";
+  const resolvedSchoolType = assignedRecord?.type?.trim() || user?.schoolType?.trim() || "";
+  const normalizedSchoolType = resolvedSchoolType.toLowerCase();
+
   return {
-    schoolName: assignedRecord?.schoolName || user?.schoolName || "Unassigned School",
+    schoolName: assignedSchoolName,
+    schoolType: normalizedSchoolType === "public"
+      ? "Public"
+      : normalizedSchoolType === "private"
+        ? "Private"
+        : "Not available",
     schoolCode: assignedRecord?.schoolCode || user?.schoolCode || "N/A",
     schoolAddress: assignedRecord?.address || user?.schoolAddress || "N/A",
     schoolCoverage: formatSchoolCoverageLabel(assignedRecord?.level || user?.schoolCoverage || user?.schoolLevel || null),
@@ -1178,7 +1191,7 @@ export function SchoolAdminDashboard() {
     () => records.find((record) => String(record.schoolId ?? record.id ?? "").trim() === selectedSchoolId) ?? null,
     [records, selectedSchoolId],
   );
-  const { schoolName, schoolCode, schoolAddress, schoolCoverage } = useMemo(
+  const { schoolName, schoolType, schoolCode, schoolAddress, schoolCoverage } = useMemo(
     () => resolveSchoolAdminHeaderContext(assignedRecord, user),
     [assignedRecord, user],
   );
@@ -2035,8 +2048,9 @@ export function SchoolAdminDashboard() {
   /* ── Render ── */
   return (
     <Shell
-      title="School Head Dashboard"
+      title={schoolName}
       subtitle=""
+      showWorkspaceLabel={false}
       actions={
         <div className="inline-flex min-w-0 max-w-full items-center gap-1.5 rounded-sm border border-white/20 bg-white/10 p-1.5 sm:gap-2">
           <button
@@ -2081,9 +2095,12 @@ export function SchoolAdminDashboard() {
 
       {/* ── School Info ── */}
       <section id="school-info" className={`mb-8 grid gap-4 md:grid-cols-2 xl:grid-cols-5 ${focusCls("school-info")}`}>
-        <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">Assigned School</p>
-          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolName}</p>
+        <article
+          className="rounded-sm border border-slate-200 bg-white px-6 py-5"
+          aria-label={`School Type: ${schoolType}`}
+        >
+          <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">School Type</p>
+          <p className="mt-2 text-base font-semibold leading-snug text-slate-900">{schoolType}</p>
         </article>
         <article className="rounded-sm border border-slate-200 bg-white px-6 py-5">
           <p className="text-[11px] font-semibold uppercase tracking-[0.5px] text-slate-500">School Code</p>
