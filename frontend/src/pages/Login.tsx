@@ -483,7 +483,7 @@ export function Login() {
               </div>
             </div>
 
-            {backendStatus !== "ready" && (
+            {backendStatus !== "ready" && backendStatus !== "warming" && (
               <div
                 className={`mb-4 border px-3.5 py-2.5 text-sm ${
                   backendStatus === "unavailable"
@@ -494,7 +494,6 @@ export function Login() {
                 aria-live="polite"
               >
                 {backendStatus === "idle" && "Checking secure server."}
-                {backendStatus === "warming" && "Starting secure server."}
                 {backendStatus === "unavailable" && (
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                     <span>The server could not be reached. Check your connection, then retry the server check.</span>
@@ -683,11 +682,7 @@ export function Login() {
                     ? "Verifying login..."
                     : requiresPasswordReset
                       ? "Updating Password..."
-                      : backendStatus === "warming"
-                        ? "Starting server..."
-                        : "Signing in..."
-                  : backendStatus === "warming" && !pendingMfa
-                    ? "Starting server"
+                      : "Signing in..."
                   : pendingMfa
                     ? "Verify and Sign In"
                     : requiresPasswordReset

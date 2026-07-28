@@ -102,7 +102,7 @@ describe("Login", () => {
     expect(backendWarmupState.warmBackend).toHaveBeenCalledTimes(1);
     fireEvent.change(screen.getByLabelText("Login ID"), { target: { value: "001234" } });
     fireEvent.change(screen.getByLabelText("Password"), { target: { value: "Demo@123456" } });
-    fireEvent.submit(screen.getByRole("button", { name: "Starting server" }).closest("form")!);
+    fireEvent.submit(screen.getByRole("button", { name: "Sign In" }).closest("form")!);
 
     expect(authState.login).not.toHaveBeenCalled();
     expect((screen.getByLabelText("Login ID") as HTMLInputElement).value).toBe("001234");
