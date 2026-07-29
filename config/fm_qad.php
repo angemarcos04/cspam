@@ -1,6 +1,9 @@
 <?php
 
 return [
+    'revision_label_max_length' => 50,
+    'change_notes_max_length' => 5000,
+    'internal_note_max_length' => 5000,
     'max_upload_kb' => (int) env('CSPAMS_FM_QAD_TEMPLATE_MAX_KB', 10240),
     'legacy_directory' => base_path('frontend/public/templates/fm-qad'),
     'forms' => [

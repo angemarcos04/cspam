@@ -17,10 +17,10 @@ export async function fetchMonitorFmQadForms(token: string) {
   );
 }
 
-export async function fetchFmQadVersions(token: string, formId: string) {
+export async function fetchFmQadVersions(token: string, formId: string, signal?: AbortSignal) {
   const response = await apiRequest<{ data: FmQadTemplateVersion[] }>(
     `/api/monitor/fm-qad/forms/${encodeURIComponent(formId)}/versions`,
-    { token },
+    { token, signal },
   );
   return response.data;
 }
@@ -55,10 +55,31 @@ export async function mutateFmQadVersion(token: string, versionId: string, actio
   return response.data;
 }
 
-export async function downloadFmQadVersion(token: string, version: FmQadTemplateVersion): Promise<void> {
+export async function updateFmQadVersion(token: string, versionId: string, payload: {
+  revisionLabel: string;
+  academicYearId: string;
+  changeNotes: string;
+  internalNote?: string;
+}) {
+  const response = await apiRequest<{ data: FmQadTemplateVersion }>(
+    `/api/monitor/fm-qad/template-versions/${encodeURIComponent(versionId)}`,
+    { method: "PATCH", token, body: payload },
+  );
+  return response.data;
+}
+
+export async function downloadFmQadVersion(
+  token: string,
+  version: FmQadTemplateVersion,
+  academicYearId?: string,
+): Promise<void> {
   const headers = new Headers({ Accept: "*/*" });
   if (token !== COOKIE_SESSION_TOKEN) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${getApiBaseUrl()}${version.downloadUrl}`, {
+  const separator = version.downloadUrl.includes("?") ? "&" : "?";
+  const academicYearQuery = academicYearId
+    ? `${separator}academic_year_id=${encodeURIComponent(academicYearId)}`
+    : "";
+  const response = await fetch(`${getApiBaseUrl()}${version.downloadUrl}${academicYearQuery}`, {
     credentials: token === COOKIE_SESSION_TOKEN ? "include" : "omit",
     headers,
   });

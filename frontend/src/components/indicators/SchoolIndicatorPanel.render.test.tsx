@@ -39,6 +39,47 @@ vi.mock("@/context/IndicatorData", () => ({
   useIndicatorData: () => useIndicatorDataMock(),
 }));
 
+vi.mock("@/hooks/useFmQadTemplates", () => {
+  const templates = [{
+      id: "form-1",
+      scopeId: "fm_qad_001",
+      code: "FM-QAD-001",
+      name: "FM-QAD-001",
+      activeVersion: {
+        id: "version-1",
+        formId: "form-1",
+        scopeId: "fm_qad_001",
+        code: "FM-QAD-001",
+        formName: "FM-QAD-001",
+        revisionLabel: "Rev. 01",
+        status: "active",
+        academicYearId: "year-1",
+        academicYearLabel: "2025-2026",
+        originalFilename: "FM-QAD-001.docx",
+        mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        sizeBytes: 100,
+        sha256Hash: "hash",
+        changeNotes: "Current revision.",
+        uploadedBy: null,
+        activatedBy: null,
+        activatedAt: "2026-05-22T00:00:00.000Z",
+        archivedAt: null,
+        createdAt: "2026-05-22T00:00:00.000Z",
+        updatedAt: "2026-05-22T00:00:00.000Z",
+        downloadUrl: "/api/fm-qad/template-versions/version-1/download",
+      },
+    }];
+  const refresh = vi.fn();
+  return {
+    useFmQadTemplates: () => ({
+    templates,
+    isLoading: false,
+    error: "",
+    refresh,
+  }),
+  };
+});
+
 function buildHydratedSubmission(submissionId = "submission-1") {
   return {
     id: submissionId,
@@ -2335,6 +2376,14 @@ describe("SchoolIndicatorPanel batch submit", () => {
   }, 10_000);
 
   it("stages a report file until Save and then hydrates the full workspace package", async () => {
+    localStorage.setItem("cspams.fm-qad-download:1:year-1:fm_qad_001", JSON.stringify({
+      schoolId: "1",
+      academicYearId: "year-1",
+      scopeId: "fm_qad_001",
+      versionId: "version-1",
+      revisionLabel: "Rev. 01",
+      downloadedAt: "2026-05-22T09:00:00.000Z",
+    }));
     const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
     const uploadSubmissionFile = vi.fn().mockResolvedValue({
       ...buildHydratedSubmission("submission-1"),
@@ -2471,7 +2520,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     fireEvent.click(bottomFileSaveButton);
 
     await waitFor(() => {
-      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File), null);
+      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File), "version-1");
     });
     await waitFor(() => {
       expect(fetchSubmission).toHaveBeenCalledWith("submission-1");

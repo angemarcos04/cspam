@@ -3,6 +3,7 @@
 namespace App\Support\FmQad;
 
 use App\Events\CspamsUpdateBroadcast;
+use App\Models\AcademicYear;
 use App\Models\AuditLog;
 use App\Models\FmQadForm;
 use App\Models\FmQadTemplateVersion;
@@ -26,11 +27,14 @@ class FmQadTemplateVersionManager
         $label = trim(preg_replace('/\s+/', ' ', $metadata['revision_label']) ?? '');
         $normalizedLabel = mb_strtolower($label);
 
-        if ($label === '' || mb_strlen($label) > 50) {
-            throw ValidationException::withMessages(['revisionLabel' => 'Revision label is required and may not exceed 50 characters.']);
+        $revisionLabelMax = (int) config('fm_qad.revision_label_max_length', 50);
+        $changeNotesMax = (int) config('fm_qad.change_notes_max_length', 5000);
+        $changeNotes = trim($metadata['change_notes']);
+        if ($label === '' || mb_strlen($label) > $revisionLabelMax) {
+            throw ValidationException::withMessages(['revisionLabel' => "Revision label is required and may not exceed {$revisionLabelMax} characters."]);
         }
-        if (trim($metadata['change_notes']) === '') {
-            throw ValidationException::withMessages(['changeNotes' => 'Change notes are required.']);
+        if ($changeNotes === '' || mb_strlen($changeNotes) > $changeNotesMax) {
+            throw ValidationException::withMessages(['changeNotes' => "Change notes are required and may not exceed {$changeNotesMax} characters."]);
         }
         if ($form->versions()->where('normalized_revision_label', $normalizedLabel)->exists()) {
             throw ValidationException::withMessages(['revisionLabel' => 'This revision label already exists for the selected FM-QAD form.']);
@@ -39,7 +43,7 @@ class FmQadTemplateVersionManager
             throw ValidationException::withMessages(['file' => 'This exact template file has already been uploaded for the selected FM-QAD form.']);
         }
 
-        $version = DB::transaction(function () use ($form, $file, $metadata, $actor, $label, $normalizedLabel, $validatedFile): FmQadTemplateVersion {
+        $version = DB::transaction(function () use ($form, $file, $metadata, $actor, $label, $normalizedLabel, $validatedFile, $changeNotes): FmQadTemplateVersion {
             $version = $form->versions()->create([
                 'academic_year_id' => $metadata['academic_year_id'] ?? null,
                 'revision_label' => $label,
@@ -49,11 +53,12 @@ class FmQadTemplateVersionManager
                 'mime_type' => $validatedFile['mime_type'],
                 'size_bytes' => $validatedFile['size_bytes'],
                 'sha256_hash' => $validatedFile['sha256'],
-                'change_notes' => trim($metadata['change_notes']),
+                'change_notes' => $changeNotes,
                 'internal_note' => isset($metadata['internal_note']) ? trim((string) $metadata['internal_note']) ?: null : null,
                 'uploaded_by' => $actor?->id,
             ]);
             $this->storage->put($version, $validatedFile['content'], $validatedFile['sha256']);
+
             return $version;
         });
 
@@ -76,7 +81,9 @@ class FmQadTemplateVersionManager
                 ->get();
             $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
             foreach ($conflicts as $conflict) {
-                if ((int) $conflict->id === (int) $target->id) continue;
+                if ((int) $conflict->id === (int) $target->id) {
+                    continue;
+                }
                 $conflict->update([
                     'status' => FmQadTemplateVersion::ARCHIVED,
                     'activation_key' => null,
@@ -92,16 +99,24 @@ class FmQadTemplateVersionManager
                 'archived_by' => null,
                 'archived_at' => null,
             ]);
+
             return $target;
         });
 
         $this->audit($request, 'fm_qad_template.version_activated', $activated, $actor, ['previousActiveVersionId' => $previousId]);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($activated, 'fm_qad_template.version_activated')));
+
         return $activated->fresh(['form', 'academicYear', 'uploader', 'activator', 'blob']);
     }
 
     public function archive(FmQadTemplateVersion $version, ?User $actor, ?Request $request = null): FmQadTemplateVersion
     {
+        if ($version->status === FmQadTemplateVersion::ACTIVE) {
+            throw ValidationException::withMessages([
+                'version' => 'Activate a replacement revision before archiving the current effective template.',
+            ]);
+        }
+
         $version->forceFill([
             'status' => FmQadTemplateVersion::ARCHIVED,
             'activation_key' => null,
@@ -110,6 +125,7 @@ class FmQadTemplateVersionManager
         ])->save();
         $this->audit($request, 'fm_qad_template.version_archived', $version, $actor);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_archived')));
+
         return $version->fresh(['form', 'academicYear', 'uploader', 'blob']);
     }
 
@@ -119,7 +135,46 @@ class FmQadTemplateVersionManager
         if ($version->status !== FmQadTemplateVersion::DRAFT) {
             throw ValidationException::withMessages(['version' => 'Only draft template metadata can be edited.']);
         }
-        $version->update($values);
+
+        $normalized = [];
+        if (array_key_exists('revision_label', $values)) {
+            $label = trim(preg_replace('/\s+/', ' ', (string) $values['revision_label']) ?? '');
+            $max = (int) config('fm_qad.revision_label_max_length', 50);
+            if ($label === '' || mb_strlen($label) > $max) {
+                throw ValidationException::withMessages(['revisionLabel' => "Revision label is required and may not exceed {$max} characters."]);
+            }
+            $normalizedLabel = mb_strtolower($label);
+            if ($version->form->versions()->whereKeyNot($version->id)->where('normalized_revision_label', $normalizedLabel)->exists()) {
+                throw ValidationException::withMessages(['revisionLabel' => 'This revision label already exists for the selected FM-QAD form.']);
+            }
+            $normalized['revision_label'] = $label;
+            $normalized['normalized_revision_label'] = $normalizedLabel;
+        }
+        if (array_key_exists('academic_year_id', $values)) {
+            $academicYearId = $values['academic_year_id'] === null ? null : (int) $values['academic_year_id'];
+            if ($academicYearId !== null && ! AcademicYear::query()->whereKey($academicYearId)->exists()) {
+                throw ValidationException::withMessages(['academicYearId' => 'The selected Academic Year is invalid.']);
+            }
+            $normalized['academic_year_id'] = $academicYearId;
+        }
+        if (array_key_exists('change_notes', $values)) {
+            $notes = trim((string) $values['change_notes']);
+            $max = (int) config('fm_qad.change_notes_max_length', 5000);
+            if ($notes === '' || mb_strlen($notes) > $max) {
+                throw ValidationException::withMessages(['changeNotes' => "Change notes are required and may not exceed {$max} characters."]);
+            }
+            $normalized['change_notes'] = $notes;
+        }
+        if (array_key_exists('internal_note', $values)) {
+            $internalNote = trim((string) ($values['internal_note'] ?? ''));
+            $max = (int) config('fm_qad.internal_note_max_length', 5000);
+            if (mb_strlen($internalNote) > $max) {
+                throw ValidationException::withMessages(['internalNote' => "Internal note may not exceed {$max} characters."]);
+            }
+            $normalized['internal_note'] = $internalNote !== '' ? $internalNote : null;
+        }
+
+        $version->update($normalized);
         $this->audit($request, 'fm_qad_template.version_updated', $version, $actor);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_updated')));
 
@@ -130,8 +185,11 @@ class FmQadTemplateVersionManager
     {
         if ($academicYearId !== null) {
             $exact = $form->versions()->active()->where('academic_year_id', $academicYearId)->latest('activated_at')->first();
-            if ($exact) return $exact;
+            if ($exact) {
+                return $exact;
+            }
         }
+
         return $form->versions()->active()->whereNull('academic_year_id')->latest('activated_at')->first();
     }
 
@@ -151,6 +209,7 @@ class FmQadTemplateVersionManager
     {
         $safe = preg_replace('/[\\\\\\/\\x00-\\x1F\\x7F"\\r\\n]+/u', '-', trim((string) $filename)) ?? '';
         $safe = mb_substr($safe, 0, 180);
+
         return $safe !== '' ? $safe : $fallback;
     }
 
@@ -184,6 +243,7 @@ class FmQadTemplateVersionManager
     private function broadcastPayload(FmQadTemplateVersion $version, string $eventType): array
     {
         $version->loadMissing('form');
+
         return [
             'entity' => 'fm_qad_template',
             'eventType' => $eventType,

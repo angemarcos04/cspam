@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Archive, Download, FileUp, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Archive, Download, FileUp, Pencil, RefreshCw, X } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import {
   downloadFmQadVersion,
   fetchFmQadVersions,
   fetchMonitorFmQadForms,
   mutateFmQadVersion,
+  updateFmQadVersion,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
 import type { AcademicYearOption } from "@/types";
@@ -26,43 +27,89 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   const [changeNotes, setChangeNotes] = useState("");
   const [internalNote, setInternalNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [editingVersion, setEditingVersion] = useState<FmQadTemplateVersion | null>(null);
+  const [editRevisionLabel, setEditRevisionLabel] = useState("");
+  const [editAcademicYearId, setEditAcademicYearId] = useState("");
+  const [editChangeNotes, setEditChangeNotes] = useState("");
+  const [editInternalNote, setEditInternalNote] = useState("");
+  const selectedFormIdRef = useRef<string | null>(null);
+  const historyControllerRef = useRef<AbortController | null>(null);
+  const historySequenceRef = useRef(0);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
 
-  const refresh = useCallback(async () => {
+  const loadVersions = useCallback(async (formId: string) => {
+    const sequence = ++historySequenceRef.current;
+    historyControllerRef.current?.abort();
+    const controller = new AbortController();
+    historyControllerRef.current = controller;
+    try {
+      const next = await fetchFmQadVersions(apiToken, formId, controller.signal);
+      if (sequence === historySequenceRef.current && selectedFormIdRef.current === formId) {
+        setVersions(next);
+      }
+    } catch (cause) {
+      if (controller.signal.aborted) return;
+      if (sequence === historySequenceRef.current && selectedFormIdRef.current === formId) {
+        setError(cause instanceof Error ? cause.message : "Unable to load version history.");
+      }
+    }
+  }, [apiToken]);
+
+  const refreshForms = useCallback(async () => {
     setIsLoading(true);
     setError("");
     try {
       const result = await fetchMonitorFmQadForms(apiToken);
       setForms(result.data);
       setYears(result.academicYears);
-      if (selectedForm) {
-        const updated = result.data.find((form) => form.id === selectedForm.id) ?? null;
+      const selectedId = selectedFormIdRef.current;
+      if (selectedId) {
+        const updated = result.data.find((form) => form.id === selectedId) ?? null;
         setSelectedForm(updated);
-        if (updated) setVersions(await fetchFmQadVersions(apiToken, updated.id));
+        if (!updated) {
+          selectedFormIdRef.current = null;
+          historyControllerRef.current?.abort();
+          setVersions([]);
+        }
       }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load FM-QAD templates.");
     } finally {
       setIsLoading(false);
     }
-  }, [apiToken, selectedForm?.id]);
+  }, [apiToken]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  const refresh = useCallback(async () => {
+    await refreshForms();
+    const selectedId = selectedFormIdRef.current;
+    if (selectedId) await loadVersions(selectedId);
+  }, [loadVersions, refreshForms]);
+
+  useEffect(() => { void refreshForms(); }, [refreshForms]);
   useEffect(() => {
     const listener = (event: Event) => {
-      if ((event as CustomEvent<{ entity?: string }>).detail?.entity === "fm_qad_template") void refresh();
+      if ((event as CustomEvent<{ entity?: string }>).detail?.entity !== "fm_qad_template") return;
+      if (realtimeRefreshTimerRef.current !== null) return;
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        void refresh();
+      }, 50);
     };
     window.addEventListener("cspams:update", listener);
-    return () => window.removeEventListener("cspams:update", listener);
+    return () => {
+      window.removeEventListener("cspams:update", listener);
+      historySequenceRef.current += 1;
+      historyControllerRef.current?.abort();
+      if (realtimeRefreshTimerRef.current !== null) window.clearTimeout(realtimeRefreshTimerRef.current);
+    };
   }, [refresh]);
 
   const openVersions = async (form: FmQadTemplateForm) => {
+    selectedFormIdRef.current = form.id;
     setSelectedForm(form);
     setError("");
-    try {
-      setVersions(await fetchFmQadVersions(apiToken, form.id));
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load version history.");
-    }
+    setVersions([]);
+    await loadVersions(form.id);
   };
 
   const submitUpload = async (event: FormEvent, activate: boolean) => {
@@ -105,6 +152,44 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
     }
   };
 
+  const startEditing = (version: FmQadTemplateVersion) => {
+    setEditingVersion(version);
+    setEditRevisionLabel(version.revisionLabel);
+    setEditAcademicYearId(version.academicYearId ?? "");
+    setEditChangeNotes(version.changeNotes);
+    setEditInternalNote(version.internalNote ?? "");
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingVersion || !editRevisionLabel.trim() || !editAcademicYearId || !editChangeNotes.trim()) {
+      setError("Revision label, Academic Year, and change notes are required.");
+      return;
+    }
+    setIsSaving(true);
+    setError("");
+    try {
+      await updateFmQadVersion(apiToken, editingVersion.id, {
+        revisionLabel: editRevisionLabel,
+        academicYearId: editAcademicYearId,
+        changeNotes: editChangeNotes,
+        internalNote: editInternalNote,
+      });
+      setEditingVersion(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to update draft details.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const closeManager = () => {
+    historySequenceRef.current += 1;
+    historyControllerRef.current?.abort();
+    onClose();
+  };
+
   return (
     <section aria-labelledby="fm-qad-manager-title" className="border-b border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -114,7 +199,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button>
-          <button type="button" onClick={onClose} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={closeManager} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {error && <p role="alert" className="mt-3 rounded-sm bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
@@ -145,14 +230,26 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
               <div className="flex gap-2 md:col-span-2"><button type="submit" disabled={isSaving} className="rounded-sm border bg-white px-3 py-2 text-xs font-semibold">Save Draft</button><button type="button" disabled={isSaving} onClick={(event) => void submitUpload(event as unknown as FormEvent, true)} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Upload and Activate</button></div>
             </form>
           )}
+          {editingVersion && (
+            <form className="mt-4 grid gap-3 rounded-sm border border-primary-200 bg-primary-50/40 p-4 md:grid-cols-2" onSubmit={(event) => void submitEdit(event)}>
+              <h4 className="font-bold md:col-span-2">Edit {editingVersion.revisionLabel} Details</h4>
+              <label className="text-xs font-semibold">Revision Label<input aria-label="Edit Revision Label" value={editRevisionLabel} onChange={(event) => setEditRevisionLabel(event.target.value)} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Edit Effective Academic Year" value={editAcademicYearId} onChange={(event) => setEditAcademicYearId(event.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Select Academic Year</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
+              <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Edit Change Notes" value={editChangeNotes} onChange={(event) => setEditChangeNotes(event.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold md:col-span-2">Internal Note (optional)<input aria-label="Edit Internal Note" value={editInternalNote} onChange={(event) => setEditInternalNote(event.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <div className="flex gap-2 md:col-span-2"><button type="submit" disabled={isSaving} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Save Details</button><button type="button" onClick={() => setEditingVersion(null)} className="rounded-sm border bg-white px-3 py-2 text-xs font-semibold">Cancel</button></div>
+            </form>
+          )}
           <div className="mt-4 space-y-2">{versions.map((version) => (
             <article key={version.id} className="rounded-sm border p-3">
               <div className="flex flex-wrap justify-between gap-3">
                 <div><p className="font-bold">{version.revisionLabel} <span className="ml-2 text-xs uppercase text-slate-500">{version.status}</span></p><p className="text-xs text-slate-600">Academic Year: {version.academicYearLabel ?? "Baseline"} · {version.originalFilename} · {(version.sizeBytes / 1024).toFixed(1)} KB</p><p className="mt-1 text-xs">{version.changeNotes}</p></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => void downloadFmQadVersion(apiToken, version)} className="inline-flex items-center gap-1 text-xs font-semibold"><Download className="h-3.5 w-3.5" /> Download</button>
+                  {version.status === "draft" && <button type="button" onClick={() => startEditing(version)} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-700"><Pencil className="h-3.5 w-3.5" /> Edit Details</button>}
                   {version.status !== "active" && <button type="button" onClick={() => void performAction(version, "activate")} className="text-xs font-semibold text-primary-700">Activate</button>}
-                  {version.status !== "archived" && <button type="button" onClick={() => void performAction(version, "archive")} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><Archive className="h-3.5 w-3.5" /> Archive</button>}
+                  {version.status === "draft" && <button type="button" onClick={() => void performAction(version, "archive")} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><Archive className="h-3.5 w-3.5" /> Archive</button>}
+                  {version.status === "active" && <span className="text-xs font-semibold text-primary-700">Current Effective Revision</span>}
                 </div>
               </div>
             </article>

@@ -81,7 +81,7 @@ describe("FmQadTemplateDownload", () => {
       target: { value: template.id },
     });
     fireEvent.click(screen.getByRole("button", { name: "Download Current Template" }));
-    await waitFor(() => expect(downloadFmQadVersion).toHaveBeenCalledWith("test-token", template.activeVersion));
+    await waitFor(() => expect(downloadFmQadVersion).toHaveBeenCalledWith("test-token", template.activeVersion, "year-1"));
     expect(submitHandler).not.toHaveBeenCalled();
   });
 
@@ -118,5 +118,30 @@ describe("FmQadTemplateDownload", () => {
     view.rerender(<FmQadTemplateDownload academicYearId="year-1" />);
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(refresh).toHaveBeenCalled();
+  });
+
+  it("keeps a downloaded revision pinned when the active revision changes", async () => {
+    const onDownloaded = vi.fn();
+    render(
+      <FmQadTemplateDownload
+        academicYearId="year-1"
+        pinsByScope={{
+          fm_qad_003: {
+            schoolId: "school-1",
+            academicYearId: "year-1",
+            scopeId: "fm_qad_003",
+            versionId: "version-2",
+            revisionLabel: "Rev. 02",
+            downloadedAt: "2026-07-28T00:00:00Z",
+          },
+        }}
+        onDownloaded={onDownloaded}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("FM-QAD template"), { target: { value: template.id } });
+    expect(screen.getByText(/Downloaded template:/)).toBeTruthy();
+    expect(screen.getByText(/A newer revision is available/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Download Rev. 03" }));
+    await waitFor(() => expect(onDownloaded).toHaveBeenCalledWith(template.activeVersion));
   });
 });

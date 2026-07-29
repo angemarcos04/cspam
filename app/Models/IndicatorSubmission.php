@@ -109,6 +109,7 @@ class IndicatorSubmission extends Model
     public function submissionFiles(): HasMany
     {
         return $this->hasMany(IndicatorSubmissionFile::class)
+            ->with('fmQadTemplateVersion:id,fm_qad_form_id,academic_year_id,revision_label,status')
             ->orderBy('type');
     }
 

@@ -15,6 +15,7 @@ import {
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
 import { FmQadTemplateDownload } from "@/components/indicators/FmQadTemplateDownload";
+import { useDownloadedFmQadVersionPins } from "@/hooks/useDownloadedFmQadVersionPins";
 import {
   SUBMISSION_FILE_DEFINITIONS,
   SUBMISSION_FILE_DEFINITION_BY_TYPE,
@@ -2009,10 +2010,29 @@ function SchoolIndicatorPanelComponent({
     () => createInitialUploadErrorState(),
   );
   const [fmQadTemplates, setFmQadTemplates] = useState<FmQadTemplateForm[]>([]);
-  const fmQadVersionByScope = useMemo(
-    () => new Map(fmQadTemplates.map((template) => [template.scopeId, template.activeVersion?.id ?? null])),
-    [fmQadTemplates],
+  const [fmQadTemplateState, setFmQadTemplateState] = useState({ isLoading: true, error: "" });
+  const { pinsByScope: fmQadDownloadPins, recordDownload: recordFmQadDownload } = useDownloadedFmQadVersionPins(
+    user?.schoolId ? String(user.schoolId) : "",
+    workspaceAcademicYearId,
   );
+  const fmQadVersionByScope = useMemo(() => {
+    const scopeIds = new Set([
+      ...fmQadTemplates.map((template) => template.scopeId),
+      ...Object.keys(fmQadDownloadPins),
+      ...Object.keys(activeWorkspaceSubmission?.files ?? {}).filter((scopeId) => scopeId.startsWith("fm_qad_")),
+    ]);
+    return new Map([...scopeIds].map((scopeId) => {
+      const uploadedVersionId = activeWorkspaceSubmission?.files?.[scopeId as IndicatorSubmissionFileType]
+        ?.fmQadTemplateVersionId ?? null;
+      const downloadedVersionId = fmQadDownloadPins[scopeId]?.versionId ?? null;
+      return [
+        scopeId,
+        downloadedVersionId && downloadedVersionId !== uploadedVersionId
+          ? downloadedVersionId
+          : uploadedVersionId ?? downloadedVersionId,
+      ];
+    }));
+  }, [activeWorkspaceSubmission?.files, fmQadDownloadPins, fmQadTemplates]);
   const workspaceYearSelectionStorageKey = useMemo(() => {
     const schoolScopeId = user?.schoolId ? String(user.schoolId) : "";
     const userScopeId = user?.id ? String(user.id) : "anonymous";
@@ -6100,6 +6120,26 @@ function SchoolIndicatorPanelComponent({
       setUploadErrorByType((current) => ({ ...current, [type]: "" }));
 
       try {
+        if (type.startsWith("fm_qad_")) {
+          if (fmQadTemplateState.isLoading) {
+            setUploadErrorByType((current) => ({ ...current, [type]: "Template information is still loading. Retry before uploading." }));
+            return;
+          }
+          if (fmQadTemplateState.error) {
+            setUploadErrorByType((current) => ({ ...current, [type]: "Template information could not be verified. Retry before uploading." }));
+            return;
+          }
+          if (!fmQadVersionByScope.get(type)) {
+            const activeVersion = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion ?? null;
+            setUploadErrorByType((current) => ({
+              ...current,
+              [type]: activeVersion
+                ? "Download the current template revision before uploading the accomplished file."
+                : "No active template revision is configured for this form and Academic Year.",
+            }));
+            return;
+          }
+        }
         const normalizedName = file.name.toLowerCase();
         const validExtension = [".pdf", ".docx", ".xlsx"].some((extension) => normalizedName.endsWith(extension));
         if (!validExtension) {
@@ -6205,7 +6245,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
+  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadTemplateState.error, fmQadTemplateState.isLoading, fmQadTemplates, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -6455,9 +6495,24 @@ function SchoolIndicatorPanelComponent({
     }
     setSubmitError("");
     setSaveMessage("");
+    if (type.startsWith("fm_qad_")) {
+      const resolvedVersionId = fmQadVersionByScope.get(type) ?? null;
+      if (fmQadTemplateState.isLoading || fmQadTemplateState.error || !resolvedVersionId) {
+        const activeVersion = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion ?? null;
+        const message = fmQadTemplateState.isLoading
+          ? "Template information is still loading. Retry before uploading."
+          : fmQadTemplateState.error
+            ? "Template information could not be verified. Retry before uploading."
+            : activeVersion
+              ? "Download the current template revision before uploading the accomplished file."
+              : "No active template revision is configured for this form and Academic Year.";
+        setUploadErrorByType((current) => ({ ...current, [type]: message }));
+        return;
+      }
+    }
     setUploadErrorByType((current) => ({ ...current, [type]: "" }));
     openUploadPicker(type);
-  }, [hasUnsavedWorkspaceChanges, isGroupBActionBusy, isManualActionBlocked, openUploadPicker, workspaceMode]);
+  }, [fmQadTemplateState.error, fmQadTemplateState.isLoading, fmQadTemplates, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isManualActionBlocked, openUploadPicker, workspaceMode]);
 
   return (
     <section className="surface-panel animate-fade-slide overflow-hidden rounded-none border-0 shadow-none">
@@ -6591,6 +6646,9 @@ function SchoolIndicatorPanelComponent({
             <FmQadTemplateDownload
               academicYearId={activeAcademicYearId}
               onTemplatesChange={setFmQadTemplates}
+              pinsByScope={fmQadDownloadPins}
+              onDownloaded={recordFmQadDownload}
+              onTemplateStateChange={setFmQadTemplateState}
             />
             {Object.entries(activeWorkspaceSubmission?.files ?? {})
               .filter(([type, entry]) => type.startsWith("fm_qad_") && entry?.uploaded)
