@@ -6,6 +6,7 @@ use App\Events\CspamsUpdateBroadcast;
 use App\Models\AcademicYear;
 use App\Models\AuditLog;
 use App\Models\FmQadForm;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionFile;
@@ -241,15 +242,25 @@ class FmQadTemplateManagementTest extends TestCase
         $this->getJson("/api/fm-qad/templates?academic_year_id={$year->id}")
             ->assertOk()
             ->assertJsonPath('data.0.activeVersion.id', (string) $version->id);
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download")
+        $download = $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
             ->assertOk()
-            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-        $this->assertDatabaseHas('fm_qad_template_downloads', [
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            ->assertHeader('X-CSPAMS-FM-QAD-Version-Id', (string) $version->id)
+            ->assertHeader('X-CSPAMS-FM-QAD-Revision', 'Rev. 01');
+        $grantId = (int) $download->headers->get('X-CSPAMS-FM-QAD-Download-Grant-Id');
+        $this->assertGreaterThan(0, $grantId);
+        $this->assertDatabaseHas('fm_qad_template_download_grants', [
+            'id' => $grantId,
             'school_id' => $privateHead->school_id,
             'user_id' => $privateHead->id,
             'academic_year_id' => $year->id,
             'fm_qad_template_version_id' => $version->id,
         ]);
+        $this->assertSame($grantId, $this->downloadGrantId($version, $year));
+        $this->assertSame(1, FmQadTemplateDownloadGrant::query()->count());
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download")
+            ->assertUnprocessable();
+        $grantCountBeforePublicAttempt = FmQadTemplateDownloadGrant::query()->count();
 
         $public = School::query()->create([
             'school_code' => 'PUBLIC-1', 'name' => 'Public School', 'district' => 'District', 'region' => 'Region', 'type' => 'public',
@@ -259,9 +270,10 @@ class FmQadTemplateManagementTest extends TestCase
         $this->getJson("/api/fm-qad/templates?academic_year_id={$year->id}")
             ->assertOk()
             ->assertExactJson(['data' => []]);
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download")
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
             ->assertForbidden()
             ->assertSee('FM-QAD templates are available only to private schools.');
+        $this->assertSame($grantCountBeforePublicAttempt, FmQadTemplateDownloadGrant::query()->count());
     }
 
     public function test_schema_keeps_legacy_submission_association_nullable(): void
@@ -302,6 +314,63 @@ class FmQadTemplateManagementTest extends TestCase
             ->assertJsonPath('data.files.fm_qad_003.fmQadTemplateRevisionLabel', null);
     }
 
+    public function test_replacing_a_legacy_null_version_file_requires_a_valid_download_grant(): void
+    {
+        $year = $this->year();
+        $school = $this->privateSchool();
+        $head = $this->user('legacy-replacement@example.test', 'school_head', $school);
+        $monitor = $this->user('legacy-replacement-monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $version = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('legacy-replacement.docx', 'legacy-replacement'),
+            ['revision_label' => 'Rev. 01', 'academic_year_id' => $year->id, 'change_notes' => 'Legacy replacement.'],
+            $monitor,
+            true,
+        );
+        $submission = IndicatorSubmission::query()->create([
+            'school_id' => $school->id,
+            'academic_year_id' => $year->id,
+            'form_type' => IndicatorSubmission::FORM_TYPE,
+            'status' => 'draft',
+            'version' => 1,
+            'created_by' => $head->id,
+        ]);
+        IndicatorSubmissionFile::query()->create([
+            'indicator_submission_id' => $submission->id,
+            'type' => 'fm_qad_003',
+            'fm_qad_template_version_id' => null,
+            'path' => 'database://legacy-null-replacement',
+            'original_filename' => 'legacy.docx',
+            'size_bytes' => 1,
+            'uploaded_at' => now(),
+        ]);
+
+        Sanctum::actingAs($head, ['role:school_head']);
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003',
+            'file' => $this->validDocx('replacement-without-grant.docx', 'without-grant'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateDownloadGrantId');
+        $this->assertDatabaseHas('indicator_submission_files', [
+            'indicator_submission_id' => $submission->id,
+            'type' => 'fm_qad_003',
+            'fm_qad_template_version_id' => null,
+        ]);
+
+        $grantId = $this->downloadGrantId($version, $year);
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003',
+            'fmQadTemplateVersionId' => $version->id,
+            'fmQadTemplateDownloadGrantId' => $grantId,
+            'file' => $this->validDocx('replacement-with-grant.docx', 'with-grant'),
+        ])->assertOk();
+        $this->assertDatabaseHas('indicator_submission_files', [
+            'indicator_submission_id' => $submission->id,
+            'type' => 'fm_qad_003',
+            'fm_qad_template_version_id' => $version->id,
+        ]);
+    }
+
     public function test_new_fm_qad_upload_records_the_effective_version_and_rejects_a_different_form(): void
     {
         $year = $this->year();
@@ -331,17 +400,19 @@ class FmQadTemplateManagementTest extends TestCase
         ]);
 
         Sanctum::actingAs($head, ['role:school_head']);
+        $otherGrantId = $this->downloadGrantId($other, $year);
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $other->id,
+            'fmQadTemplateDownloadGrantId' => $otherGrantId,
             'file' => $this->validDocx('completed-003.docx', 'completed-invalid'),
-        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateVersionId');
+        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateDownloadGrantId');
 
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
-            ->assertOk();
+        $grantId = $this->downloadGrantId($version, $year);
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $version->id,
+            'fmQadTemplateDownloadGrantId' => $grantId,
             'file' => $this->validDocx('completed-003.docx', 'completed-valid'),
         ])->assertOk();
 
@@ -381,7 +452,7 @@ class FmQadTemplateManagementTest extends TestCase
         ]);
 
         Sanctum::actingAs($head, ['role:school_head']);
-        $this->get("/api/fm-qad/template-versions/{$rev02->id}/download?academic_year_id={$year->id}")->assertOk();
+        $rev02GrantId = $this->downloadGrantId($rev02, $year);
 
         Sanctum::actingAs($monitor, ['role:monitor']);
         $manager->activate($rev03, $monitor);
@@ -390,6 +461,7 @@ class FmQadTemplateManagementTest extends TestCase
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $rev02->id,
+            'fmQadTemplateDownloadGrantId' => $rev02GrantId,
             'file' => $this->validDocx('completed-rev-02.docx', 'completed-rev-02'),
         ])->assertOk();
         $this->assertDatabaseHas('indicator_submission_files', [
@@ -402,6 +474,11 @@ class FmQadTemplateManagementTest extends TestCase
 
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
+            'fmQadTemplateVersionId' => $rev03->id,
+            'file' => $this->validDocx('forged-switch-rev-03.docx', 'forged-switch-rev-03'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateDownloadGrantId');
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003',
             'file' => $this->validDocx('replacement-rev-02.docx', 'replacement-rev-02'),
         ])->assertOk();
         $this->assertDatabaseHas('indicator_submission_files', [
@@ -409,10 +486,11 @@ class FmQadTemplateManagementTest extends TestCase
             'fm_qad_template_version_id' => $rev02->id,
         ]);
 
-        $this->get("/api/fm-qad/template-versions/{$rev03->id}/download?academic_year_id={$year->id}")->assertOk();
+        $rev03GrantId = $this->downloadGrantId($rev03, $year);
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $rev03->id,
+            'fmQadTemplateDownloadGrantId' => $rev03GrantId,
             'file' => $this->validDocx('replacement-rev-03.docx', 'replacement-rev-03'),
         ])->assertOk();
         $this->assertDatabaseHas('indicator_submission_files', [
@@ -421,11 +499,11 @@ class FmQadTemplateManagementTest extends TestCase
         ]);
     }
 
-    public function test_new_fm_qad_upload_without_a_download_receipt_is_rejected_but_non_fm_qad_is_unchanged(): void
+    public function test_new_fm_qad_upload_without_a_download_grant_is_rejected_but_non_fm_qad_is_unchanged(): void
     {
         $year = $this->year();
         $school = $this->privateSchool();
-        $head = $this->user('receipt-required@example.test', 'school_head', $school);
+        $head = $this->user('grant-required@example.test', 'school_head', $school);
         $submission = IndicatorSubmission::query()->create([
             'school_id' => $school->id,
             'academic_year_id' => $year->id,
@@ -439,7 +517,7 @@ class FmQadTemplateManagementTest extends TestCase
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'file' => $this->validDocx('unversioned.docx', 'unversioned'),
-        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateVersionId');
+        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateDownloadGrantId');
 
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'bmef',
@@ -447,7 +525,7 @@ class FmQadTemplateManagementTest extends TestCase
         ])->assertOk();
     }
 
-    public function test_download_receipts_cannot_be_reused_across_monitor_school_or_academic_year_contexts(): void
+    public function test_download_grants_cannot_be_reused_across_monitor_school_or_academic_year_contexts(): void
     {
         $year = $this->year();
         $otherYear = $this->year('20272028', false);
@@ -459,14 +537,15 @@ class FmQadTemplateManagementTest extends TestCase
             'region' => 'Region',
             'type' => 'private',
         ]);
-        $head = $this->user('receipt-owner@example.test', 'school_head', $school);
-        $otherSchoolHead = $this->user('receipt-other-school@example.test', 'school_head', $otherSchool);
-        $monitor = $this->user('receipt-monitor@example.test', 'monitor');
+        $head = $this->user('grant-owner@example.test', 'school_head', $school);
+        $otherSchoolHead = $this->user('grant-other-school@example.test', 'school_head', $otherSchool);
+        $monitor = $this->user('grant-monitor@example.test', 'monitor');
+        $otherUser = $this->user('grant-other-user@example.test', 'monitor');
         $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
         $version = app(FmQadTemplateVersionManager::class)->upload(
             $form,
-            $this->validDocx('baseline-receipt.docx', 'baseline-receipt'),
-            ['revision_label' => 'Baseline', 'academic_year_id' => null, 'change_notes' => 'Baseline receipt.'],
+            $this->validDocx('baseline-grant.docx', 'baseline-grant'),
+            ['revision_label' => 'Baseline', 'academic_year_id' => null, 'change_notes' => 'Baseline grant.'],
             $monitor,
             true,
         );
@@ -478,26 +557,37 @@ class FmQadTemplateManagementTest extends TestCase
             'version' => 1,
             'created_by' => $head->id,
         ]);
-        $payload = fn () => [
+        $payload = fn (int $grantId) => [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $version->id,
+            'fmQadTemplateDownloadGrantId' => $grantId,
             'file' => $this->validDocx('completed.docx', bin2hex(random_bytes(8))),
         ];
 
         Sanctum::actingAs($monitor, ['role:monitor']);
         $this->get("/api/fm-qad/template-versions/{$version->id}/download")->assertOk();
         Sanctum::actingAs($head, ['role:school_head']);
-        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload())
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload(999999))
+            ->assertUnprocessable();
+        $otherUserGrant = FmQadTemplateDownloadGrant::query()->create([
+            'fm_qad_template_version_id' => $version->id,
+            'fm_qad_form_id' => $form->id,
+            'academic_year_id' => $year->id,
+            'school_id' => $school->id,
+            'user_id' => $otherUser->id,
+            'downloaded_at' => now(),
+        ]);
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload($otherUserGrant->id))
             ->assertUnprocessable();
 
         Sanctum::actingAs($otherSchoolHead, ['role:school_head']);
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")->assertOk();
+        $otherSchoolGrantId = $this->downloadGrantId($version, $year);
         Sanctum::actingAs($head, ['role:school_head']);
-        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload())
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload($otherSchoolGrantId))
             ->assertUnprocessable();
 
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$otherYear->id}")->assertOk();
-        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload())
+        $otherYearGrantId = $this->downloadGrantId($version, $otherYear);
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", $payload($otherYearGrantId))
             ->assertUnprocessable();
     }
 
@@ -517,6 +607,11 @@ class FmQadTemplateManagementTest extends TestCase
             'academic_year_id' => $year->id,
             'change_notes' => 'Current.',
         ], $monitor, true);
+        $draft = $manager->upload($form, $this->validDocx('draft-download.docx', 'draft-download'), [
+            'revision_label' => 'Rev. 03',
+            'academic_year_id' => $year->id,
+            'change_notes' => 'Draft.',
+        ], $monitor);
         $school = $this->privateSchool();
         $head = $this->user('historical@example.test', 'school_head', $school);
 
@@ -555,8 +650,11 @@ class FmQadTemplateManagementTest extends TestCase
         $this->get("/api/fm-qad/template-versions/{$historical->id}/download?academic_year_id={$year->id}")->assertForbidden();
 
         Sanctum::actingAs($monitor, ['role:monitor']);
+        $grantCount = FmQadTemplateDownloadGrant::query()->count();
         $this->get("/api/fm-qad/template-versions/{$active->id}/download")->assertOk();
         $this->get("/api/fm-qad/template-versions/{$historical->id}/download")->assertOk();
+        $this->get("/api/fm-qad/template-versions/{$draft->id}/download")->assertOk();
+        $this->assertSame($grantCount, FmQadTemplateDownloadGrant::query()->count());
     }
 
     public function test_draft_metadata_editing_normalizes_required_values_and_preserves_blob(): void
@@ -705,6 +803,38 @@ class FmQadTemplateManagementTest extends TestCase
         $this->assertSame(2, $form->versions()->whereHas('blob')->count());
     }
 
+    public function test_import_dry_run_does_not_seed_missing_catalog_and_reports_filtered_missing_and_invalid_files(): void
+    {
+        $directory = sys_get_temp_dir().DIRECTORY_SEPARATOR.'cspams-import-errors-'.bin2hex(random_bytes(6));
+        mkdir($directory);
+        $this->temporaryDirectories[] = $directory;
+        $invalidPath = $directory.DIRECTORY_SEPARATOR.'invalid.docx';
+        file_put_contents($invalidPath, 'not-a-docx-package');
+        $this->temporaryFiles[] = $invalidPath;
+        config([
+            'fm_qad.legacy_directory' => $directory,
+            'fm_qad.forms' => [
+                ['scope_id' => 'fm_qad_003', 'code' => 'FM-QAD-003', 'name' => 'Three', 'filename' => 'invalid.docx'],
+                ['scope_id' => 'fm_qad_004', 'code' => 'FM-QAD-004', 'name' => 'Four', 'filename' => 'missing.docx'],
+            ],
+        ]);
+        $importer = app(LegacyFmQadTemplateImporter::class);
+
+        $invalid = $importer->run(true, 'fm_qad_003');
+        $this->assertSame(1, $invalid['checked']);
+        $this->assertArrayHasKey('fm_qad_003', $invalid['invalid']);
+        $missing = $importer->run(true, 'fm_qad_004');
+        $this->assertSame(1, $missing['checked']);
+        $this->assertSame(['fm_qad_004'], $missing['missing']);
+
+        FmQadForm::query()->delete();
+        $catalogMissing = $importer->run(true, 'fm_qad_003');
+        $this->assertSame(['fm_qad_003:catalog'], $catalogMissing['missing']);
+        $this->assertSame(0, FmQadForm::query()->count());
+        $this->assertSame(0, FmQadTemplateVersion::query()->count());
+        $this->assertSame(0, AuditLog::query()->count());
+    }
+
     public function test_template_audit_detects_corrupt_relationships_and_is_read_only(): void
     {
         $year = $this->year();
@@ -722,22 +852,22 @@ class FmQadTemplateManagementTest extends TestCase
         );
         Sanctum::actingAs($head, ['role:school_head']);
         $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")->assertOk();
-        $receipt = DB::table('fm_qad_template_downloads')->first();
-        DB::table('fm_qad_template_downloads')->where('id', $receipt->id)->update(['fm_qad_form_id' => $otherForm->id]);
+        $grant = DB::table('fm_qad_template_download_grants')->first();
+        DB::table('fm_qad_template_download_grants')->where('id', $grant->id)->update(['fm_qad_form_id' => $otherForm->id]);
         $version->blob()->delete();
         $countsBefore = [
             FmQadTemplateVersion::query()->count(),
-            DB::table('fm_qad_template_downloads')->count(),
+            DB::table('fm_qad_template_download_grants')->count(),
             AuditLog::query()->count(),
         ];
 
         $issues = app(FmQadTemplateAudit::class)->run();
 
         $this->assertContains((string) $version->id, $issues['missingBlobs']);
-        $this->assertContains((string) $receipt->id, $issues['downloadReceiptsWithWrongForm']);
+        $this->assertContains((string) $grant->id, $issues['invalidDownloadGrants']);
         $this->assertSame($countsBefore, [
             FmQadTemplateVersion::query()->count(),
-            DB::table('fm_qad_template_downloads')->count(),
+            DB::table('fm_qad_template_download_grants')->count(),
             AuditLog::query()->count(),
         ]);
     }
@@ -759,6 +889,18 @@ class FmQadTemplateManagementTest extends TestCase
             null,
             true,
         );
+    }
+
+    private function downloadGrantId(FmQadTemplateVersion $version, AcademicYear $year): int
+    {
+        $response = $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
+            ->assertOk()
+            ->assertHeader('X-CSPAMS-FM-QAD-Version-Id', (string) $version->id)
+            ->assertHeader('X-CSPAMS-FM-QAD-Revision', $version->revision_label);
+        $grantId = (int) $response->headers->get('X-CSPAMS-FM-QAD-Download-Grant-Id');
+        $this->assertGreaterThan(0, $grantId);
+
+        return $grantId;
     }
 
     private function createDocxAt(string $path, string $documentContent): void

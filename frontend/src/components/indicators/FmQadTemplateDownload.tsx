@@ -2,19 +2,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/Auth";
 import { useFmQadTemplates } from "@/hooks/useFmQadTemplates";
 import { downloadFmQadVersion } from "@/lib/fmQadTemplatesApi";
-import type { DownloadedFmQadVersionPin, FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
+import type { FmQadDownloadedVersionGrant, FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
 
 export function FmQadTemplateDownload({
   academicYearId,
   onTemplatesChange,
-  pinsByScope = {},
+  grantsByScope = {},
   onDownloaded,
   onTemplateStateChange,
 }: {
   academicYearId: string;
   onTemplatesChange?: (templates: FmQadTemplateForm[]) => void;
-  pinsByScope?: Record<string, DownloadedFmQadVersionPin>;
-  onDownloaded?: (version: FmQadTemplateVersion) => void;
+  grantsByScope?: Record<string, FmQadDownloadedVersionGrant>;
+  onDownloaded?: (version: FmQadTemplateVersion, grantId: string) => void;
   onTemplateStateChange?: (state: { isLoading: boolean; error: string }) => void;
 }) {
   const { apiToken } = useAuth();
@@ -36,15 +36,18 @@ export function FmQadTemplateDownload({
     [selectedTemplateId, templates],
   );
   const version = selectedTemplate?.activeVersion ?? null;
-  const downloadedPin = selectedTemplate ? pinsByScope[selectedTemplate.scopeId] ?? null : null;
+  const downloadedGrant = selectedTemplate ? grantsByScope[selectedTemplate.scopeId] ?? null : null;
 
   const handleDownload = async () => {
     if (!version || isDownloading) return;
     setDownloadError("");
     setIsDownloading(true);
     try {
-      await downloadFmQadVersion(apiToken, version, academicYearId);
-      onDownloaded?.(version);
+      const grant = await downloadFmQadVersion(apiToken, version, academicYearId);
+      if (!grant) {
+        throw new Error("The template download grant could not be verified. Retry the download before uploading.");
+      }
+      onDownloaded?.(version, grant.grantId);
     } catch (cause) {
       setDownloadError(cause instanceof Error ? cause.message : "Template download failed.");
     } finally {
@@ -81,9 +84,9 @@ export function FmQadTemplateDownload({
             {selectedTemplate && !version && <p className="mt-2 text-xs text-amber-700">No active template is configured for this Academic Year.</p>}
             {version && (
               <dl className="mt-2 grid gap-1 text-xs text-slate-600">
-                {downloadedPin && downloadedPin.versionId !== version.id ? (
+                {downloadedGrant && downloadedGrant.versionId !== version.id ? (
                   <>
-                    <div><dt className="inline font-semibold">Downloaded template: </dt><dd className="inline">{downloadedPin.revisionLabel}</dd></div>
+                    <div><dt className="inline font-semibold">Downloaded template: </dt><dd className="inline">{downloadedGrant.revisionLabel}</dd></div>
                     <div><dt className="inline font-semibold">Current active template: </dt><dd className="inline">{version.revisionLabel}</dd></div>
                     <div className="text-amber-700">A newer revision is available. Your existing downloaded or uploaded file has not been changed.</div>
                   </>
@@ -96,7 +99,7 @@ export function FmQadTemplateDownload({
             )}
           </div>
           <button type="button" onClick={() => void handleDownload()} disabled={!version || isDownloading} className="inline-flex shrink-0 items-center justify-center rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-            {isDownloading ? "Downloading..." : downloadedPin && version && downloadedPin.versionId !== version.id ? `Download ${version.revisionLabel}` : "Download Current Template"}
+            {isDownloading ? "Downloading..." : downloadedGrant && version && downloadedGrant.versionId !== version.id ? `Download ${version.revisionLabel}` : "Download Current Template"}
           </button>
         </div>
       )}

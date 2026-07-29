@@ -43,6 +43,11 @@ const template: FmQadTemplateForm = {
 };
 
 beforeEach(() => {
+  vi.mocked(downloadFmQadVersion).mockResolvedValue({
+    grantId: "grant-3",
+    versionId: "version-3",
+    revisionLabel: "Rev. 03",
+  });
   vi.mocked(useFmQadTemplates).mockReturnValue({
     templates: [template],
     isLoading: false,
@@ -125,8 +130,10 @@ describe("FmQadTemplateDownload", () => {
     render(
       <FmQadTemplateDownload
         academicYearId="year-1"
-        pinsByScope={{
+        grantsByScope={{
           fm_qad_003: {
+            grantId: "grant-2",
+            userId: "user-1",
             schoolId: "school-1",
             academicYearId: "year-1",
             scopeId: "fm_qad_003",
@@ -142,6 +149,16 @@ describe("FmQadTemplateDownload", () => {
     expect(screen.getByText(/Downloaded template:/)).toBeTruthy();
     expect(screen.getByText(/A newer revision is available/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Download Rev. 03" }));
-    await waitFor(() => expect(onDownloaded).toHaveBeenCalledWith(template.activeVersion));
+    await waitFor(() => expect(onDownloaded).toHaveBeenCalledWith(template.activeVersion, "grant-3"));
+  });
+
+  it("does not record a local grant when the download fails", async () => {
+    const onDownloaded = vi.fn();
+    vi.mocked(downloadFmQadVersion).mockRejectedValueOnce(new Error("Download failed."));
+    render(<FmQadTemplateDownload academicYearId="year-1" onDownloaded={onDownloaded} />);
+    fireEvent.change(screen.getByLabelText("FM-QAD template"), { target: { value: template.id } });
+    fireEvent.click(screen.getByRole("button", { name: "Download Current Template" }));
+    expect(await screen.findByText("Download failed.")).toBeTruthy();
+    expect(onDownloaded).not.toHaveBeenCalled();
   });
 });

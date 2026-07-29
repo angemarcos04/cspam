@@ -48,9 +48,9 @@ class FmQadTemplateVersion extends Model
         return $this->hasMany(IndicatorSubmissionFile::class);
     }
 
-    public function downloads(): HasMany
+    public function downloadGrants(): HasMany
     {
-        return $this->hasMany(FmQadTemplateDownload::class);
+        return $this->hasMany(FmQadTemplateDownloadGrant::class);
     }
 
     public function uploader(): BelongsTo

@@ -222,7 +222,10 @@ export interface IndicatorDataContextType {
     id: string,
     type: IndicatorSubmissionFileType,
     file: File,
-    fmQadTemplateVersionId?: string | null,
+    fmQadAssociation?: {
+      versionId?: string | null;
+      downloadGrantId?: string | null;
+    },
   ) => Promise<IndicatorSubmission>;
   downloadSubmissionFile: (id: string, type: IndicatorSubmissionFileType) => Promise<void>;
   submitSubmission: (id: string) => Promise<IndicatorSubmission>;
@@ -1847,7 +1850,10 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
       id: string,
       type: IndicatorSubmissionFileType,
       file: File,
-      fmQadTemplateVersionId?: string | null,
+      fmQadAssociation?: {
+        versionId?: string | null;
+        downloadGrantId?: string | null;
+      },
     ): Promise<IndicatorSubmission> => {
       if (!token) {
         throw new Error("You are signed out. Please sign in again.");
@@ -1857,8 +1863,11 @@ export function IndicatorDataProvider({ children }: { children: ReactNode }) {
         const formData = new FormData();
         formData.append("type", type);
         formData.append("file", file);
-        if (fmQadTemplateVersionId) {
-          formData.append("fmQadTemplateVersionId", fmQadTemplateVersionId);
+        if (fmQadAssociation?.versionId) {
+          formData.append("fmQadTemplateVersionId", fmQadAssociation.versionId);
+        }
+        if (fmQadAssociation?.downloadGrantId) {
+          formData.append("fmQadTemplateDownloadGrantId", fmQadAssociation.downloadGrantId);
         }
 
         const response = await apiRequest<IndicatorSubmissionResponse>(`/api/submissions/${id}/upload-file`, {

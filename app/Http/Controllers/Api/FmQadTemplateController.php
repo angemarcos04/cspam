@@ -6,7 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Resources\FmQadTemplateVersionResource;
 use App\Models\AcademicYear;
 use App\Models\FmQadForm;
-use App\Models\FmQadTemplateDownload;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmissionFile;
 use App\Support\Auth\UserRoleResolver;
@@ -26,7 +26,7 @@ class FmQadTemplateController extends Controller
         if (! $isMonitor && ! $isSchoolHead) {
             abort(Response::HTTP_FORBIDDEN);
         }
-        if ($isSchoolHead && strtolower((string) $user?->school?->type) !== 'private') {
+        if ($isSchoolHead && strtolower(trim((string) $user?->school?->type)) !== 'private') {
             return response()->json(['data' => []]);
         }
 
@@ -54,10 +54,13 @@ class FmQadTemplateController extends Controller
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
 
         abort_unless($isMonitor || $isSchoolHead, Response::HTTP_FORBIDDEN);
-        if ($isSchoolHead && strtolower((string) $user?->school?->type) !== 'private') {
+        if ($isSchoolHead && strtolower(trim((string) $user?->school?->type)) !== 'private') {
             abort(Response::HTTP_FORBIDDEN, 'FM-QAD templates are available only to private schools.');
         }
 
+        if ($isSchoolHead && ! $request->filled('academic_year_id')) {
+            abort(Response::HTTP_UNPROCESSABLE_ENTITY, 'An Academic Year is required to download this template.');
+        }
         $academicYearId = $this->academicYearIdForDownload($request, $version);
         $allowed = $isMonitor;
         if ($isSchoolHead) {
@@ -74,9 +77,12 @@ class FmQadTemplateController extends Controller
             abort(Response::HTTP_FORBIDDEN, 'You are not allowed to download this template revision.');
         }
 
+        $content = $storage->content($version);
+        abort_if($content === '' || hash('sha256', $content) !== $version->sha256_hash, 500, 'Template storage integrity check failed.');
+        $filename = str_replace(['"', "\r", "\n"], '-', basename($version->original_filename));
+        $grant = null;
         if ($isSchoolHead) {
-            abort_unless($academicYearId, Response::HTTP_UNPROCESSABLE_ENTITY, 'An Academic Year is required to record this template download.');
-            FmQadTemplateDownload::query()->updateOrCreate(
+            $grant = FmQadTemplateDownloadGrant::query()->updateOrCreate(
                 [
                     'school_id' => $user->school_id,
                     'user_id' => $user->id,
@@ -88,16 +94,19 @@ class FmQadTemplateController extends Controller
             );
         }
 
-        $content = $storage->content($version);
-        abort_if($content === '' || hash('sha256', $content) !== $version->sha256_hash, 500, 'Template storage integrity check failed.');
-        $filename = str_replace(['"', "\r", "\n"], '-', basename($version->original_filename));
-
-        return response($content, 200, [
+        $headers = [
             'Content-Type' => $version->mime_type,
             'Content-Length' => (string) strlen($content),
             'Content-Disposition' => 'attachment; filename="'.$filename.'"',
             'X-Content-Type-Options' => 'nosniff',
-        ]);
+        ];
+        if ($grant) {
+            $headers['X-CSPAMS-FM-QAD-Version-Id'] = (string) $version->id;
+            $headers['X-CSPAMS-FM-QAD-Revision'] = $version->revision_label;
+            $headers['X-CSPAMS-FM-QAD-Download-Grant-Id'] = (string) $grant->id;
+        }
+
+        return response($content, 200, $headers);
     }
 
     private function academicYearIdForDownload(Request $request, FmQadTemplateVersion $version): ?int

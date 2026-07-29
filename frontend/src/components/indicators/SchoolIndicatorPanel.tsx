@@ -15,7 +15,7 @@ import {
 import { CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Edit2, History, Send, Target } from "lucide-react";
 import { FileUploadField } from "@/components/indicators/FileUploadField";
 import { FmQadTemplateDownload } from "@/components/indicators/FmQadTemplateDownload";
-import { useDownloadedFmQadVersionPins } from "@/hooks/useDownloadedFmQadVersionPins";
+import { useFmQadDownloadGrants } from "@/hooks/useFmQadDownloadGrants";
 import {
   SUBMISSION_FILE_DEFINITIONS,
   SUBMISSION_FILE_DEFINITION_BY_TYPE,
@@ -2011,20 +2011,25 @@ function SchoolIndicatorPanelComponent({
   );
   const [fmQadTemplates, setFmQadTemplates] = useState<FmQadTemplateForm[]>([]);
   const [fmQadTemplateState, setFmQadTemplateState] = useState({ isLoading: true, error: "" });
-  const { pinsByScope: fmQadDownloadPins, recordDownload: recordFmQadDownload } = useDownloadedFmQadVersionPins(
+  const {
+    grantsByScope: fmQadDownloadGrants,
+    recordDownload: recordFmQadDownload,
+    discardGrant: discardFmQadDownloadGrant,
+  } = useFmQadDownloadGrants(
+    user?.id ? String(user.id) : "",
     user?.schoolId ? String(user.schoolId) : "",
     workspaceAcademicYearId,
   );
   const fmQadVersionByScope = useMemo(() => {
     const scopeIds = new Set([
       ...fmQadTemplates.map((template) => template.scopeId),
-      ...Object.keys(fmQadDownloadPins),
+      ...Object.keys(fmQadDownloadGrants),
       ...Object.keys(activeWorkspaceSubmission?.files ?? {}).filter((scopeId) => scopeId.startsWith("fm_qad_")),
     ]);
     return new Map([...scopeIds].map((scopeId) => {
       const uploadedVersionId = activeWorkspaceSubmission?.files?.[scopeId as IndicatorSubmissionFileType]
         ?.fmQadTemplateVersionId ?? null;
-      const downloadedVersionId = fmQadDownloadPins[scopeId]?.versionId ?? null;
+      const downloadedVersionId = fmQadDownloadGrants[scopeId]?.versionId ?? null;
       return [
         scopeId,
         downloadedVersionId && downloadedVersionId !== uploadedVersionId
@@ -2032,7 +2037,7 @@ function SchoolIndicatorPanelComponent({
           : uploadedVersionId ?? downloadedVersionId,
       ];
     }));
-  }, [activeWorkspaceSubmission?.files, fmQadDownloadPins, fmQadTemplates]);
+  }, [activeWorkspaceSubmission?.files, fmQadDownloadGrants, fmQadTemplates]);
   const workspaceYearSelectionStorageKey = useMemo(() => {
     const schoolScopeId = user?.schoolId ? String(user.schoolId) : "";
     const userScopeId = user?.id ? String(user.id) : "anonymous";
@@ -6181,11 +6186,32 @@ function SchoolIndicatorPanelComponent({
               throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
             }
 
+            const existingFmQadVersionId = type.startsWith("fm_qad_")
+              ? uploadTarget.files?.[type]?.fmQadTemplateVersionId
+                ?? activeWorkspaceSubmission?.files?.[type]?.fmQadTemplateVersionId
+                ?? null
+              : null;
+            const downloadedGrant = type.startsWith("fm_qad_")
+              ? fmQadDownloadGrants[type] ?? null
+              : null;
+            const switchingRevision = Boolean(
+              downloadedGrant
+              && downloadedGrant.versionId !== existingFmQadVersionId,
+            );
             const updated = await uploadSubmissionFile(
               uploadTarget.id,
               type,
               file,
-              type.startsWith("fm_qad_") ? fmQadVersionByScope.get(type) ?? null : null,
+              type.startsWith("fm_qad_")
+                ? {
+                    versionId: switchingRevision
+                      ? downloadedGrant?.versionId ?? null
+                      : existingFmQadVersionId,
+                    downloadGrantId: switchingRevision
+                      ? downloadedGrant?.grantId ?? null
+                      : null,
+                  }
+                : undefined,
             );
             if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
               throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
@@ -6231,6 +6257,13 @@ function SchoolIndicatorPanelComponent({
           getSuccessMessage: (updated) => `${fileDefinition.shortLabel} file saved for package #${updated.id}.`,
           skipResolvedWorkspaceRehydrate: true,
           onError: (err) => {
+            const rawMessage = err instanceof Error ? err.message.toLowerCase() : "";
+            if (
+              type.startsWith("fm_qad_")
+              && (rawMessage.includes("download grant") || rawMessage.includes("download the applicable"))
+            ) {
+              discardFmQadDownloadGrant(type);
+            }
             setUploadingFileType(null);
             setUploadErrorByType((current) => ({
               ...current,
@@ -6245,7 +6278,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadTemplateState.error, fmQadTemplateState.isLoading, fmQadTemplates, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
+  }, [activeWorkspaceSubmission?.files, autosaveKey, discardFmQadDownloadGrant, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadDownloadGrants, fmQadTemplateState.error, fmQadTemplateState.isLoading, fmQadTemplates, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -6646,7 +6679,7 @@ function SchoolIndicatorPanelComponent({
             <FmQadTemplateDownload
               academicYearId={activeAcademicYearId}
               onTemplatesChange={setFmQadTemplates}
-              pinsByScope={fmQadDownloadPins}
+              grantsByScope={fmQadDownloadGrants}
               onDownloaded={recordFmQadDownload}
               onTemplateStateChange={setFmQadTemplateState}
             />
@@ -6654,11 +6687,25 @@ function SchoolIndicatorPanelComponent({
               .filter(([type, entry]) => type.startsWith("fm_qad_") && entry?.uploaded)
               .map(([type, entry]) => {
                 const currentVersion = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion ?? null;
+                const downloadedGrant = fmQadDownloadGrants[type] ?? null;
+                const revisionsMatch = Boolean(
+                  entry?.fmQadTemplateVersionId
+                  && currentVersion
+                  && entry.fmQadTemplateVersionId === currentVersion.id
+                  && (!downloadedGrant || downloadedGrant.versionId === currentVersion.id),
+                );
                 return (
                   <div key={type} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     <p className="font-semibold uppercase tracking-wide">{type.replace(/_/g, "-")}</p>
-                    <p>Uploaded file version: {entry?.fmQadTemplateRevisionLabel ?? "Template revision not recorded"}</p>
-                    <p>Current active template: {currentVersion?.revisionLabel ?? "Not available"}</p>
+                    {revisionsMatch ? (
+                      <p>Template revision: {currentVersion?.revisionLabel}</p>
+                    ) : (
+                      <>
+                        <p>Current active template: {currentVersion?.revisionLabel ?? "Not available"}</p>
+                        {downloadedGrant && <p>Downloaded template: {downloadedGrant.revisionLabel}</p>}
+                        <p>Uploaded file version: {entry?.fmQadTemplateRevisionLabel ?? "Template revision not recorded"}</p>
+                      </>
+                    )}
                     {entry?.fmQadTemplateVersionId && currentVersion && entry.fmQadTemplateVersionId !== currentVersion.id && (
                       <p className="mt-1 text-amber-700">A newer template revision is available. Your existing uploaded file has not been changed.</p>
                     )}

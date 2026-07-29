@@ -5,7 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class FmQadTemplateDownload extends Model
+class FmQadTemplateDownloadGrant extends Model
 {
     protected $fillable = [
         'fm_qad_template_version_id',

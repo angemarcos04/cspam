@@ -72,7 +72,7 @@ export async function downloadFmQadVersion(
   token: string,
   version: FmQadTemplateVersion,
   academicYearId?: string,
-): Promise<void> {
+): Promise<{ grantId: string; versionId: string; revisionLabel: string } | null> {
   const headers = new Headers({ Accept: "*/*" });
   if (token !== COOKIE_SESSION_TOKEN) headers.set("Authorization", `Bearer ${token}`);
   const separator = version.downloadUrl.includes("?") ? "&" : "?";
@@ -87,6 +87,19 @@ export async function downloadFmQadVersion(
     const payload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(payload?.message || "Template download failed.");
   }
+  const grantId = response.headers.get("X-CSPAMS-FM-QAD-Download-Grant-Id");
+  const authorizedVersionId = response.headers.get("X-CSPAMS-FM-QAD-Version-Id");
+  const authorizedRevision = response.headers.get("X-CSPAMS-FM-QAD-Revision");
+  if (
+    academicYearId
+    && (
+      !grantId
+      || authorizedVersionId !== version.id
+      || authorizedRevision !== version.revisionLabel
+    )
+  ) {
+    throw new Error("The template download grant could not be verified. Retry the download before uploading.");
+  }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -97,4 +110,8 @@ export async function downloadFmQadVersion(
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+
+  return grantId && authorizedVersionId && authorizedRevision
+    ? { grantId, versionId: authorizedVersionId, revisionLabel: authorizedRevision }
+    : null;
 }

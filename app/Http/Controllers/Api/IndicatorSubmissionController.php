@@ -11,7 +11,7 @@ use App\Http\Resources\FormSubmissionHistoryResource;
 use App\Http\Resources\IndicatorSubmissionResource;
 use App\Models\AcademicYear;
 use App\Models\FmQadForm;
-use App\Models\FmQadTemplateDownload;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
@@ -611,6 +611,7 @@ class IndicatorSubmissionController extends Controller
             'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
             'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:pdf,docx,xlsx'],
             'fmQadTemplateVersionId' => ['nullable', 'integer', 'exists:fm_qad_template_versions,id'],
+            'fmQadTemplateDownloadGrantId' => ['nullable', 'integer', 'exists:fm_qad_template_download_grants,id'],
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
@@ -629,32 +630,32 @@ class IndicatorSubmissionController extends Controller
             $suppliedVersionId = isset($validated['fmQadTemplateVersionId'])
                 ? (int) $validated['fmQadTemplateVersionId']
                 : null;
+            $suppliedGrantId = isset($validated['fmQadTemplateDownloadGrantId'])
+                ? (int) $validated['fmQadTemplateDownloadGrantId']
+                : null;
             $version = null;
 
-            if ($existingFile?->fm_qad_template_version_id && $suppliedVersionId === null) {
-                $version = $existingFile->fmQadTemplateVersion;
-            } elseif (
-                $existingFile?->fm_qad_template_version_id
-                && $suppliedVersionId === (int) $existingFile->fm_qad_template_version_id
-            ) {
-                $version = $existingFile->fmQadTemplateVersion;
-            } elseif ($suppliedVersionId !== null) {
-                $version = FmQadTemplateVersion::query()->find($suppliedVersionId);
-                if ($version && ! $this->hasFmQadDownloadReceipt($user, $submission, $form, $version)) {
+            if ($suppliedGrantId !== null) {
+                $grant = FmQadTemplateDownloadGrant::query()
+                    ->with('version')
+                    ->find($suppliedGrantId);
+                $version = $this->versionFromFmQadDownloadGrant($grant, $user, $submission, $form);
+                if ($suppliedVersionId !== null && $suppliedVersionId !== (int) $version->id) {
                     throw ValidationException::withMessages([
-                        'fmQadTemplateVersionId' => 'Download the selected FM-QAD template revision before uploading the accomplished file.',
+                        'fmQadTemplateDownloadGrantId' => 'The FM-QAD download grant does not match the selected template revision.',
+                    ]);
+                }
+            } elseif ($existingFile?->fm_qad_template_version_id) {
+                $version = $existingFile->fmQadTemplateVersion;
+                if ($suppliedVersionId !== null && $suppliedVersionId !== (int) $version?->id) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before switching the accomplished file revision.',
                     ]);
                 }
             } else {
-                $receipt = FmQadTemplateDownload::query()
-                    ->with('version')
-                    ->where('school_id', $submission->school_id)
-                    ->where('user_id', $user->id)
-                    ->where('academic_year_id', $submission->academic_year_id)
-                    ->where('fm_qad_form_id', $form->id)
-                    ->latest('downloaded_at')
-                    ->first();
-                $version = $receipt?->version;
+                throw ValidationException::withMessages([
+                    'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
+                ]);
             }
 
             if (
@@ -666,14 +667,15 @@ class IndicatorSubmissionController extends Controller
                 )
             ) {
                 throw ValidationException::withMessages([
-                    'fmQadTemplateVersionId' => 'No valid FM-QAD template revision is available for this form and Academic Year. Download the current template before uploading the accomplished file.',
+                    'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
                 ]);
             }
 
             $fmQadTemplateVersionId = (int) $version->id;
-        } elseif (! empty($validated['fmQadTemplateVersionId'])) {
+        } elseif (! empty($validated['fmQadTemplateVersionId']) || ! empty($validated['fmQadTemplateDownloadGrantId'])) {
             throw ValidationException::withMessages([
                 'fmQadTemplateVersionId' => 'Template revisions may only be associated with FM-QAD uploads.',
+                'fmQadTemplateDownloadGrantId' => 'Template download grants may only be associated with FM-QAD uploads.',
             ]);
         }
         $this->assertScopesAreNotVerified($submission, [$fileType]);
@@ -811,29 +813,34 @@ class IndicatorSubmissionController extends Controller
         return $this->lightweightSubmissionResponse($submission);
     }
 
-    private function hasFmQadDownloadReceipt(
+    private function versionFromFmQadDownloadGrant(
+        ?FmQadTemplateDownloadGrant $grant,
         User $user,
         IndicatorSubmission $submission,
         FmQadForm $form,
-        FmQadTemplateVersion $version,
-    ): bool {
+    ): FmQadTemplateVersion {
+        $version = $grant?->version;
         if (
-            (int) $version->fm_qad_form_id !== (int) $form->id
+            ! $grant
+            || ! $version
+            || (int) $grant->user_id !== (int) $user->id
+            || (int) $grant->school_id !== (int) $user->school_id
+            || (int) $grant->school_id !== (int) $submission->school_id
+            || (int) $grant->academic_year_id !== (int) $submission->academic_year_id
+            || (int) $grant->fm_qad_form_id !== (int) $form->id
+            || (int) $grant->fm_qad_template_version_id !== (int) $version->id
+            || (int) $version->fm_qad_form_id !== (int) $form->id
             || (
                 $version->academic_year_id !== null
                 && (int) $version->academic_year_id !== (int) $submission->academic_year_id
             )
         ) {
-            return false;
+            throw ValidationException::withMessages([
+                'fmQadTemplateDownloadGrantId' => 'The FM-QAD download grant is not valid for this upload.',
+            ]);
         }
 
-        return FmQadTemplateDownload::query()
-            ->where('school_id', $submission->school_id)
-            ->where('user_id', $user->id)
-            ->where('academic_year_id', $submission->academic_year_id)
-            ->where('fm_qad_form_id', $form->id)
-            ->where('fm_qad_template_version_id', $version->id)
-            ->exists();
+        return $version;
     }
 
     public function downloadFile(Request $request, IndicatorSubmission $submission, string $type)

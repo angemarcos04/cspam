@@ -2376,7 +2376,9 @@ describe("SchoolIndicatorPanel batch submit", () => {
   }, 10_000);
 
   it("stages a report file until Save and then hydrates the full workspace package", async () => {
-    localStorage.setItem("cspams.fm-qad-download:1:year-1:fm_qad_001", JSON.stringify({
+    localStorage.setItem("cspams.fm-qad-download-grant:25:1:year-1:fm_qad_001", JSON.stringify({
+      grantId: "grant-1",
+      userId: "25",
       schoolId: "1",
       academicYearId: "year-1",
       scopeId: "fm_qad_001",
@@ -2520,7 +2522,15 @@ describe("SchoolIndicatorPanel batch submit", () => {
     fireEvent.click(bottomFileSaveButton);
 
     await waitFor(() => {
-      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File), "version-1");
+      expect(uploadSubmissionFile).toHaveBeenCalledWith(
+        "submission-1",
+        "fm_qad_001",
+        expect.any(File),
+        {
+          versionId: "version-1",
+          downloadGrantId: "grant-1",
+        },
+      );
     });
     await waitFor(() => {
       expect(fetchSubmission).toHaveBeenCalledWith("submission-1");

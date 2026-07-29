@@ -3,7 +3,7 @@
 namespace App\Support\FmQad;
 
 use App\Models\FmQadForm;
-use App\Models\FmQadTemplateDownload;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmissionFile;
 
@@ -17,8 +17,7 @@ class FmQadTemplateAudit
             'duplicateActiveVersions' => [], 'missingBlobs' => [], 'hashMismatch' => [],
             'orphanedVersions' => [], 'brokenSubmissionReferences' => [],
             'invalidAcademicYearReferences' => [], 'invalidFormVersionReferences' => [],
-            'downloadReceiptsWithMissingVersion' => [], 'downloadReceiptsWithMissingSchool' => [],
-            'downloadReceiptsWithWrongForm' => [],
+            'invalidDownloadGrants' => [],
         ];
         $configuredScopes = collect(config('fm_qad.forms', []))->pluck('scope_id');
         $existingScopes = FmQadForm::query()->pluck('scope_id');
@@ -64,21 +63,27 @@ class FmQadTemplateAudit
             ->map(fn ($id) => (string) $id)
             ->values()
             ->all();
-        $issues['downloadReceiptsWithMissingVersion'] = FmQadTemplateDownload::query()
-            ->whereDoesntHave('version')
-            ->pluck('id')
-            ->map(fn ($id) => (string) $id)
-            ->all();
-        $issues['downloadReceiptsWithMissingSchool'] = FmQadTemplateDownload::query()
-            ->whereDoesntHave('school')
-            ->pluck('id')
-            ->map(fn ($id) => (string) $id)
-            ->all();
-        $issues['downloadReceiptsWithWrongForm'] = FmQadTemplateDownload::query()
-            ->with('version:id,fm_qad_form_id')
+        $issues['invalidDownloadGrants'] = FmQadTemplateDownloadGrant::query()
+            ->with([
+                'version:id,fm_qad_form_id,academic_year_id',
+                'form:id',
+                'academicYear:id',
+                'school:id',
+                'user:id,school_id',
+            ])
             ->get()
-            ->filter(fn (FmQadTemplateDownload $receipt): bool => $receipt->version
-                && (int) $receipt->fm_qad_form_id !== (int) $receipt->version->fm_qad_form_id)
+            ->filter(function (FmQadTemplateDownloadGrant $grant): bool {
+                if (! $grant->version || ! $grant->form || ! $grant->academicYear || ! $grant->school || ! $grant->user) {
+                    return true;
+                }
+
+                return (int) $grant->fm_qad_form_id !== (int) $grant->version->fm_qad_form_id
+                    || (
+                        $grant->version->academic_year_id !== null
+                        && (int) $grant->academic_year_id !== (int) $grant->version->academic_year_id
+                    )
+                    || (int) $grant->user->school_id !== (int) $grant->school_id;
+            })
             ->pluck('id')
             ->map(fn ($id) => (string) $id)
             ->values()

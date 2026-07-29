@@ -35,7 +35,9 @@ export interface FmQadTemplateForm {
   activeVersions?: FmQadTemplateVersion[];
 }
 
-export interface DownloadedFmQadVersionPin {
+export interface FmQadDownloadedVersionGrant {
+  grantId: string;
+  userId: string;
   schoolId: string;
   academicYearId: string;
   scopeId: string;

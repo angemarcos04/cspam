@@ -5,7 +5,7 @@ namespace Tests\Feature;
 use App\Events\CspamsUpdateBroadcast;
 use App\Models\AcademicYear;
 use App\Models\FmQadForm;
-use App\Models\FmQadTemplateDownload;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
@@ -4327,7 +4327,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         return $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", $payload);
     }
 
-    /** @return array{type:string,file:UploadedFile,fmQadTemplateVersionId:int} */
+    /** @return array{type:string,file:UploadedFile,fmQadTemplateVersionId:int,fmQadTemplateDownloadGrantId:int} */
     private function authorizeFmQadUpload(string $submissionId, string $type, UploadedFile $file): array
     {
         $submission = IndicatorSubmission::query()->findOrFail($submissionId);
@@ -4356,7 +4356,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             ]);
             $version->blob()->create(['content' => $content, 'content_sha256' => $hash]);
         }
-        FmQadTemplateDownload::query()->updateOrCreate([
+        $grant = FmQadTemplateDownloadGrant::query()->updateOrCreate([
             'fm_qad_template_version_id' => $version->id,
             'fm_qad_form_id' => $form->id,
             'academic_year_id' => $submission->academic_year_id,
@@ -4368,6 +4368,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
             'type' => $type,
             'file' => $file,
             'fmQadTemplateVersionId' => (int) $version->id,
+            'fmQadTemplateDownloadGrantId' => (int) $grant->id,
         ];
     }
 
