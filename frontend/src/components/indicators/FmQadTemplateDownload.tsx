@@ -2,16 +2,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/Auth";
 import { useFmQadTemplates } from "@/hooks/useFmQadTemplates";
 import { downloadFmQadVersion } from "@/lib/fmQadTemplatesApi";
-import type { FmQadTemplateForm } from "@/types/fmQadTemplates";
+import type { FmQadDownloadedVersionGrant, FmQadTemplateForm } from "@/types/fmQadTemplates";
 
 export function FmQadTemplateDownload({
   academicYearId,
   onTemplatesChange,
+  onGrantChange,
+  onStateChange,
 }: {
   academicYearId: string;
   onTemplatesChange?: (templates: FmQadTemplateForm[]) => void;
+  onGrantChange?: (grant: FmQadDownloadedVersionGrant) => void;
+  onStateChange?: (state: { isLoading: boolean; error: string }) => void;
 }) {
-  const { apiToken } = useAuth();
+  const { apiToken, user } = useAuth();
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   const [downloadError, setDownloadError] = useState("");
@@ -21,6 +25,7 @@ export function FmQadTemplateDownload({
     enabled: Boolean(academicYearId),
   });
   useEffect(() => onTemplatesChange?.(templates), [onTemplatesChange, templates]);
+  useEffect(() => onStateChange?.({ isLoading, error }), [error, isLoading, onStateChange]);
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templates],
@@ -32,7 +37,14 @@ export function FmQadTemplateDownload({
     setDownloadError("");
     setIsDownloading(true);
     try {
-      await downloadFmQadVersion(apiToken, version);
+      const grant = await downloadFmQadVersion(apiToken, version, {
+        academicYearId,
+        schoolId: String(user?.schoolId ?? ""),
+      });
+      if (!grant) throw new Error("The download completed, but its authorization could not be verified. Download it again before uploading.");
+      const storageKey = `cspams:fm-qad-grant:${user?.id ?? "unknown"}:${grant.schoolId}:${academicYearId}:${grant.scopeId}`;
+      sessionStorage.setItem(storageKey, JSON.stringify(grant));
+      onGrantChange?.(grant);
     } catch (cause) {
       setDownloadError(cause instanceof Error ? cause.message : "Template download failed.");
     } finally {
@@ -66,7 +78,7 @@ export function FmQadTemplateDownload({
                 <option key={template.id} value={template.id}>{template.code} - {template.name}</option>
               ))}
             </select>
-            {selectedTemplate && !version && <p className="mt-2 text-xs text-amber-700">No active template is configured for this Academic Year.</p>}
+            {selectedTemplate && !version && <p className="mt-2 text-xs text-amber-700">No active template revision is configured for this form and Academic Year.</p>}
             {version && (
               <dl className="mt-2 grid gap-1 text-xs text-slate-600">
                 <div><dt className="inline font-semibold">Current revision: </dt><dd className="inline">{version.revisionLabel}</dd></div>

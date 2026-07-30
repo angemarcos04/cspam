@@ -10,9 +10,9 @@ use App\Http\Requests\Api\UpsertIndicatorSubmissionRequest;
 use App\Http\Resources\FormSubmissionHistoryResource;
 use App\Http\Resources\IndicatorSubmissionResource;
 use App\Models\AcademicYear;
-use App\Models\FormSubmissionHistory;
 use App\Models\FmQadForm;
-use App\Models\FmQadTemplateVersion;
+use App\Models\FmQadTemplateDownloadGrant;
+use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionScopeReview;
 use App\Models\IndicatorSubmissionScopeSubmission;
@@ -28,7 +28,6 @@ use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
 use App\Support\Domain\MetricDataType;
 use App\Support\Forms\FormSubmissionHistoryLogger;
-use App\Support\FmQad\FmQadTemplateVersionManager;
 use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileDefinition;
@@ -158,6 +157,7 @@ class IndicatorSubmissionController extends Controller
                 'academicYear:id,name',
                 'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
                 'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+                'submissionFiles.fmQadTemplateVersion:id,revision_label',
                 'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
                 'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
                 'scopeReviews.reviewedBy:id,name,email',
@@ -195,6 +195,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
@@ -345,6 +346,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -355,6 +357,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -442,6 +445,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'createdBy:id,name,email',
             'submittedBy:id,name,email',
             'reviewedBy:id,name,email',
@@ -611,29 +615,66 @@ class IndicatorSubmissionController extends Controller
             'type' => ['required', 'string', Rule::in(SubmissionFileDefinition::types())],
             'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:pdf,docx,xlsx'],
             'fmQadTemplateVersionId' => ['nullable', 'integer', 'exists:fm_qad_template_versions,id'],
+            'fmQadTemplateDownloadGrantId' => ['nullable', 'integer'],
         ]);
 
         $fileType = strtolower(trim((string) $validated['type']));
         $fmQadTemplateVersionId = null;
         if (str_starts_with($fileType, 'fm_qad_')) {
             $form = FmQadForm::query()->where('scope_id', $fileType)->first();
-            if ($form) {
-                $manager = app(FmQadTemplateVersionManager::class);
-                $version = isset($validated['fmQadTemplateVersionId'])
-                    ? FmQadTemplateVersion::query()->find((int) $validated['fmQadTemplateVersionId'])
-                    : $manager->effective($form, (int) $submission->academic_year_id);
-                $isPinnedToDraft = $version && $submission->submissionFiles()
-                    ->where('type', $fileType)
-                    ->where('fm_qad_template_version_id', $version->id)
-                    ->exists();
-                if ($version && ! $manager->isApplicable($version, $form, (int) $submission->academic_year_id) && ! $isPinnedToDraft) {
+            if (! $form) {
+                throw ValidationException::withMessages([
+                    'type' => 'The selected FM-QAD form is not configured.',
+                ]);
+            }
+            $existingFile = $submission->submissionFiles()->where('type', $fileType)->first();
+            $grantId = $validated['fmQadTemplateDownloadGrantId'] ?? null;
+            if ($grantId) {
+                $grant = FmQadTemplateDownloadGrant::query()
+                    ->whereKey((int) $grantId)
+                    ->where('user_id', $user->id)
+                    ->where('school_id', $submission->school_id)
+                    ->where('academic_year_id', $submission->academic_year_id)
+                    ->where('fm_qad_form_id', $form->id)
+                    ->first();
+                if (! $grant) {
                     throw ValidationException::withMessages([
-                        'fmQadTemplateVersionId' => 'The selected template revision is not active for this FM-QAD form and Academic Year.',
+                        'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
                     ]);
                 }
-                $fmQadTemplateVersionId = $version?->id;
+                $version = $grant->version()->where('fm_qad_form_id', $form->id)->first();
+                if (! $version) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
+                    ]);
+                }
+                if (! empty($validated['fmQadTemplateVersionId'])
+                    && (int) $validated['fmQadTemplateVersionId'] !== (int) $version->id) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateVersionId' => 'The template revision does not match the authorized download.',
+                    ]);
+                }
+                $fmQadTemplateVersionId = $version->id;
+            } elseif ($existingFile?->fm_qad_template_version_id) {
+                $version = $existingFile->fmQadTemplateVersion;
+                if (! $version || (int) $version->fm_qad_form_id !== (int) $form->id) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
+                    ]);
+                }
+                if (! empty($validated['fmQadTemplateVersionId'])
+                    && (int) $validated['fmQadTemplateVersionId'] !== (int) $version->id) {
+                    throw ValidationException::withMessages([
+                        'fmQadTemplateDownloadGrantId' => 'Download the newer FM-QAD revision before switching versions.',
+                    ]);
+                }
+                $fmQadTemplateVersionId = $version->id;
+            } else {
+                throw ValidationException::withMessages([
+                    'fmQadTemplateDownloadGrantId' => 'Download the applicable FM-QAD template before uploading the accomplished file.',
+                ]);
             }
-        } elseif (! empty($validated['fmQadTemplateVersionId'])) {
+        } elseif (! empty($validated['fmQadTemplateVersionId']) || ! empty($validated['fmQadTemplateDownloadGrantId'])) {
             throw ValidationException::withMessages([
                 'fmQadTemplateVersionId' => 'Template revisions may only be associated with FM-QAD uploads.',
             ]);
@@ -1463,6 +1504,7 @@ class IndicatorSubmissionController extends Controller
         $submission->refresh()->loadMissing([
             'school:id,school_code,name,type',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
@@ -1527,6 +1569,7 @@ class IndicatorSubmissionController extends Controller
             'academicYear:id,name',
             'items.metric:id,code,name,category,framework,data_type,input_schema,unit,sort_order',
             'submissionFiles:id,indicator_submission_id,type,fm_qad_template_version_id,path,original_filename,size_bytes,uploaded_at',
+            'submissionFiles.fmQadTemplateVersion:id,revision_label',
             'scopeSubmissions:id,indicator_submission_id,scope_id,scope_type,submitted_by,submitted_at',
             'scopeStateHistories:id,submission_id,form_type,action,to_status,metadata,created_at',
             'scopeReviews.reviewedBy:id,name,email',
@@ -2262,6 +2305,10 @@ class IndicatorSubmissionController extends Controller
             $uploaded = $submission->hasSubmissionFileType($type);
             $available = $uploaded && $this->submissionFileExistsForType($submission, $type);
             $missingFromStorage = $uploaded && $this->submissionFileMissingFromStorage($submission, $type);
+            $submissionFile = $submission->submissionFiles->firstWhere('type', $type);
+            $templateVersion = $submissionFile && $submissionFile->relationLoaded('fmQadTemplateVersion')
+                ? $submissionFile->fmQadTemplateVersion
+                : null;
             $files[$type] = [
                 'type' => $type,
                 'uploaded' => $uploaded,
@@ -2273,6 +2320,8 @@ class IndicatorSubmissionController extends Controller
                 'uploadedAt' => optional($submission->submissionFileUploadedAtForType($type))->toISOString(),
                 'downloadUrl' => $available ? "/api/submissions/{$submission->id}/download/{$type}" : null,
                 'viewUrl' => $available ? "/api/submissions/{$submission->id}/view/{$type}" : null,
+                'fmQadTemplateVersionId' => $uploaded && $templateVersion ? (string) $templateVersion->id : null,
+                'fmQadTemplateRevisionLabel' => $uploaded ? $templateVersion?->revision_label : null,
             ];
         }
 

@@ -4,12 +4,12 @@ use App\Models\School;
 use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
-use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
+use App\Support\FmQad\FmQadTemplateAudit;
+use App\Support\FmQad\LegacyFmQadTemplateImporter;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionStorageAudit;
-use App\Support\FmQad\LegacyFmQadTemplateImporter;
-use App\Support\FmQad\FmQadTemplateAudit;
+use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -23,10 +23,19 @@ Artisan::command('inspire', function () {
 
 Artisan::command('cspams:import-fm-qad-templates {--dry-run} {--force} {--form=}', function (LegacyFmQadTemplateImporter $importer): int {
     $result = $importer->run((bool) $this->option('dry-run'), $this->option('form') ?: null, (bool) $this->option('force'));
-    $this->table(['Checked', 'Imported', 'Skipped', 'Missing', 'Invalid'], [[
-        $result['checked'], $result['imported'], $result['skipped'], implode(', ', $result['missing']), implode(', ', array_keys($result['invalid'])),
+    $dryRun = (bool) $this->option('dry-run');
+    $this->table(['Checked', $dryRun ? 'Would import' : 'Imported', $dryRun ? 'Would skip' : 'Skipped', $dryRun ? 'Would reactivate' : 'Reactivated', 'Missing', 'Invalid'], [[
+        $result['checked'],
+        $result[$dryRun ? 'wouldImport' : 'imported'],
+        $result[$dryRun ? 'wouldSkip' : 'skipped'],
+        $result[$dryRun ? 'wouldReactivate' : 'reactivated'],
+        implode(', ', $result['missing']),
+        implode(', ', array_keys($result['invalid'])),
     ]]);
-    foreach ($result['invalid'] as $scope => $message) $this->error($scope.': '.$message);
+    foreach ($result['invalid'] as $scope => $message) {
+        $this->error($scope.': '.$message);
+    }
+
     return ($result['missing'] === [] && $result['invalid'] === []) ? self::SUCCESS : self::FAILURE;
 })->purpose('Import the bundled FM-QAD DOCX files into persistent version storage.');
 
@@ -35,6 +44,7 @@ Artisan::command('cspams:audit-fm-qad-templates', function (FmQadTemplateAudit $
     foreach ($issues as $label => $values) {
         $this->line($label.': '.($values === [] ? 'OK' : implode(', ', $values)));
     }
+
     return collect($issues)->every(fn ($values) => $values === []) ? self::SUCCESS : self::FAILURE;
 })->purpose('Read-only integrity audit for the FM-QAD template library.');
 
@@ -42,9 +52,10 @@ Artisan::command('cspams:sync-rolling-years', function (): int {
     $result = app(RollingIndicatorYearWindow::class)->sync();
 
     $this->info('Indicator school-year window synchronized.');
-    $this->line('Years: ' . implode(', ', $result['years']));
-    $this->line('Metric schemas updated: ' . $result['metricsUpdated']);
-    $this->line('Submission matrix rows pruned: ' . $result['itemsUpdated']);
+    $this->line('Years: '.implode(', ', $result['years']));
+    $this->line('Metric schemas updated: '.$result['metricsUpdated']);
+    $this->line('Submission matrix rows pruned: '.$result['itemsUpdated']);
+
     return self::SUCCESS;
 })->purpose('Synchronize rolling academic-year windows and purge out-of-window indicator data.');
 
@@ -58,11 +69,13 @@ Schedule::command('cspams:sync-rolling-years')
 Artisan::command('accounts:sync-school-head-account-type', function (): void {
     if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'account_type')) {
         $this->error('School Head account_type storage is unavailable. Run database migrations first.');
+
         return;
     }
 
     if (! Schema::hasTable('roles') || ! Schema::hasTable('model_has_roles')) {
         $this->error('Role tables are unavailable. Run database migrations first.');
+
         return;
     }
 
@@ -72,6 +85,7 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
 
     if ($roleId === null) {
         $this->warn('No school_head role found. Seed roles and permissions first.');
+
         return;
     }
 
@@ -85,6 +99,7 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
 
     if ($userIds === []) {
         $this->info('No School Head users found. Nothing to update.');
+
         return;
     }
 
@@ -103,9 +118,10 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
     if ($duplicateSchoolIds->isNotEmpty()) {
         $this->error(
             'Duplicate School Head role assignments detected for school_id(s): '
-            . $duplicateSchoolIds->implode(', ')
+            .$duplicateSchoolIds->implode(', ')
         );
         $this->line('Resolve duplicates first, then re-run this command.');
+
         return;
     }
 
@@ -114,12 +130,13 @@ Artisan::command('accounts:sync-school-head-account-type', function (): void {
         ->update(['account_type' => UserRoleResolver::SCHOOL_HEAD]);
 
     $this->info('School Head account_type synchronized.');
-    $this->line('Updated users: ' . $updated);
+    $this->line('Updated users: '.$updated);
 })->purpose('Backfill users.account_type for School Head accounts based on role assignments.');
 
 Artisan::command('accounts:audit-school-head-duplicates', function (): int {
     if (! Schema::hasTable('users') || ! Schema::hasColumn('users', 'school_id')) {
         $this->error('School Head account storage is unavailable. Run database migrations first.');
+
         return self::FAILURE;
     }
 
@@ -138,6 +155,7 @@ Artisan::command('accounts:audit-school-head-duplicates', function (): int {
 
         if ($roleId === null) {
             $this->warn('No school_head role found. Seed roles and permissions first.');
+
             return self::FAILURE;
         }
 
@@ -151,12 +169,14 @@ Artisan::command('accounts:audit-school-head-duplicates', function (): int {
 
         if ($userIds === []) {
             $this->info('No School Head users found.');
+
             return self::SUCCESS;
         }
 
         $query->whereIn('id', $userIds);
     } else {
         $this->error('Cannot audit School Head duplicates because neither users.account_type nor role tables are available.');
+
         return self::FAILURE;
     }
 
@@ -167,6 +187,7 @@ Artisan::command('accounts:audit-school-head-duplicates', function (): int {
 
     if ($duplicates->isEmpty()) {
         $this->info('No duplicate School Head accounts detected.');
+
         return self::SUCCESS;
     }
 
@@ -190,26 +211,27 @@ Artisan::command('indicators:audit-school-head-data-integrity', function (): int
     $report = app(SchoolHeadDataIntegrityAudit::class)->run();
 
     $this->info('School Head data-integrity audit');
-    $this->line('  school_head_users: ' . $report['counts']['school_head_users']);
-    $this->line('  indicator_submissions: ' . $report['counts']['indicator_submissions']);
-    $this->line('  indicator_submission_files: ' . $report['counts']['indicator_submission_files']);
+    $this->line('  school_head_users: '.$report['counts']['school_head_users']);
+    $this->line('  indicator_submissions: '.$report['counts']['indicator_submissions']);
+    $this->line('  indicator_submission_files: '.$report['counts']['indicator_submission_files']);
 
     foreach ($report['warnings'] as $warning) {
-        $this->warn('Warning: ' . $warning);
+        $this->warn('Warning: '.$warning);
     }
 
     foreach ($report['anomalies'] as $key => $rows) {
         if ($rows === []) {
             $this->line("  {$key}: OK");
+
             continue;
         }
 
-        $this->error("  {$key}: " . count($rows) . ' issue(s)');
+        $this->error("  {$key}: ".count($rows).' issue(s)');
         foreach ($rows as $row) {
             $serialized = collect($row)
-                ->map(static fn (mixed $value, string $field): string => $field . '=' . (is_scalar($value) || $value === null ? (string) ($value ?? 'null') : json_encode($value)))
+                ->map(static fn (mixed $value, string $field): string => $field.'='.(is_scalar($value) || $value === null ? (string) ($value ?? 'null') : json_encode($value)))
                 ->implode(' ');
-            $this->line('    - ' . $serialized);
+            $this->line('    - '.$serialized);
         }
     }
 
@@ -291,7 +313,7 @@ Artisan::command('cspams:diagnose-submission-storage {--json : Output machine-re
 
         $this->info('Submission storage diagnostics');
         foreach ($diagnostics as $key => $value) {
-            $this->line("  {$key}: " . $formatValue($value));
+            $this->line("  {$key}: ".$formatValue($value));
         }
     }
 
@@ -315,9 +337,9 @@ Artisan::command(
             $this->line((string) json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
         } else {
             $this->info('Submission storage audit');
-            $this->line('  metadata rows scanned: ' . $summary['totalMetadataRows']);
-            $this->line('  rows displayed: ' . $summary['displayedRows']);
-            $this->line('  re-upload required: ' . $summary['reuploadRequired']);
+            $this->line('  metadata rows scanned: '.$summary['totalMetadataRows']);
+            $this->line('  rows displayed: '.$summary['displayedRows']);
+            $this->line('  re-upload required: '.$summary['reuploadRequired']);
 
             if ($rows === []) {
                 $this->line('No matching submission file metadata rows found.');
@@ -353,11 +375,13 @@ Artisan::command('cspams:purge-demo-data {--force : Required to run the purge} {
     if (! $this->option('force')) {
         $this->error('Refusing to purge demo data without --force.');
         $this->line('Run: php artisan cspams:purge-demo-data --force');
+
         return self::FAILURE;
     }
 
     if (! Schema::hasTable('users') || ! Schema::hasTable('schools')) {
         $this->error('Required tables are missing. Run migrations first.');
+
         return self::FAILURE;
     }
 
@@ -421,9 +445,9 @@ Artisan::command('cspams:purge-demo-data {--force : Required to run the purge} {
     });
 
     $this->info('Demo data purge completed.');
-    $this->line('  deleted_school_head_users: ' . $result['deleted_school_head_users']);
-    $this->line('  cleared_school_submission_references: ' . $result['cleared_school_submission_references']);
-    $this->line('  archived_demo_schools: ' . $result['archived_demo_schools']);
+    $this->line('  deleted_school_head_users: '.$result['deleted_school_head_users']);
+    $this->line('  cleared_school_submission_references: '.$result['cleared_school_submission_references']);
+    $this->line('  archived_demo_schools: '.$result['archived_demo_schools']);
     $this->line('  monitor_account_deleted: no');
 
     if (! $withSchools) {
@@ -438,9 +462,10 @@ Artisan::command('app:check-production-config', function (): int {
         app(AppServiceProvider::class)->runProductionConfigurationAudit();
     } catch (\RuntimeException $e) {
         $this->error('Production configuration is UNSAFE:');
-        $this->line('  ' . $e->getMessage());
+        $this->line('  '.$e->getMessage());
         $this->newLine();
         $this->line('Fix the listed configuration issues and re-run before deploying.');
+
         return self::FAILURE;
     }
 
@@ -460,12 +485,12 @@ Artisan::command('app:check-verification-delivery', function (): int {
     $issues = [];
 
     $this->line('Verification delivery status');
-    $this->line('  mailer: ' . $mailer);
-    $this->line('  mail from: ' . ($fromAddress !== '' ? $fromAddress : '(missing)'));
-    $this->line('  monitor MFA enabled: ' . ($mfaEnabled ? 'yes' : 'no'));
-    $this->line('  monitor MFA delivery mode: ' . ($deliveryMode !== '' ? $deliveryMode : '(missing)'));
-    $this->line('  effective queue: ' . $effectiveQueue);
-    $this->line('  monitor MFA test code: ' . ($testCode !== '' ? 'configured' : 'empty'));
+    $this->line('  mailer: '.$mailer);
+    $this->line('  mail from: '.($fromAddress !== '' ? $fromAddress : '(missing)'));
+    $this->line('  monitor MFA enabled: '.($mfaEnabled ? 'yes' : 'no'));
+    $this->line('  monitor MFA delivery mode: '.($deliveryMode !== '' ? $deliveryMode : '(missing)'));
+    $this->line('  effective queue: '.$effectiveQueue);
+    $this->line('  monitor MFA test code: '.($testCode !== '' ? 'configured' : 'empty'));
 
     if (\App\Support\Mail\MailDelivery::isSimulated()) {
         $issues[] = "MAIL_MAILER='{$mailer}' only simulates delivery.";
@@ -511,13 +536,14 @@ Artisan::command('app:check-verification-delivery', function (): int {
     if ($issues === []) {
         $this->newLine();
         $this->info('Verification delivery is configured for real inbox delivery.');
+
         return self::SUCCESS;
     }
 
     $this->newLine();
     $this->error('Verification delivery is not production-ready:');
     foreach ($issues as $issue) {
-        $this->line('  - ' . $issue);
+        $this->line('  - '.$issue);
     }
 
     return self::FAILURE;
@@ -526,6 +552,7 @@ Artisan::command('app:check-verification-delivery', function (): int {
 Artisan::command('e2e:seed-monitor-review', function (): int {
     if (! app()->environment('testing')) {
         $this->error('Refusing to seed monitor review E2E data outside APP_ENV=testing.');
+
         return self::FAILURE;
     }
 
@@ -541,6 +568,7 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
     foreach ($requiredTables as $table) {
         if (! Schema::hasTable($table)) {
             $this->error("Required table is missing: {$table}. Run migrations first.");
+
             return self::FAILURE;
         }
     }
@@ -868,7 +896,7 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
     });
 
     $this->info('Seeded monitor review live E2E data.');
-    $this->line('Monitor login: ' . $monitorEmail);
+    $this->line('Monitor login: '.$monitorEmail);
     $this->line('Verify school: AMA Computer College-Santiago City');
     $this->line('Return school: CSPAMS Return Flow School');
 

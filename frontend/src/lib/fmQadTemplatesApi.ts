@@ -1,6 +1,6 @@
 import { apiRequest, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
 import type { AcademicYearOption } from "@/types";
-import type { FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
+import type { FmQadDownloadedVersionGrant, FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
 
 export async function fetchEffectiveFmQadTemplates(token: string, academicYearId: string, signal?: AbortSignal) {
   const response = await apiRequest<{ data: FmQadTemplateForm[] }>(
@@ -10,17 +10,17 @@ export async function fetchEffectiveFmQadTemplates(token: string, academicYearId
   return response.data;
 }
 
-export async function fetchMonitorFmQadForms(token: string) {
+export async function fetchMonitorFmQadForms(token: string, signal?: AbortSignal) {
   return apiRequest<{ data: FmQadTemplateForm[]; academicYears: AcademicYearOption[] }>(
     "/api/monitor/fm-qad/forms",
-    { token },
+    { token, signal },
   );
 }
 
-export async function fetchFmQadVersions(token: string, formId: string) {
+export async function fetchFmQadVersions(token: string, formId: string, signal?: AbortSignal) {
   const response = await apiRequest<{ data: FmQadTemplateVersion[] }>(
     `/api/monitor/fm-qad/forms/${encodeURIComponent(formId)}/versions`,
-    { token },
+    { token, signal },
   );
   return response.data;
 }
@@ -55,10 +55,30 @@ export async function mutateFmQadVersion(token: string, versionId: string, actio
   return response.data;
 }
 
-export async function downloadFmQadVersion(token: string, version: FmQadTemplateVersion): Promise<void> {
+export async function updateFmQadVersionMetadata(token: string, versionId: string, payload: {
+  revisionLabel: string;
+  academicYearId: string | null;
+  changeNotes: string;
+  internalNote: string | null;
+}, signal?: AbortSignal) {
+  const response = await apiRequest<{ data: FmQadTemplateVersion }>(
+    `/api/monitor/fm-qad/template-versions/${encodeURIComponent(versionId)}`,
+    { method: "PATCH", token, body: payload, signal },
+  );
+  return response.data;
+}
+
+export async function downloadFmQadVersion(
+  token: string,
+  version: FmQadTemplateVersion,
+  options?: { academicYearId?: string; schoolId?: string },
+): Promise<FmQadDownloadedVersionGrant | null> {
   const headers = new Headers({ Accept: "*/*" });
   if (token !== COOKIE_SESSION_TOKEN) headers.set("Authorization", `Bearer ${token}`);
-  const response = await fetch(`${getApiBaseUrl()}${version.downloadUrl}`, {
+  const query = options?.academicYearId
+    ? `${version.downloadUrl.includes("?") ? "&" : "?"}academic_year_id=${encodeURIComponent(options.academicYearId)}`
+    : "";
+  const response = await fetch(`${getApiBaseUrl()}${version.downloadUrl}${query}`, {
     credentials: token === COOKIE_SESSION_TOKEN ? "include" : "omit",
     headers,
   });
@@ -66,6 +86,9 @@ export async function downloadFmQadVersion(token: string, version: FmQadTemplate
     const payload = await response.json().catch(() => null) as { message?: string } | null;
     throw new Error(payload?.message || "Template download failed.");
   }
+  const grantId = response.headers.get("X-CSPAMS-FM-QAD-Download-Grant-Id");
+  const versionId = response.headers.get("X-CSPAMS-FM-QAD-Version-Id");
+  const revisionLabel = response.headers.get("X-CSPAMS-FM-QAD-Revision");
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -76,4 +99,14 @@ export async function downloadFmQadVersion(token: string, version: FmQadTemplate
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  if (!grantId || !versionId || !revisionLabel || !options?.academicYearId || !options.schoolId) return null;
+  return {
+    grantId,
+    schoolId: options.schoolId,
+    academicYearId: options.academicYearId,
+    scopeId: version.scopeId,
+    versionId,
+    revisionLabel,
+    downloadedAt: new Date().toISOString(),
+  };
 }

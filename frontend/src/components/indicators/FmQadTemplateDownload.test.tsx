@@ -5,7 +5,7 @@ import { useFmQadTemplates } from "@/hooks/useFmQadTemplates";
 import { downloadFmQadVersion } from "@/lib/fmQadTemplatesApi";
 import type { FmQadTemplateForm } from "@/types/fmQadTemplates";
 
-vi.mock("@/context/Auth", () => ({ useAuth: () => ({ apiToken: "test-token" }) }));
+vi.mock("@/context/Auth", () => ({ useAuth: () => ({ apiToken: "test-token", user: { id: 7, schoolId: 11 } }) }));
 vi.mock("@/hooks/useFmQadTemplates", () => ({ useFmQadTemplates: vi.fn() }));
 vi.mock("@/lib/fmQadTemplatesApi", () => ({ downloadFmQadVersion: vi.fn() }));
 
@@ -43,6 +43,11 @@ const template: FmQadTemplateForm = {
 };
 
 beforeEach(() => {
+  vi.mocked(downloadFmQadVersion).mockResolvedValue({
+    grantId: "grant-3", schoolId: "11", academicYearId: "year-1",
+    scopeId: "fm_qad_003", versionId: "version-3", revisionLabel: "Rev. 03",
+    downloadedAt: "2026-07-31T00:00:00.000Z",
+  });
   vi.mocked(useFmQadTemplates).mockReturnValue({
     templates: [template],
     isLoading: false,
@@ -81,7 +86,12 @@ describe("FmQadTemplateDownload", () => {
       target: { value: template.id },
     });
     fireEvent.click(screen.getByRole("button", { name: "Download Current Template" }));
-    await waitFor(() => expect(downloadFmQadVersion).toHaveBeenCalledWith("test-token", template.activeVersion));
+    await waitFor(() => expect(downloadFmQadVersion).toHaveBeenCalledWith(
+      "test-token",
+      template.activeVersion,
+      { academicYearId: "year-1", schoolId: "11" },
+    ));
+    expect(sessionStorage.getItem("cspams:fm-qad-grant:7:11:year-1:fm_qad_003")).toContain("grant-3");
     expect(submitHandler).not.toHaveBeenCalled();
   });
 
@@ -96,7 +106,7 @@ describe("FmQadTemplateDownload", () => {
     fireEvent.change(screen.getByLabelText("FM-QAD template"), {
       target: { value: template.id },
     });
-    expect(screen.getByText(/No active template is configured/i)).toBeTruthy();
+    expect(screen.getByText(/No active template revision is configured/i)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Download Current Template" }) as HTMLButtonElement).disabled).toBe(true);
   });
 

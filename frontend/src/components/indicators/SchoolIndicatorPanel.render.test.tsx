@@ -2334,7 +2334,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     });
   }, 10_000);
 
-  it("stages a report file until Save and then hydrates the full workspace package", async () => {
+  it("stages a new FM-QAD file but blocks Save until template authority is verified", async () => {
     const refreshSubmissions = vi.fn().mockResolvedValue(undefined);
     const uploadSubmissionFile = vi.fn().mockResolvedValue({
       ...buildHydratedSubmission("submission-1"),
@@ -2470,13 +2470,8 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect((bottomFileSaveButton as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(bottomFileSaveButton);
 
-    await waitFor(() => {
-      expect(uploadSubmissionFile).toHaveBeenCalledWith("submission-1", "fm_qad_001", expect.any(File), null);
-    });
-    await waitFor(() => {
-      expect(fetchSubmission).toHaveBeenCalledWith("submission-1");
-    });
-    expect(await screen.findByText(/hydrated-fm-qad-001\.pdf/i)).not.toBeNull();
+    await waitFor(() => expect(uploadSubmissionFile).not.toHaveBeenCalled());
+    expect(fetchSubmission).not.toHaveBeenCalled();
     expect(refreshSubmissions).not.toHaveBeenCalled();
   }, 10_000);
 

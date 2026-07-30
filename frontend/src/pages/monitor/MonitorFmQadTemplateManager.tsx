@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
-import { Archive, Download, FileUp, RefreshCw, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { Archive, Download, FileUp, Pencil, RefreshCw, X } from "lucide-react";
 import { useAuth } from "@/context/Auth";
 import {
   downloadFmQadVersion,
   fetchFmQadVersions,
   fetchMonitorFmQadForms,
   mutateFmQadVersion,
+  updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
 import type { AcademicYearOption } from "@/types";
@@ -26,27 +27,60 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   const [changeNotes, setChangeNotes] = useState("");
   const [internalNote, setInternalNote] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [editingVersion, setEditingVersion] = useState<FmQadTemplateVersion | null>(null);
+  const formRequestSequenceRef = useRef(0);
+  const versionRequestSequenceRef = useRef(0);
+  const formAbortControllerRef = useRef<AbortController | null>(null);
+  const versionAbortControllerRef = useRef<AbortController | null>(null);
+  const selectedFormIdRef = useRef<string | null>(null);
+
+  const loadVersions = useCallback(async (formId: string) => {
+    const sequence = ++versionRequestSequenceRef.current;
+    versionAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    versionAbortControllerRef.current = controller;
+    const result = await fetchFmQadVersions(apiToken, formId, controller.signal);
+    if (sequence === versionRequestSequenceRef.current && selectedFormIdRef.current === formId) {
+      setVersions(result);
+    }
+  }, [apiToken]);
 
   const refresh = useCallback(async () => {
+    const sequence = ++formRequestSequenceRef.current;
+    formAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    formAbortControllerRef.current = controller;
     setIsLoading(true);
     setError("");
     try {
-      const result = await fetchMonitorFmQadForms(apiToken);
+      const result = await fetchMonitorFmQadForms(apiToken, controller.signal);
+      if (sequence !== formRequestSequenceRef.current) return;
       setForms(result.data);
       setYears(result.academicYears);
-      if (selectedForm) {
-        const updated = result.data.find((form) => form.id === selectedForm.id) ?? null;
+      const selectedId = selectedFormIdRef.current;
+      if (selectedId) {
+        const updated = result.data.find((form) => form.id === selectedId) ?? null;
         setSelectedForm(updated);
-        if (updated) setVersions(await fetchFmQadVersions(apiToken, updated.id));
+        if (updated) await loadVersions(updated.id);
       }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to load FM-QAD templates.");
+      if (!(cause instanceof DOMException && cause.name === "AbortError") && sequence === formRequestSequenceRef.current) {
+        setError(cause instanceof Error ? cause.message : "Unable to load FM-QAD templates.");
+      }
     } finally {
-      setIsLoading(false);
+      if (sequence === formRequestSequenceRef.current) setIsLoading(false);
     }
-  }, [apiToken, selectedForm?.id]);
+  }, [apiToken, loadVersions]);
 
-  useEffect(() => { void refresh(); }, [refresh]);
+  useEffect(() => {
+    void refresh();
+    return () => {
+      formRequestSequenceRef.current++;
+      versionRequestSequenceRef.current++;
+      formAbortControllerRef.current?.abort();
+      versionAbortControllerRef.current?.abort();
+    };
+  }, [refresh]);
   useEffect(() => {
     const listener = (event: Event) => {
       if ((event as CustomEvent<{ entity?: string }>).detail?.entity === "fm_qad_template") void refresh();
@@ -56,12 +90,40 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   }, [refresh]);
 
   const openVersions = async (form: FmQadTemplateForm) => {
+    selectedFormIdRef.current = form.id;
     setSelectedForm(form);
+    setVersions([]);
     setError("");
     try {
-      setVersions(await fetchFmQadVersions(apiToken, form.id));
+      await loadVersions(form.id);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to load version history.");
+    }
+  };
+
+  const closeManager = () => {
+    formRequestSequenceRef.current++;
+    versionRequestSequenceRef.current++;
+    formAbortControllerRef.current?.abort();
+    versionAbortControllerRef.current?.abort();
+    onClose();
+  };
+
+  const submitEdit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!editingVersion) return;
+    setIsSaving(true);
+    setError("");
+    try {
+      await updateFmQadVersionMetadata(apiToken, editingVersion.id, {
+        revisionLabel, academicYearId: academicYearId || null, changeNotes, internalNote: internalNote || null,
+      });
+      setEditingVersion(null);
+      await loadVersions(editingVersion.formId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to update template details.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -114,7 +176,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button>
-          <button type="button" onClick={onClose} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={closeManager} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {error && <p role="alert" className="mt-3 rounded-sm bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
@@ -145,14 +207,25 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
               <div className="flex gap-2 md:col-span-2"><button type="submit" disabled={isSaving} className="rounded-sm border bg-white px-3 py-2 text-xs font-semibold">Save Draft</button><button type="button" disabled={isSaving} onClick={(event) => void submitUpload(event as unknown as FormEvent, true)} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Upload and Activate</button></div>
             </form>
           )}
+          {editingVersion && (
+            <form className="mt-4 grid gap-3 rounded-sm bg-blue-50 p-4 md:grid-cols-2" onSubmit={(event) => void submitEdit(event)}>
+              <label className="text-xs font-semibold">Revision Label<input aria-label="Edit Revision Label" value={revisionLabel} onChange={(e) => setRevisionLabel(e.target.value)} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Edit Effective Academic Year" value={academicYearId} onChange={(e) => setAcademicYearId(e.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Baseline</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
+              <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Edit Change Notes" value={changeNotes} onChange={(e) => setChangeNotes(e.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold">Internal Note<input aria-label="Edit Internal Note" value={internalNote} onChange={(e) => setInternalNote(e.target.value)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <div className="flex items-end gap-2"><button type="submit" disabled={isSaving} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Save Details</button><button type="button" onClick={() => setEditingVersion(null)} className="rounded-sm border px-3 py-2 text-xs font-semibold">Cancel</button></div>
+            </form>
+          )}
           <div className="mt-4 space-y-2">{versions.map((version) => (
             <article key={version.id} className="rounded-sm border p-3">
               <div className="flex flex-wrap justify-between gap-3">
                 <div><p className="font-bold">{version.revisionLabel} <span className="ml-2 text-xs uppercase text-slate-500">{version.status}</span></p><p className="text-xs text-slate-600">Academic Year: {version.academicYearLabel ?? "Baseline"} · {version.originalFilename} · {(version.sizeBytes / 1024).toFixed(1)} KB</p><p className="mt-1 text-xs">{version.changeNotes}</p></div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => void downloadFmQadVersion(apiToken, version)} className="inline-flex items-center gap-1 text-xs font-semibold"><Download className="h-3.5 w-3.5" /> Download</button>
+                  {version.status === "draft" && <button type="button" onClick={() => { setEditingVersion(version); setRevisionLabel(version.revisionLabel); setAcademicYearId(version.academicYearId ?? ""); setChangeNotes(version.changeNotes); setInternalNote(version.internalNote ?? ""); }} className="inline-flex items-center gap-1 text-xs font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Details</button>}
                   {version.status !== "active" && <button type="button" onClick={() => void performAction(version, "activate")} className="text-xs font-semibold text-primary-700">Activate</button>}
-                  {version.status !== "archived" && <button type="button" onClick={() => void performAction(version, "archive")} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><Archive className="h-3.5 w-3.5" /> Archive</button>}
+                  {version.status === "draft" && <button type="button" onClick={() => void performAction(version, "archive")} className="inline-flex items-center gap-1 text-xs font-semibold text-amber-700"><Archive className="h-3.5 w-3.5" /> Archive</button>}
+                  {version.status === "active" && <span className="text-xs font-semibold text-emerald-700">Current Effective Revision</span>}
                 </div>
               </div>
             </article>

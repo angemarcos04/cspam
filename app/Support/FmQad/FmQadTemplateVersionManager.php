@@ -54,6 +54,7 @@ class FmQadTemplateVersionManager
                 'uploaded_by' => $actor?->id,
             ]);
             $this->storage->put($version, $validatedFile['content'], $validatedFile['sha256']);
+
             return $version;
         });
 
@@ -76,7 +77,9 @@ class FmQadTemplateVersionManager
                 ->get();
             $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
             foreach ($conflicts as $conflict) {
-                if ((int) $conflict->id === (int) $target->id) continue;
+                if ((int) $conflict->id === (int) $target->id) {
+                    continue;
+                }
                 $conflict->update([
                     'status' => FmQadTemplateVersion::ARCHIVED,
                     'activation_key' => null,
@@ -92,46 +95,89 @@ class FmQadTemplateVersionManager
                 'archived_by' => null,
                 'archived_at' => null,
             ]);
+
             return $target;
         });
 
         $this->audit($request, 'fm_qad_template.version_activated', $activated, $actor, ['previousActiveVersionId' => $previousId]);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($activated, 'fm_qad_template.version_activated')));
+
         return $activated->fresh(['form', 'academicYear', 'uploader', 'activator', 'blob']);
     }
 
     public function archive(FmQadTemplateVersion $version, ?User $actor, ?Request $request = null): FmQadTemplateVersion
     {
-        $version->forceFill([
-            'status' => FmQadTemplateVersion::ARCHIVED,
-            'activation_key' => null,
-            'archived_by' => $actor?->id,
-            'archived_at' => now(),
-        ])->save();
-        $this->audit($request, 'fm_qad_template.version_archived', $version, $actor);
-        event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_archived')));
-        return $version->fresh(['form', 'academicYear', 'uploader', 'blob']);
+        $archived = DB::transaction(function () use ($version, $actor): FmQadTemplateVersion {
+            $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($version->id);
+            if ($target->status === FmQadTemplateVersion::ACTIVE) {
+                throw ValidationException::withMessages([
+                    'version' => 'Activate a replacement revision before archiving the current effective template.',
+                ]);
+            }
+            $target->forceFill([
+                'status' => FmQadTemplateVersion::ARCHIVED,
+                'activation_key' => null,
+                'archived_by' => $actor?->id,
+                'archived_at' => now(),
+            ])->save();
+
+            return $target;
+        });
+        $this->audit($request, 'fm_qad_template.version_archived', $archived, $actor);
+        event(new CspamsUpdateBroadcast($this->broadcastPayload($archived, 'fm_qad_template.version_archived')));
+
+        return $archived->fresh(['form', 'academicYear', 'uploader', 'blob']);
     }
 
     /** @param array<string, mixed> $values */
     public function updateMetadata(FmQadTemplateVersion $version, array $values, ?User $actor, ?Request $request = null): FmQadTemplateVersion
     {
-        if ($version->status !== FmQadTemplateVersion::DRAFT) {
-            throw ValidationException::withMessages(['version' => 'Only draft template metadata can be edited.']);
-        }
-        $version->update($values);
-        $this->audit($request, 'fm_qad_template.version_updated', $version, $actor);
-        event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_updated')));
+        $updated = DB::transaction(function () use ($version, $values): FmQadTemplateVersion {
+            $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($version->id);
+            if ($target->status !== FmQadTemplateVersion::DRAFT) {
+                throw ValidationException::withMessages(['version' => 'Only draft template metadata can be edited.']);
+            }
+            if (array_key_exists('revision_label', $values)) {
+                $label = trim(preg_replace('/\s+/', ' ', (string) $values['revision_label']) ?? '');
+                if ($label === '' || mb_strlen($label) > 50) {
+                    throw ValidationException::withMessages(['revisionLabel' => 'Revision label is required and may not exceed 50 characters.']);
+                }
+                $normalized = mb_strtolower($label);
+                if ($target->form->versions()->whereKeyNot($target->id)->where('normalized_revision_label', $normalized)->exists()) {
+                    throw ValidationException::withMessages(['revisionLabel' => 'This revision label already exists for the selected FM-QAD form.']);
+                }
+                $values['revision_label'] = $label;
+                $values['normalized_revision_label'] = $normalized;
+            }
+            if (array_key_exists('change_notes', $values)) {
+                $notes = trim((string) $values['change_notes']);
+                if ($notes === '' || mb_strlen($notes) > 5000) {
+                    throw ValidationException::withMessages(['changeNotes' => 'Change notes are required and may not exceed 5000 characters.']);
+                }
+                $values['change_notes'] = $notes;
+            }
+            if (array_key_exists('internal_note', $values)) {
+                $values['internal_note'] = trim((string) $values['internal_note']) ?: null;
+            }
+            $target->update($values);
 
-        return $version->fresh(['form', 'academicYear', 'uploader', 'blob']);
+            return $target;
+        });
+        $this->audit($request, 'fm_qad_template.version_updated', $updated, $actor);
+        event(new CspamsUpdateBroadcast($this->broadcastPayload($updated, 'fm_qad_template.version_updated')));
+
+        return $updated->fresh(['form', 'academicYear', 'uploader', 'blob']);
     }
 
     public function effective(FmQadForm $form, ?int $academicYearId): ?FmQadTemplateVersion
     {
         if ($academicYearId !== null) {
             $exact = $form->versions()->active()->where('academic_year_id', $academicYearId)->latest('activated_at')->first();
-            if ($exact) return $exact;
+            if ($exact) {
+                return $exact;
+            }
         }
+
         return $form->versions()->active()->whereNull('academic_year_id')->latest('activated_at')->first();
     }
 
@@ -151,6 +197,7 @@ class FmQadTemplateVersionManager
     {
         $safe = preg_replace('/[\\\\\\/\\x00-\\x1F\\x7F"\\r\\n]+/u', '-', trim((string) $filename)) ?? '';
         $safe = mb_substr($safe, 0, 180);
+
         return $safe !== '' ? $safe : $fallback;
     }
 
@@ -184,6 +231,7 @@ class FmQadTemplateVersionManager
     private function broadcastPayload(FmQadTemplateVersion $version, string $eventType): array
     {
         $version->loadMissing('form');
+
         return [
             'entity' => 'fm_qad_template',
             'eventType' => $eventType,

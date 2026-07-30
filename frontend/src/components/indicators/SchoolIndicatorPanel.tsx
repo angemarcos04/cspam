@@ -51,7 +51,7 @@ import type {
   MetricInputSchema,
   MetricDataType,
 } from "@/types";
-import type { FmQadTemplateForm } from "@/types/fmQadTemplates";
+import type { FmQadDownloadedVersionGrant, FmQadTemplateForm } from "@/types/fmQadTemplates";
 type MetricEntryState = Record<
   string,
   {
@@ -2009,10 +2009,8 @@ function SchoolIndicatorPanelComponent({
     () => createInitialUploadErrorState(),
   );
   const [fmQadTemplates, setFmQadTemplates] = useState<FmQadTemplateForm[]>([]);
-  const fmQadVersionByScope = useMemo(
-    () => new Map(fmQadTemplates.map((template) => [template.scopeId, template.activeVersion?.id ?? null])),
-    [fmQadTemplates],
-  );
+  const [fmQadGrantsByScope, setFmQadGrantsByScope] = useState<Map<string, FmQadDownloadedVersionGrant>>(new Map());
+  const [fmQadTemplateState, setFmQadTemplateState] = useState({ isLoading: false, error: "" });
   const workspaceYearSelectionStorageKey = useMemo(() => {
     const schoolScopeId = user?.schoolId ? String(user.schoolId) : "";
     const userScopeId = user?.id ? String(user.id) : "anonymous";
@@ -2152,6 +2150,23 @@ function SchoolIndicatorPanelComponent({
     [workspaceAcademicYearId, academicYearBySchoolYearLabel, eligibleAcademicYears, schoolYearByAcademicYearId, visibleSchoolYears],
   );
   const activeAcademicYearId = yearWorkspaceState.workspaceAcademicYearId;
+  useEffect(() => {
+    const grants = new Map<string, FmQadDownloadedVersionGrant>();
+    if (typeof sessionStorage !== "undefined" && user?.id && user.schoolId && activeAcademicYearId) {
+      const prefix = `cspams:fm-qad-grant:${user.id}:${user.schoolId}:${activeAcademicYearId}:`;
+      for (let index = 0; index < sessionStorage.length; index++) {
+        const key = sessionStorage.key(index);
+        if (!key?.startsWith(prefix)) continue;
+        try {
+          const grant = JSON.parse(sessionStorage.getItem(key) ?? "") as FmQadDownloadedVersionGrant;
+          if (grant.schoolId === String(user.schoolId) && grant.academicYearId === activeAcademicYearId) grants.set(grant.scopeId, grant);
+        } catch {
+          sessionStorage.removeItem(key);
+        }
+      }
+    }
+    setFmQadGrantsByScope(grants);
+  }, [activeAcademicYearId, user?.id, user?.schoolId]);
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
   const workspaceSchoolYears = yearWorkspaceState.workspaceSchoolYears;
   useEffect(() => {
@@ -6141,11 +6156,21 @@ function SchoolIndicatorPanelComponent({
               throw new Error("The workspace changed before this file action. No stale changes were applied. Re-select the academic year and try again.");
             }
 
+            const existingEntry = uploadTarget.files?.[type];
+            const grant = type.startsWith("fm_qad_") ? fmQadGrantsByScope.get(type) ?? null : null;
+            if (type.startsWith("fm_qad_") && !existingEntry?.fmQadTemplateVersionId) {
+              if (fmQadTemplateState.isLoading) throw new Error("Template information is still loading. Wait before uploading.");
+              if (fmQadTemplateState.error) throw new Error("Template information could not be verified. Retry before uploading.");
+              const activeTemplate = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion;
+              if (!activeTemplate) throw new Error("No active template revision is configured for this form and Academic Year.");
+              if (!grant) throw new Error("Download the applicable FM-QAD template before uploading the accomplished file.");
+            }
             const updated = await uploadSubmissionFile(
               uploadTarget.id,
               type,
               file,
-              type.startsWith("fm_qad_") ? fmQadVersionByScope.get(type) ?? null : null,
+              type.startsWith("fm_qad_") ? (grant?.versionId ?? existingEntry?.fmQadTemplateVersionId ?? null) : null,
+              type.startsWith("fm_qad_") ? grant?.grantId ?? null : null,
             );
             if (!isSubmissionInAcademicYear(updated, activeAcademicYearIdRef.current)) {
               throw new Error("The selected academic year changed during upload. No stale changes were applied. Re-select the year and try again.");
@@ -6205,7 +6230,7 @@ function SchoolIndicatorPanelComponent({
         setSavingSection(null);
       }
     });
-  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadVersionByScope, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
+  }, [autosaveKey, ensureWorkspaceSubmission, fetchFreshWorkspaceSubmission, fmQadGrantsByScope, fmQadTemplates, fmQadTemplateState, hasUnsavedWorkspaceChanges, isGroupBActionBusy, isSubmissionInAcademicYear, markRecentlyMaterializedWorkspaceSubmission, onWorkspaceSubmissionHydrated, runCriticalWorkspaceMutation, runGroupBAction, scheduleWorkspaceDetailHydration, selectedSubmissionForUploads, uploadSubmissionFile, verifiedScopeIds, workspaceMode]);
 
   const handleFileInputChange = useCallback(
     (type: IndicatorSubmissionFileType, event: ChangeEvent<HTMLInputElement>) => {
@@ -6591,18 +6616,27 @@ function SchoolIndicatorPanelComponent({
             <FmQadTemplateDownload
               academicYearId={activeAcademicYearId}
               onTemplatesChange={setFmQadTemplates}
+              onStateChange={setFmQadTemplateState}
+              onGrantChange={(grant) => setFmQadGrantsByScope((current) => new Map(current).set(grant.scopeId, grant))}
             />
             {Object.entries(activeWorkspaceSubmission?.files ?? {})
               .filter(([type, entry]) => type.startsWith("fm_qad_") && entry?.uploaded)
               .map(([type, entry]) => {
                 const currentVersion = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion ?? null;
+                const downloadedGrant = fmQadGrantsByScope.get(type) ?? null;
+                const allSame = Boolean(currentVersion && downloadedGrant
+                  && currentVersion.id === downloadedGrant.versionId
+                  && entry?.fmQadTemplateVersionId === currentVersion.id);
                 return (
                   <div key={type} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
                     <p className="font-semibold uppercase tracking-wide">{type.replace(/_/g, "-")}</p>
-                    <p>Uploaded file version: {entry?.fmQadTemplateRevisionLabel ?? "Template revision not recorded"}</p>
-                    <p>Current active template: {currentVersion?.revisionLabel ?? "Not available"}</p>
+                    {allSame ? <p>Template revision: {currentVersion?.revisionLabel}</p> : <>
+                      <p>Current active template: {currentVersion?.revisionLabel ?? "Not available"}</p>
+                      <p>Downloaded template: {downloadedGrant?.revisionLabel ?? "Not downloaded in this session"}</p>
+                      <p>Uploaded file version: {entry?.fmQadTemplateRevisionLabel ?? "Template revision not recorded"}</p>
+                    </>}
                     {entry?.fmQadTemplateVersionId && currentVersion && entry.fmQadTemplateVersionId !== currentVersion.id && (
-                      <p className="mt-1 text-amber-700">A newer template revision is available. Your existing uploaded file has not been changed.</p>
+                      <p className="mt-1 text-amber-700">A newer revision is available. Your downloaded or uploaded file has not been changed.</p>
                     )}
                   </div>
                 );

@@ -3,11 +3,13 @@
 namespace Tests\Feature;
 
 use App\Events\CspamsUpdateBroadcast;
+use App\Http\Resources\IndicatorSubmissionResource;
 use App\Models\AcademicYear;
-use App\Models\AuditLog;
 use App\Models\FmQadForm;
+use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmission;
+use App\Models\IndicatorSubmissionFile;
 use App\Models\School;
 use App\Models\User;
 use App\Support\FmQad\FmQadTemplateStorage;
@@ -15,6 +17,7 @@ use App\Support\FmQad\FmQadTemplateVersionManager;
 use Database\Seeders\FmQadFormSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
@@ -89,11 +92,11 @@ class FmQadTemplateManagementTest extends TestCase
         $schoolHead = $this->user('head@example.test', 'school_head', $this->privateSchool());
         Sanctum::actingAs($schoolHead, ['role:school_head']);
         $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
-                'revisionLabel' => 'Rev. 04',
-                'academicYearId' => $year->id,
-                'changeNotes' => 'Unauthorized upload.',
-                'file' => $this->validDocx('FM-QAD-003-Rev-04.docx', 'revision-four'),
-            ])
+            'revisionLabel' => 'Rev. 04',
+            'academicYearId' => $year->id,
+            'changeNotes' => 'Unauthorized upload.',
+            'file' => $this->validDocx('FM-QAD-003-Rev-04.docx', 'revision-four'),
+        ])
             ->assertForbidden();
     }
 
@@ -112,35 +115,35 @@ class FmQadTemplateManagementTest extends TestCase
 
         Sanctum::actingAs($monitor, ['role:monitor']);
         $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
-                'revisionLabel' => 'rev. 01',
-                'academicYearId' => $year->id,
-                'changeNotes' => 'Duplicate label.',
-                'file' => $this->validDocx('two.docx', 'different-content'),
-            ])
+            'revisionLabel' => 'rev. 01',
+            'academicYearId' => $year->id,
+            'changeNotes' => 'Duplicate label.',
+            'file' => $this->validDocx('two.docx', 'different-content'),
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('revisionLabel');
 
         $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
-                'revisionLabel' => 'Rev. 02',
-                'academicYearId' => $year->id,
-                'changeNotes' => 'Duplicate file.',
-                'file' => new UploadedFile(
-                    $sameFile->getPathname(),
-                    'three.docx',
-                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                    null,
-                    true,
-                ),
-            ])
+            'revisionLabel' => 'Rev. 02',
+            'academicYearId' => $year->id,
+            'changeNotes' => 'Duplicate file.',
+            'file' => new UploadedFile(
+                $sameFile->getPathname(),
+                'three.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true,
+            ),
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('file');
 
         $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
-                'revisionLabel' => 'Rev. 03',
-                'academicYearId' => $year->id,
-                'changeNotes' => 'Corrupt package.',
-                'file' => UploadedFile::fake()->createWithContent('corrupt.docx', 'not a zip'),
-            ])
+            'revisionLabel' => 'Rev. 03',
+            'academicYearId' => $year->id,
+            'changeNotes' => 'Corrupt package.',
+            'file' => UploadedFile::fake()->createWithContent('corrupt.docx', 'not a zip'),
+        ])
             ->assertUnprocessable()
             ->assertJsonValidationErrors('file');
     }
@@ -188,13 +191,12 @@ class FmQadTemplateManagementTest extends TestCase
             'revision_label' => 'Rev. 01',
             'academic_year_id' => null,
             'change_notes' => 'Archive test.',
-        ], $monitor, true);
+        ], $monitor);
         $hash = $version->sha256_hash;
 
         $archived = $manager->archive($version, $monitor);
 
         $this->assertSame('archived', $archived->status);
-        $this->assertNull($manager->effective($form, null));
         $this->assertSame($hash, $archived->blob->content_sha256);
         $this->assertDatabaseHas('audit_logs', ['action' => 'fm_qad_template.version_archived']);
     }
@@ -217,9 +219,16 @@ class FmQadTemplateManagementTest extends TestCase
         $this->getJson("/api/fm-qad/templates?academic_year_id={$year->id}")
             ->assertOk()
             ->assertJsonPath('data.0.activeVersion.id', (string) $version->id);
-        $this->get("/api/fm-qad/template-versions/{$version->id}/download")
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
             ->assertOk()
-            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+            ->assertHeader('content-type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document')
+            ->assertHeader('X-CSPAMS-FM-QAD-Version-Id', (string) $version->id);
+        $this->assertDatabaseHas('fm_qad_template_download_grants', [
+            'user_id' => $privateHead->id,
+            'school_id' => $privateHead->school_id,
+            'academic_year_id' => $year->id,
+            'fm_qad_template_version_id' => $version->id,
+        ]);
 
         $public = School::query()->create([
             'school_code' => 'PUBLIC-1', 'name' => 'Public School', 'district' => 'District', 'region' => 'Region', 'type' => 'public',
@@ -229,6 +238,8 @@ class FmQadTemplateManagementTest extends TestCase
         $this->getJson("/api/fm-qad/templates?academic_year_id={$year->id}")
             ->assertOk()
             ->assertExactJson(['data' => []]);
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")
+            ->assertForbidden();
     }
 
     public function test_schema_keeps_legacy_submission_association_nullable(): void
@@ -268,15 +279,21 @@ class FmQadTemplateManagementTest extends TestCase
         ]);
 
         Sanctum::actingAs($head, ['role:school_head']);
+        $this->get("/api/fm-qad/template-versions/{$other->id}/download?academic_year_id={$year->id}")->assertOk();
+        $otherGrant = FmQadTemplateDownloadGrant::query()->where('fm_qad_template_version_id', $other->id)->firstOrFail();
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $other->id,
+            'fmQadTemplateDownloadGrantId' => $otherGrant->id,
             'file' => $this->validDocx('completed-003.docx', 'completed-invalid'),
-        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateVersionId');
+        ])->assertUnprocessable()->assertJsonValidationErrors('fmQadTemplateDownloadGrantId');
 
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download?academic_year_id={$year->id}")->assertOk();
+        $grant = FmQadTemplateDownloadGrant::query()->where('fm_qad_template_version_id', $version->id)->firstOrFail();
         $this->postJson("/api/submissions/{$submission->id}/upload-file", [
             'type' => 'fm_qad_003',
             'fmQadTemplateVersionId' => $version->id,
+            'fmQadTemplateDownloadGrantId' => $grant->id,
             'file' => $this->validDocx('completed-003.docx', 'completed-valid'),
         ])->assertOk();
 
@@ -288,11 +305,128 @@ class FmQadTemplateManagementTest extends TestCase
         $this->assertSame('draft', $submission->fresh()->status->value);
     }
 
+    public function test_active_cannot_be_archived_and_draft_metadata_edit_preserves_blob(): void
+    {
+        $year = $this->year();
+        $form = FmQadForm::query()->firstOrFail();
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $manager = app(FmQadTemplateVersionManager::class);
+        $active = $manager->upload($form, $this->validDocx('active.docx', 'active'), [
+            'revision_label' => 'Rev. 01', 'academic_year_id' => $year->id, 'change_notes' => 'Active.',
+        ], $monitor, true);
+        $draft = $manager->upload($form, $this->validDocx('draft.docx', 'draft'), [
+            'revision_label' => 'Rev. 02', 'academic_year_id' => $year->id, 'change_notes' => 'Draft.',
+        ], $monitor);
+        $hash = $draft->sha256_hash;
+        $content = app(FmQadTemplateStorage::class)->content($draft);
+
+        Sanctum::actingAs($monitor, ['role:monitor']);
+        $this->postJson("/api/monitor/fm-qad/template-versions/{$active->id}/archive")
+            ->assertUnprocessable()->assertJsonValidationErrors('version');
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$draft->id}", [
+            'revisionLabel' => ' Rev. 02A ', 'academicYearId' => $year->id,
+            'changeNotes' => ' Updated notes ', 'internalNote' => ' Internal ',
+        ])->assertOk()->assertJsonPath('data.revisionLabel', 'Rev. 02A');
+
+        $draft->refresh();
+        $this->assertSame($hash, $draft->sha256_hash);
+        $this->assertSame($content, app(FmQadTemplateStorage::class)->content($draft));
+        $this->assertDatabaseHas('audit_logs', ['action' => 'fm_qad_template.version_updated', 'auditable_id' => (string) $draft->id]);
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$draft->id}", [
+            'revisionLabel' => '   ', 'changeNotes' => '   ',
+        ])->assertUnprocessable();
+    }
+
+    public function test_downloaded_old_revision_remains_pinned_after_new_activation_and_can_switch_deliberately(): void
+    {
+        $year = $this->year();
+        $school = $this->privateSchool();
+        $head = $this->user('head@example.test', 'school_head', $school);
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $manager = app(FmQadTemplateVersionManager::class);
+        $rev2 = $manager->upload($form, $this->validDocx('rev2.docx', 'rev2'), [
+            'revision_label' => 'Rev. 02', 'academic_year_id' => $year->id, 'change_notes' => 'Second.',
+        ], $monitor, true);
+        $submission = IndicatorSubmission::query()->create([
+            'school_id' => $school->id, 'academic_year_id' => $year->id,
+            'form_type' => IndicatorSubmission::FORM_TYPE, 'status' => 'draft', 'version' => 1, 'created_by' => $head->id,
+        ]);
+
+        Sanctum::actingAs($head, ['role:school_head']);
+        $this->get("/api/fm-qad/template-versions/{$rev2->id}/download?academic_year_id={$year->id}")->assertOk();
+        $grant2 = FmQadTemplateDownloadGrant::query()->where('fm_qad_template_version_id', $rev2->id)->firstOrFail();
+        $rev3 = $manager->upload($form, $this->validDocx('rev3.docx', 'rev3'), [
+            'revision_label' => 'Rev. 03', 'academic_year_id' => $year->id, 'change_notes' => 'Third.',
+        ], $monitor, true);
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003', 'fmQadTemplateDownloadGrantId' => $grant2->id,
+            'file' => $this->validDocx('completed2.docx', 'completed2'),
+        ])->assertOk();
+        $this->assertDatabaseHas('indicator_submission_files', [
+            'indicator_submission_id' => $submission->id, 'type' => 'fm_qad_003',
+            'fm_qad_template_version_id' => $rev2->id,
+        ]);
+        $this->assertSame($rev3->id, $manager->effective($form, $year->id)?->id);
+
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003', 'file' => $this->validDocx('same.docx', 'same'),
+        ])->assertOk();
+        $this->assertSame($rev2->id, $submission->submissionFiles()->where('type', 'fm_qad_003')->value('fm_qad_template_version_id'));
+        $this->get("/api/fm-qad/template-versions/{$rev3->id}/download?academic_year_id={$year->id}")->assertOk();
+        $grant3 = FmQadTemplateDownloadGrant::query()->where('fm_qad_template_version_id', $rev3->id)->firstOrFail();
+        $this->postJson("/api/submissions/{$submission->id}/upload-file", [
+            'type' => 'fm_qad_003', 'fmQadTemplateDownloadGrantId' => $grant3->id,
+            'file' => $this->validDocx('completed3.docx', 'completed3'),
+        ])->assertOk();
+        $this->assertSame($rev3->id, $submission->submissionFiles()->where('type', 'fm_qad_003')->value('fm_qad_template_version_id'));
+    }
+
+    public function test_submission_resource_uses_eager_loaded_template_versions_without_per_file_queries(): void
+    {
+        $year = $this->year();
+        $school = $this->privateSchool();
+        $head = $this->user('head@example.test', 'school_head', $school);
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $submission = IndicatorSubmission::query()->create([
+            'school_id' => $school->id, 'academic_year_id' => $year->id,
+            'form_type' => IndicatorSubmission::FORM_TYPE, 'status' => 'draft', 'version' => 1, 'created_by' => $head->id,
+        ]);
+        foreach (['fm_qad_001', 'fm_qad_002', 'fm_qad_003'] as $index => $scope) {
+            $form = FmQadForm::query()->where('scope_id', $scope)->firstOrFail();
+            $version = app(FmQadTemplateVersionManager::class)->upload($form, $this->validDocx("{$scope}.docx", $scope), [
+                'revision_label' => 'Rev. 0'.($index + 1), 'academic_year_id' => $year->id, 'change_notes' => 'Query test.',
+            ], $monitor, true);
+            IndicatorSubmissionFile::query()->create([
+                'indicator_submission_id' => $submission->id, 'type' => $scope,
+                'fm_qad_template_version_id' => $version->id, 'path' => "missing/{$scope}.docx",
+                'original_filename' => "{$scope}.docx", 'size_bytes' => 1, 'uploaded_at' => now(),
+            ]);
+        }
+        $submission->load([
+            'school', 'academicYear', 'items.metric', 'submissionFiles.fmQadTemplateVersion',
+            'scopeSubmissions', 'scopeStateHistories', 'scopeReviews.reviewedBy',
+            'createdBy', 'submittedBy', 'reviewedBy',
+        ]);
+        $versionQueries = 0;
+        DB::listen(function ($query) use (&$versionQueries): void {
+            if (str_contains(strtolower($query->sql), 'from "fm_qad_template_versions"')) {
+                $versionQueries++;
+            }
+        });
+
+        $payload = (new IndicatorSubmissionResource($submission))->resolve(request());
+
+        $this->assertSame(0, $versionQueries);
+        $this->assertSame('Rev. 01', $payload['files']['fm_qad_001']['fmQadTemplateRevisionLabel']);
+        $this->assertSame('Rev. 03', $payload['files']['fm_qad_003']['fmQadTemplateRevisionLabel']);
+    }
+
     private function validDocx(string $filename, string $documentContent): UploadedFile
     {
         $path = tempnam(sys_get_temp_dir(), 'cspams-docx-');
         $this->temporaryFiles[] = $path;
-        $zip = new ZipArchive();
+        $zip = new ZipArchive;
         $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
         $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
         $zip->addFromString('word/document.xml', '<?xml version="1.0"?><document>'.$documentContent.'</document>');

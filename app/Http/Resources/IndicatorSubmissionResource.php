@@ -3,7 +3,6 @@
 namespace App\Http\Resources;
 
 use App\Models\IndicatorSubmission;
-use App\Models\FmQadTemplateVersion;
 use App\Support\Auth\ApiUserResolver;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\Domain\FormSubmissionStatus;
@@ -12,9 +11,9 @@ use App\Support\Indicators\SubmissionFileDefinition;
 use App\Support\Indicators\SubmissionFileRequirementResolver;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
-use Illuminate\Support\Collection;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
+use Illuminate\Support\Collection;
 
 /** @mixin IndicatorSubmission */
 class IndicatorSubmissionResource extends JsonResource
@@ -198,8 +197,8 @@ class IndicatorSubmissionResource extends JsonResource
             $submissionFile = $this->relationLoaded('submissionFiles')
                 ? $this->submissionFiles->firstWhere('type', $type)
                 : null;
-            $templateVersion = $submissionFile?->fm_qad_template_version_id
-                ? FmQadTemplateVersion::query()->find($submissionFile->fm_qad_template_version_id)
+            $templateVersion = $submissionFile && $submissionFile->relationLoaded('fmQadTemplateVersion')
+                ? $submissionFile->fmQadTemplateVersion
                 : null;
             $files[$type] = [
                 'type' => $type,
@@ -221,10 +220,10 @@ class IndicatorSubmissionResource extends JsonResource
     }
 
     /**
-     * @param list<string> $requiredFileTypes
-     * @param list<string> $uploadedFileTypes
-     * @param list<string> $missingFileTypes
-     * @param Collection<int, mixed> $visibleItems
+     * @param  list<string>  $requiredFileTypes
+     * @param  list<string>  $uploadedFileTypes
+     * @param  list<string>  $missingFileTypes
+     * @param  Collection<int, mixed>  $visibleItems
      * @return array<string, mixed>
      */
     private function buildCompletionPayload(
@@ -282,7 +281,7 @@ class IndicatorSubmissionResource extends JsonResource
     }
 
     /**
-     * @param Collection<int, mixed> $items
+     * @param  Collection<int, mixed>  $items
      * @return Collection<int, mixed>
      */
     private function visibleItemsForViewer(Collection $items, array $scopeProgress, bool $redactUnsentMonitorData): Collection

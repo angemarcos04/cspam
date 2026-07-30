@@ -4,6 +4,10 @@ namespace Tests\Feature;
 
 use App\Events\CspamsUpdateBroadcast;
 use App\Models\AcademicYear;
+use App\Models\FmQadForm;
+use App\Models\FmQadTemplateDownloadGrant;
+use App\Models\FmQadTemplateVersion;
+use App\Models\FmQadTemplateVersionBlob;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionFileBlob;
@@ -20,6 +24,7 @@ use App\Support\Indicators\GroupBWorkspaceDefinition;
 use App\Support\Indicators\SubmissionFileBlobStorage;
 use App\Support\Indicators\SubmissionFileDefinition;
 use Database\Seeders\DemoDataSeeder;
+use Database\Seeders\FmQadFormSeeder;
 use Database\Seeders\RolesAndPermissionsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -28,6 +33,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Laravel\Sanctum\PersonalAccessToken;
 use Symfony\Component\HttpFoundation\Response;
 use Tests\Concerns\InteractsWithSeededCredentials;
 use Tests\TestCase;
@@ -2686,6 +2692,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
             'file' => $uploadedFile,
+            ...$this->fmQadGrantPayload($token, $submissionId, 'fm_qad_001'),
         ]);
         $upload->assertOk()
             ->assertJsonMissingPath('data.indicators')
@@ -2761,6 +2768,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
             'file' => $file,
+            ...$this->fmQadGrantPayload($token, $submissionId, 'fm_qad_001'),
         ]);
 
         $upload->assertOk()
@@ -2964,6 +2972,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $upload = $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
             'file' => $fmQadFile,
+            ...$this->fmQadGrantPayload($token, $submissionId, 'fm_qad_001'),
         ]);
         $upload->assertOk()
             ->assertJsonPath('data.files.fm_qad_001.uploaded', true)
@@ -3069,6 +3078,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => 'fm_qad_001',
             'file' => $oldFile,
+            ...$this->fmQadGrantPayload($token, $submissionId, 'fm_qad_001'),
         ])->assertOk();
         $oldPath = (string) \Illuminate\Support\Facades\DB::table('indicator_submission_files')
             ->where('indicator_submission_id', (int) $submissionId)
@@ -4315,7 +4325,61 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         return $this->withToken($token)->postJson("/api/submissions/{$submissionId}/upload-file", [
             'type' => $type,
             'file' => UploadedFile::fake()->create($filename, 64, $mimeType),
+            ...$this->fmQadGrantPayload($token, $submissionId, $type),
         ]);
+    }
+
+    /** @return array<string,int> */
+    private function fmQadGrantPayload(string $token, string $submissionId, string $type): array
+    {
+        if (! str_starts_with($type, 'fm_qad_')) {
+            return [];
+        }
+        $this->seed(FmQadFormSeeder::class);
+        $submission = IndicatorSubmission::query()->findOrFail((int) $submissionId);
+        $user = PersonalAccessToken::findToken($token)?->tokenable;
+        $this->assertInstanceOf(User::class, $user);
+        $form = FmQadForm::query()->where('scope_id', $type)->firstOrFail();
+        $version = $form->versions()
+            ->where('academic_year_id', $submission->academic_year_id)
+            ->where('status', FmQadTemplateVersion::ACTIVE)
+            ->first();
+        if (! $version) {
+            $content = "test-template:{$type}";
+            $hash = hash('sha256', $content);
+            $version = $form->versions()->create([
+                'academic_year_id' => $submission->academic_year_id,
+                'revision_label' => 'Workflow Test',
+                'normalized_revision_label' => 'workflow test',
+                'status' => FmQadTemplateVersion::ACTIVE,
+                'activation_key' => "{$form->id}:{$submission->academic_year_id}",
+                'original_filename' => "{$type}.docx",
+                'mime_type' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                'size_bytes' => strlen($content),
+                'sha256_hash' => $hash,
+                'change_notes' => 'Test-authorized workflow template.',
+                'uploaded_by' => $user->id,
+                'activated_by' => $user->id,
+                'activated_at' => now(),
+            ]);
+            FmQadTemplateVersionBlob::query()->create([
+                'fm_qad_template_version_id' => $version->id,
+                'content' => $content,
+                'content_sha256' => $hash,
+            ]);
+        }
+        $grant = FmQadTemplateDownloadGrant::query()->updateOrCreate([
+            'fm_qad_template_version_id' => $version->id,
+            'fm_qad_form_id' => $form->id,
+            'academic_year_id' => $submission->academic_year_id,
+            'school_id' => $submission->school_id,
+            'user_id' => $user->id,
+        ], ['downloaded_at' => now()]);
+
+        return [
+            'fmQadTemplateVersionId' => $version->id,
+            'fmQadTemplateDownloadGrantId' => $grant->id,
+        ];
     }
 
     private function schoolHeadLogin(User $user): string

@@ -38,6 +38,9 @@ return [
         'X-Sync-Record-Count',
         'X-Sync-Etag',
         'X-Synced-At',
+        'X-CSPAMS-FM-QAD-Version-Id',
+        'X-CSPAMS-FM-QAD-Revision',
+        'X-CSPAMS-FM-QAD-Download-Grant-Id',
     ],
 
     'max_age' => 0,

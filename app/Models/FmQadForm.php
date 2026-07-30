@@ -20,6 +20,11 @@ class FmQadForm extends Model
         return $this->hasMany(FmQadTemplateVersion::class);
     }
 
+    public function downloadGrants(): HasMany
+    {
+        return $this->hasMany(FmQadTemplateDownloadGrant::class);
+    }
+
     public function scopeEnabled(Builder $query): Builder
     {
         return $query->where('is_enabled', true);
