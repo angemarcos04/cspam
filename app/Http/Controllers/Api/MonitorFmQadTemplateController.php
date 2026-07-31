@@ -16,11 +16,26 @@ use Illuminate\Http\Request;
 
 class MonitorFmQadTemplateController extends Controller
 {
-    public function forms(Request $request, FmQadTemplateVersionManager $manager): JsonResponse
+    public function forms(Request $request): JsonResponse
     {
         $this->monitor($request);
+        $configuredScopeIds = collect(config('fm_qad.forms', []))
+            ->pluck('scope_id')
+            ->filter(fn ($scopeId): bool => is_string($scopeId) && $scopeId !== '')
+            ->values();
+        $catalog = FmQadForm::query()
+            ->whereIn('scope_id', $configuredScopeIds)
+            ->get(['scope_id', 'is_enabled']);
+        $missingScopeIds = $configuredScopeIds
+            ->diff($catalog->pluck('scope_id'))
+            ->values();
         $years = AcademicYear::query()->orderByDesc('start_date')->get(['id', 'name', 'is_current']);
-        $forms = FmQadForm::query()->enabled()->with(['versions' => fn ($q) => $q->active()->with('academicYear')->latest('activated_at')])->orderBy('sort_order')->get();
+        $forms = FmQadForm::query()
+            ->enabled()
+            ->with(['versions' => fn ($q) => $q->active()->with('academicYear')->latest('activated_at')])
+            ->orderBy('sort_order')
+            ->orderBy('code')
+            ->get();
 
         return response()->json([
             'data' => $forms->map(fn (FmQadForm $form) => [
@@ -28,9 +43,19 @@ class MonitorFmQadTemplateController extends Controller
                 'scopeId' => $form->scope_id,
                 'code' => $form->code,
                 'name' => $form->name,
+                'description' => $form->description,
+                'sortOrder' => (int) $form->sort_order,
+                'isEnabled' => (bool) $form->is_enabled,
                 'activeVersions' => FmQadTemplateVersionResource::collection($form->versions)->resolve($request),
             ])->values(),
             'academicYears' => $years->map(fn ($year) => ['id' => (string) $year->id, 'name' => $year->name, 'isCurrent' => (bool) $year->is_current]),
+            'meta' => [
+                'configuredFormCount' => $configuredScopeIds->count(),
+                'catalogCount' => $catalog->count(),
+                'enabledCatalogCount' => $catalog->where('is_enabled', true)->count(),
+                'initializationRequired' => $missingScopeIds->isNotEmpty(),
+                'missingScopeIds' => $missingScopeIds,
+            ],
         ]);
     }
 

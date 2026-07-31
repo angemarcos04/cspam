@@ -31,8 +31,25 @@ export interface FmQadTemplateForm {
   scopeId: string;
   code: string;
   name: string;
-  activeVersion: FmQadTemplateVersion | null;
+  description?: string | null;
+  sortOrder?: number;
+  isEnabled?: boolean;
+  activeVersion?: FmQadTemplateVersion | null;
   activeVersions?: FmQadTemplateVersion[];
+}
+
+export interface MonitorFmQadCatalogMeta {
+  configuredFormCount: number;
+  catalogCount: number;
+  enabledCatalogCount: number;
+  initializationRequired: boolean;
+  missingScopeIds: string[];
+}
+
+export interface MonitorFmQadCatalogResponse {
+  data: FmQadTemplateForm[];
+  academicYears: import("@/types").AcademicYearOption[];
+  meta?: MonitorFmQadCatalogMeta;
 }
 
 export interface FmQadDownloadedVersionGrant {

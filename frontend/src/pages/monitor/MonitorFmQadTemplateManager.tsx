@@ -9,9 +9,13 @@ import {
   updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
-import { isAbortError } from "@/lib/api";
+import { isAbortError, isApiError, messageForApiError } from "@/lib/api";
 import type { AcademicYearOption } from "@/types";
-import type { FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
+import type {
+  FmQadTemplateForm,
+  FmQadTemplateVersion,
+  MonitorFmQadCatalogMeta,
+} from "@/types/fmQadTemplates";
 
 interface FmQadUploadDraft {
   revisionLabel: string;
@@ -40,6 +44,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   const { apiToken } = useAuth();
   const [forms, setForms] = useState<FmQadTemplateForm[]>([]);
   const [years, setYears] = useState<AcademicYearOption[]>([]);
+  const [catalogMeta, setCatalogMeta] = useState<MonitorFmQadCatalogMeta | null>(null);
   const [selectedForm, setSelectedForm] = useState<FmQadTemplateForm | null>(null);
   const [versions, setVersions] = useState<FmQadTemplateVersion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -78,6 +83,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       if (sequence !== formRequestSequenceRef.current) return;
       setForms(result.data);
       setYears(result.academicYears);
+      setCatalogMeta(result.meta ?? null);
       const selectedId = selectedFormIdRef.current;
       if (selectedId) {
         const updated = result.data.find((form) => form.id === selectedId) ?? null;
@@ -86,7 +92,11 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       }
     } catch (cause) {
       if (!isAbortError(cause) && sequence === formRequestSequenceRef.current) {
-        setError(cause instanceof Error ? cause.message : "Unable to load FM-QAD templates.");
+        setError(
+          isApiError(cause) && cause.status === 404
+            ? "The FM-QAD catalog endpoint is unavailable. The backend deployment may be outdated."
+            : messageForApiError(cause, "The FM-QAD catalog could not be loaded."),
+        );
       }
     } finally {
       if (sequence === formRequestSequenceRef.current) setIsLoading(false);
@@ -231,6 +241,12 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
     }
   };
 
+  const catalogIsUninitialized = forms.length === 0 && catalogMeta?.initializationRequired === true;
+  const catalogIsIncomplete = forms.length > 0 && catalogMeta?.initializationRequired === true;
+  const enabledCatalogIsIncomplete = forms.length > 0
+    && catalogMeta !== null
+    && catalogMeta.enabledCatalogCount < catalogMeta.configuredFormCount;
+
   return (
     <section aria-labelledby="fm-qad-manager-title" className="border-b border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -243,15 +259,53 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
           <button type="button" onClick={closeManager} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
         </div>
       </div>
-      {error && <p role="alert" className="mt-3 rounded-sm bg-rose-50 px-3 py-2 text-sm text-rose-700">{error}</p>}
-      {isLoading ? <p className="mt-4 text-sm text-slate-600">Loading template library...</p> : (
+      {error && (
+        <div role="alert" className="mt-3 rounded-sm bg-rose-50 px-3 py-3 text-sm text-rose-700">
+          <p>{error}</p>
+          <button type="button" onClick={() => void refresh()} className="mt-2 rounded-sm border border-rose-300 bg-white px-3 py-1.5 text-xs font-semibold">Retry catalog request</button>
+        </div>
+      )}
+      {!error && catalogMeta && catalogIsIncomplete && (
+        <div role="status" className="mt-3 rounded-sm bg-amber-50 px-3 py-3 text-sm text-amber-800">
+          <p className="font-semibold">The FM-QAD catalog is incomplete.</p>
+          <p>{catalogMeta.catalogCount} of {catalogMeta.configuredFormCount} permanent forms are configured.</p>
+          {catalogMeta.missingScopeIds.length > 0 && <p className="mt-1 text-xs">Missing: {catalogMeta.missingScopeIds.join(", ")}</p>}
+        </div>
+      )}
+      {!error && catalogMeta && !catalogIsIncomplete && enabledCatalogIsIncomplete && (
+        <div role="status" className="mt-3 rounded-sm bg-amber-50 px-3 py-3 text-sm text-amber-800">
+          <p className="font-semibold">Some permanent FM-QAD forms are disabled.</p>
+          <p>{catalogMeta.enabledCatalogCount} of {catalogMeta.configuredFormCount} permanent forms are enabled.</p>
+        </div>
+      )}
+      {!error && (
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead><tr className="border-b text-xs uppercase text-slate-500"><th className="p-2">Code</th><th className="p-2">Form name</th><th className="p-2">Active revision</th><th className="p-2">Academic Year</th><th className="p-2">File</th><th className="p-2">Status</th><th className="p-2">Activated</th><th className="p-2">Actions</th></tr></thead>
-            <tbody>{forms.map((form) => {
-              const current = form.activeVersions?.[0] ?? null;
-              return <tr key={form.id} className="border-b align-top"><td className="p-2 font-bold">{form.code}</td><td className="p-2">{form.name}</td><td className="p-2">{current?.revisionLabel ?? "Not configured"}</td><td className="p-2">{current?.academicYearLabel ?? (current ? "Baseline" : "—")}</td><td className="p-2"><span className="block max-w-48 break-words">{current?.originalFilename ?? "—"}</span>{current && <span className="text-xs text-slate-500">{(current.sizeBytes / 1024).toFixed(1)} KB</span>}</td><td className="p-2 capitalize">{current?.status ?? "Unavailable"}</td><td className="p-2">{current?.activatedAt ? new Date(current.activatedAt).toLocaleDateString() : "—"}</td><td className="p-2"><div className="flex flex-col items-start gap-1"><button type="button" onClick={() => void openVersions(form)} className="font-semibold text-primary-700 underline">Manage</button>{current && <button type="button" onClick={() => void downloadFmQadVersion(apiToken, current)} className="font-semibold text-slate-700 underline">Download active</button>}</div></td></tr>;
-            })}</tbody>
+            <tbody>
+              {isLoading && <tr><td colSpan={8} className="p-6 text-center text-slate-600">Loading FM-QAD forms</td></tr>}
+              {!isLoading && catalogMeta && catalogIsUninitialized && (
+                <tr><td colSpan={8} className="p-6 text-center text-slate-700">
+                  <p className="font-semibold">No FM-QAD forms are configured.</p>
+                  <p className="mt-1">The permanent FM-QAD form catalog has not been initialized.</p>
+                  <p className="mt-1">Contact the system administrator, then refresh this page.</p>
+                  <p className="mt-2 text-xs">Expected permanent forms: {catalogMeta.configuredFormCount}. Missing: {catalogMeta.missingScopeIds.length}.</p>
+                  <details className="mt-2 text-xs"><summary className="cursor-pointer">Technical note</summary><p className="mt-1">Required operation: initialize the permanent FM-QAD form catalog.</p></details>
+                  <button type="button" onClick={() => void refresh()} className="mt-3 rounded-sm border px-3 py-1.5 text-xs font-semibold">Retry catalog request</button>
+                </td></tr>
+              )}
+              {!isLoading && forms.length === 0 && !catalogIsUninitialized && (
+                <tr><td colSpan={8} className="p-6 text-center text-slate-700">
+                  <p className="font-semibold">No FM-QAD forms are available.</p>
+                  <p className="mt-1">Refresh the page or contact the system administrator.</p>
+                  <button type="button" onClick={() => void refresh()} className="mt-3 rounded-sm border px-3 py-1.5 text-xs font-semibold">Retry catalog request</button>
+                </td></tr>
+              )}
+              {!isLoading && forms.map((form) => {
+                const current = form.activeVersions?.[0] ?? null;
+                return <tr key={form.id} className="border-b align-top"><td className="p-2 font-bold">{form.code}</td><td className="p-2">{form.name}</td><td className="p-2">{current?.revisionLabel ?? "Not configured"}</td><td className="p-2">{current?.academicYearLabel ?? (current ? "Baseline" : "—")}</td><td className="p-2"><span className="block max-w-48 break-words">{current?.originalFilename ?? "—"}</span>{current && <span className="text-xs text-slate-500">{(current.sizeBytes / 1024).toFixed(1)} KB</span>}</td><td className="p-2 capitalize">{current?.status ?? "No active revision"}</td><td className="p-2">{current?.activatedAt ? new Date(current.activatedAt).toLocaleDateString() : "—"}</td><td className="p-2"><div className="flex flex-col items-start gap-1"><button type="button" onClick={() => void openVersions(form)} className="font-semibold text-primary-700 underline">Manage</button>{current && <button type="button" onClick={() => void downloadFmQadVersion(apiToken, current)} className="font-semibold text-slate-700 underline">Download active</button>}</div></td></tr>;
+              })}
+            </tbody>
           </table>
         </div>
       )}

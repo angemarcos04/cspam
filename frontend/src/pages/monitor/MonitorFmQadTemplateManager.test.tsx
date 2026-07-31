@@ -7,6 +7,7 @@ import {
   updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
+import { ApiError } from "@/lib/api";
 import type { FmQadTemplateForm } from "@/types/fmQadTemplates";
 import type { FmQadTemplateVersion } from "@/types/fmQadTemplates";
 
@@ -76,6 +77,93 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     await waitFor(() => expect(fetchFmQadVersions).toHaveBeenCalledWith("monitor-token", "form-1", expect.any(AbortSignal)));
     expect(screen.getByText(/Newest revisions first/i)).toBeTruthy();
+  });
+
+  it("renders a semantic loading row instead of a blank table body", () => {
+    vi.mocked(fetchMonitorFmQadForms).mockReturnValue(new Promise(() => undefined));
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    expect(screen.getByText("Loading FM-QAD forms").closest("td")?.getAttribute("colspan")).toBe("8");
+    expect(screen.getByRole("columnheader", { name: "Code" })).toBeTruthy();
+  });
+
+  it("shows uninitialized catalog guidance and retries successfully", async () => {
+    vi.mocked(fetchMonitorFmQadForms)
+      .mockResolvedValueOnce({
+        data: [],
+        academicYears: [],
+        meta: {
+          configuredFormCount: 10,
+          catalogCount: 0,
+          enabledCatalogCount: 0,
+          initializationRequired: true,
+          missingScopeIds: forms.map((form) => form.scopeId),
+        },
+      })
+      .mockResolvedValueOnce({ data: forms, academicYears: [] });
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    expect(await screen.findByText("No FM-QAD forms are configured.")).toBeTruthy();
+    expect(screen.getByText(/Expected permanent forms: 10. Missing: 10./)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Retry catalog request" }));
+    expect(await screen.findByText("FM-QAD-001")).toBeTruthy();
+    expect(fetchMonitorFmQadForms).toHaveBeenCalledTimes(2);
+  });
+
+  it("distinguishes a valid legacy empty response from initialization failure", async () => {
+    vi.mocked(fetchMonitorFmQadForms).mockResolvedValue({ data: [], academicYears: [] });
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    expect(await screen.findByText("No FM-QAD forms are available.")).toBeTruthy();
+    expect(screen.queryByText(/has not been initialized/i)).toBeNull();
+  });
+
+  it("renders available rows with a partial-catalog warning", async () => {
+    vi.mocked(fetchMonitorFmQadForms).mockResolvedValue({
+      data: forms.slice(0, 7),
+      academicYears: [],
+      meta: {
+        configuredFormCount: 10,
+        catalogCount: 7,
+        enabledCatalogCount: 7,
+        initializationRequired: true,
+        missingScopeIds: ["fm_qad_011", "fm_qad_034", "fm_qad_041"],
+      },
+    });
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    expect(await screen.findByText("The FM-QAD catalog is incomplete.")).toBeTruthy();
+    expect(screen.getByText("7 of 10 permanent forms are configured.")).toBeTruthy();
+    expect(screen.getByText("FM-QAD-001")).toBeTruthy();
+    expect(screen.queryByText("FM-QAD-041")).toBeNull();
+  });
+
+  it("renders all forms without versions and labels their active state clearly", async () => {
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    await screen.findByText("FM-QAD-001");
+    expect(screen.getAllByText("Not configured")).toHaveLength(10);
+    expect(screen.getAllByText("No active revision")).toHaveLength(10);
+    expect(screen.getAllByRole("button", { name: "Manage" })).toHaveLength(10);
+  });
+
+  it("shows request and deployment mismatch errors with retry actions", async () => {
+    vi.mocked(fetchMonitorFmQadForms).mockRejectedValueOnce(new Error("The FM-QAD catalog response is invalid."));
+    const { unmount } = render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    expect((await screen.findByRole("alert")).textContent).toContain("catalog response is invalid");
+    expect(screen.getByRole("button", { name: "Retry catalog request" })).toBeTruthy();
+    expect(screen.queryByText("No FM-QAD forms are available.")).toBeNull();
+    unmount();
+
+    vi.mocked(fetchMonitorFmQadForms).mockRejectedValueOnce(
+      new ApiError("Request failed with status 404.", 404, null),
+    );
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    expect((await screen.findByRole("alert")).textContent).toContain("backend deployment may be outdated");
   });
 
   it("uploads a required DOCX revision as a draft", async () => {

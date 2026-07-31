@@ -1,6 +1,77 @@
 import { apiRequest, COOKIE_SESSION_TOKEN, getApiBaseUrl } from "@/lib/api";
-import type { AcademicYearOption } from "@/types";
-import type { FmQadDownloadedVersionGrant, FmQadTemplateForm, FmQadTemplateVersion } from "@/types/fmQadTemplates";
+import type {
+  FmQadDownloadedVersionGrant,
+  FmQadTemplateForm,
+  FmQadTemplateVersion,
+  MonitorFmQadCatalogMeta,
+  MonitorFmQadCatalogResponse,
+} from "@/types/fmQadTemplates";
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isCatalogForm(value: unknown): value is FmQadTemplateForm {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.scopeId === "string"
+    && typeof value.code === "string"
+    && typeof value.name === "string"
+    && (value.activeVersions === undefined || Array.isArray(value.activeVersions));
+}
+
+function isAcademicYear(value: unknown): value is MonitorFmQadCatalogResponse["academicYears"][number] {
+  return isRecord(value)
+    && typeof value.id === "string"
+    && typeof value.name === "string"
+    && typeof value.isCurrent === "boolean";
+}
+
+function parseCatalogMeta(value: unknown): MonitorFmQadCatalogMeta | undefined {
+  if (value === undefined) return undefined;
+  if (
+    !isRecord(value)
+    || typeof value.configuredFormCount !== "number"
+    || typeof value.catalogCount !== "number"
+    || typeof value.enabledCatalogCount !== "number"
+    || typeof value.initializationRequired !== "boolean"
+    || !Array.isArray(value.missingScopeIds)
+    || !value.missingScopeIds.every((scopeId) => typeof scopeId === "string")
+  ) {
+    throw new Error("The FM-QAD catalog metadata response is invalid.");
+  }
+
+  return {
+    configuredFormCount: value.configuredFormCount,
+    catalogCount: value.catalogCount,
+    enabledCatalogCount: value.enabledCatalogCount,
+    initializationRequired: value.initializationRequired,
+    missingScopeIds: value.missingScopeIds,
+  };
+}
+
+export function parseMonitorFmQadCatalog(payload: unknown): MonitorFmQadCatalogResponse {
+  if (!isRecord(payload)) {
+    throw new Error("The FM-QAD catalog response is invalid.");
+  }
+  if (!Array.isArray(payload.data)) {
+    throw new Error("The FM-QAD catalog response does not contain a valid form list.");
+  }
+  if (!payload.data.every(isCatalogForm)) {
+    throw new Error("The FM-QAD catalog response contains an invalid form entry.");
+  }
+
+  const academicYears = payload.academicYears ?? [];
+  if (!Array.isArray(academicYears) || !academicYears.every(isAcademicYear)) {
+    throw new Error("The FM-QAD Academic Year response is invalid.");
+  }
+
+  return {
+    data: payload.data,
+    academicYears,
+    meta: parseCatalogMeta(payload.meta),
+  };
+}
 
 export async function fetchEffectiveFmQadTemplates(token: string, academicYearId: string, signal?: AbortSignal) {
   const response = await apiRequest<{ data: FmQadTemplateForm[] }>(
@@ -10,11 +81,13 @@ export async function fetchEffectiveFmQadTemplates(token: string, academicYearId
   return response.data;
 }
 
-export async function fetchMonitorFmQadForms(token: string, signal?: AbortSignal) {
-  return apiRequest<{ data: FmQadTemplateForm[]; academicYears: AcademicYearOption[] }>(
+export async function fetchMonitorFmQadForms(token: string, signal?: AbortSignal): Promise<MonitorFmQadCatalogResponse> {
+  const payload = await apiRequest<unknown>(
     "/api/monitor/fm-qad/forms",
     { token, signal },
   );
+
+  return parseMonitorFmQadCatalog(payload);
 }
 
 export async function fetchFmQadVersions(token: string, formId: string, signal?: AbortSignal) {

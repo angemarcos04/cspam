@@ -40,6 +40,11 @@ echo "Ensuring required roles and permissions..."
 php artisan db:seed --class=Database\\Seeders\\RolesAndPermissionsSeeder --force
 echo "Role and permission seeding completed in $(( $(date +%s) - step_started_at ))s."
 
+step_started_at="$(date +%s)"
+echo "Ensuring permanent FM-QAD form catalog..."
+php artisan db:seed --class=Database\\Seeders\\FmQadFormSeeder --force
+echo "FM-QAD form catalog seeding completed in $(( $(date +%s) - step_started_at ))s."
+
 if is_truthy "${CSPAMS_SEED_DEMO_DATA:-false}"; then
     echo "Seeding demo data..."
     php artisan db:seed --class=Database\\Seeders\\DemoDataSeeder --force
