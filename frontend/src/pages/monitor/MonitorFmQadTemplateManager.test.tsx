@@ -4,6 +4,7 @@ import { MonitorFmQadTemplateManager } from "@/pages/monitor/MonitorFmQadTemplat
 import {
   fetchFmQadVersions,
   fetchMonitorFmQadForms,
+  updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
 import type { FmQadTemplateForm } from "@/types/fmQadTemplates";
@@ -30,6 +31,31 @@ const forms: FmQadTemplateForm[] = ["001", "002", "003", "004", "008", "009", "0
   };
 });
 
+const draftVersion: FmQadTemplateVersion = {
+  id: "v3",
+  formId: "form-1",
+  scopeId: "fm_qad_001",
+  code: "FM-QAD-001",
+  formName: "Form 1",
+  revisionLabel: "Rev. 03",
+  status: "draft",
+  academicYearId: "year-1",
+  academicYearLabel: "20262027",
+  originalFilename: "v3.docx",
+  mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  sizeBytes: 1,
+  sha256Hash: "3",
+  changeNotes: "Rev. 03 notes",
+  internalNote: "Rev. 03 internal",
+  activatedAt: null,
+  archivedAt: null,
+  createdAt: null,
+  updatedAt: null,
+  uploadedBy: null,
+  activatedBy: null,
+  downloadUrl: "/v3",
+};
+
 describe("MonitorFmQadTemplateManager", () => {
   afterEach(cleanup);
   beforeEach(() => {
@@ -40,6 +66,7 @@ describe("MonitorFmQadTemplateManager", () => {
     });
     vi.mocked(fetchFmQadVersions).mockResolvedValue([]);
     vi.mocked(uploadFmQadVersion).mockResolvedValue({} as never);
+    vi.mocked(updateFmQadVersionMetadata).mockResolvedValue(draftVersion);
   });
 
   it("lists the fixed catalog and opens version history", async () => {
@@ -103,5 +130,79 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close FM-QAD Template Management" }));
     expect(secondSignal.aborted).toBe(true);
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it("ignores AbortError and superseded failures without replacing the current history", async () => {
+    let rejectFirst!: (cause: unknown) => void;
+    const first = new Promise<FmQadTemplateVersion[]>((_resolve, reject) => { rejectFirst = reject; });
+    vi.mocked(fetchFmQadVersions)
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce([{ ...draftVersion, id: "current", formId: "form-2", revisionLabel: "Current Rev." }]);
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    const manage = screen.getAllByRole("button", { name: "Manage" });
+    fireEvent.click(manage[0]);
+    fireEvent.click(manage[1]);
+    rejectFirst(new DOMException("Aborted", "AbortError"));
+
+    expect(await screen.findByText("Current Rev.")).toBeTruthy();
+    await Promise.resolve();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getAllByText(/FM-QAD-002/).length).toBeGreaterThan(1);
+  });
+
+  it("ignores a superseded non-abort error but displays the current request error", async () => {
+    let rejectFirst!: (cause: unknown) => void;
+    const first = new Promise<FmQadTemplateVersion[]>((_resolve, reject) => { rejectFirst = reject; });
+    vi.mocked(fetchFmQadVersions)
+      .mockReturnValueOnce(first)
+      .mockResolvedValueOnce([draftVersion]);
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    const manage = screen.getAllByRole("button", { name: "Manage" });
+    fireEvent.click(manage[0]);
+    fireEvent.click(manage[1]);
+    rejectFirst(new Error("Old request failed"));
+    expect(await screen.findByText("Rev. 03")).toBeTruthy();
+    expect(screen.queryByText("Old request failed")).toBeNull();
+
+    vi.mocked(fetchFmQadVersions).mockRejectedValueOnce(new Error("Current request failed"));
+    fireEvent.click(manage[2]);
+    expect((await screen.findByRole("alert")).textContent).toContain("Current request failed");
+  });
+
+  it("keeps upload and edit drafts mutually exclusive and isolated", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    expect(await screen.findByText("Rev. 03")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 04" } });
+    fireEvent.click(screen.getByRole("button", { name: /Edit Details/i }));
+
+    expect(document.querySelector('[aria-label="Revision Label"]')).toBeNull();
+    expect((screen.getByLabelText("Edit Revision Label") as HTMLInputElement).value).toBe("Rev. 03");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
+    expect((screen.getByLabelText("Revision Label") as HTMLInputElement).value).toBe("");
+    expect(screen.queryByLabelText("Edit Revision Label")).toBeNull();
+  });
+
+  it("saving edit metadata does not populate the next upload draft", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Details/i }));
+    fireEvent.change(screen.getByLabelText("Edit Revision Label"), { target: { value: "Rev. 03A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Details" }));
+    await waitFor(() => expect(updateFmQadVersionMetadata).toHaveBeenCalled());
+
+    fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
+    expect((screen.getByLabelText("Revision Label") as HTMLInputElement).value).toBe("");
   });
 });

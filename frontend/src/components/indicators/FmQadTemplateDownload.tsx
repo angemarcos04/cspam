@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/context/Auth";
 import { useFmQadTemplates } from "@/hooks/useFmQadTemplates";
 import { downloadFmQadVersion } from "@/lib/fmQadTemplatesApi";
+import { storeFmQadGrant } from "@/lib/fmQadGrantStorage";
 import type { FmQadDownloadedVersionGrant, FmQadTemplateForm } from "@/types/fmQadTemplates";
 
 export function FmQadTemplateDownload({
@@ -42,8 +43,12 @@ export function FmQadTemplateDownload({
         schoolId: String(user?.schoolId ?? ""),
       });
       if (!grant) throw new Error("The download completed, but its authorization could not be verified. Download it again before uploading.");
-      const storageKey = `cspams:fm-qad-grant:${user?.id ?? "unknown"}:${grant.schoolId}:${academicYearId}:${grant.scopeId}`;
-      sessionStorage.setItem(storageKey, JSON.stringify(grant));
+      storeFmQadGrant({
+        userId: String(user?.id ?? ""),
+        schoolId: grant.schoolId,
+        academicYearId,
+        scopeId: grant.scopeId,
+      }, grant);
       onGrantChange?.(grant);
     } catch (cause) {
       setDownloadError(cause instanceof Error ? cause.message : "Template download failed.");

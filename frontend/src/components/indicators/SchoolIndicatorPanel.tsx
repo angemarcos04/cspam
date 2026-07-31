@@ -22,7 +22,8 @@ import {
 } from "@/constants/submissionFiles";
 import { useAuth } from "@/context/Auth";
 import { useIndicatorData } from "@/context/IndicatorData";
-import { COOKIE_SESSION_TOKEN, getApiBaseUrl, messageForApiError } from "@/lib/api";
+import { COOKIE_SESSION_TOKEN, getApiBaseUrl, isApiError, messageForApiError } from "@/lib/api";
+import { readStoredFmQadGrants, removeStoredFmQadGrant } from "@/lib/fmQadGrantStorage";
 import {
   buildSubmissionUploadedFileFingerprint,
   getActiveWorkspaceFileTypes,
@@ -2151,20 +2152,13 @@ function SchoolIndicatorPanelComponent({
   );
   const activeAcademicYearId = yearWorkspaceState.workspaceAcademicYearId;
   useEffect(() => {
-    const grants = new Map<string, FmQadDownloadedVersionGrant>();
-    if (typeof sessionStorage !== "undefined" && user?.id && user.schoolId && activeAcademicYearId) {
-      const prefix = `cspams:fm-qad-grant:${user.id}:${user.schoolId}:${activeAcademicYearId}:`;
-      for (let index = 0; index < sessionStorage.length; index++) {
-        const key = sessionStorage.key(index);
-        if (!key?.startsWith(prefix)) continue;
-        try {
-          const grant = JSON.parse(sessionStorage.getItem(key) ?? "") as FmQadDownloadedVersionGrant;
-          if (grant.schoolId === String(user.schoolId) && grant.academicYearId === activeAcademicYearId) grants.set(grant.scopeId, grant);
-        } catch {
-          sessionStorage.removeItem(key);
-        }
-      }
-    }
+    const grants = user?.id && user.schoolId && activeAcademicYearId
+      ? readStoredFmQadGrants({
+          userId: String(user.id),
+          schoolId: String(user.schoolId),
+          academicYearId: activeAcademicYearId,
+        })
+      : new Map<string, FmQadDownloadedVersionGrant>();
     setFmQadGrantsByScope(grants);
   }, [activeAcademicYearId, user?.id, user?.schoolId]);
   const selectedSchoolYearLabel = yearWorkspaceState.selectedSchoolYearLabel;
@@ -6217,9 +6211,27 @@ function SchoolIndicatorPanelComponent({
           skipResolvedWorkspaceRehydrate: true,
           onError: (err) => {
             setUploadingFileType(null);
+            const grantWasRejected = type.startsWith("fm_qad_")
+              && isApiError(err)
+              && Boolean(err.validationErrors?.fmQadTemplateDownloadGrantId?.length);
+            if (grantWasRejected && user?.id && user.schoolId && activeAcademicYearIdRef.current) {
+              removeStoredFmQadGrant({
+                userId: String(user.id),
+                schoolId: String(user.schoolId),
+                academicYearId: activeAcademicYearIdRef.current,
+                scopeId: type,
+              });
+              setFmQadGrantsByScope((current) => {
+                const next = new Map(current);
+                next.delete(type);
+                return next;
+              });
+            }
             setUploadErrorByType((current) => ({
               ...current,
-              [type]: toGroupBActionErrorMessage(err, `Unable to upload ${fileDefinition.shortLabel} file.`),
+              [type]: grantWasRejected
+                ? "This template authorization is no longer valid. Download the applicable FM-QAD template again before uploading."
+                : toGroupBActionErrorMessage(err, `Unable to upload ${fileDefinition.shortLabel} file.`),
             }));
           },
         });

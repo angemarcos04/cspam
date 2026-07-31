@@ -1011,6 +1011,89 @@ describe("SchoolIndicatorPanel FM-QAD template downloads", () => {
     });
     expect(screen.queryByText("Download FM-QAD Template")).toBeNull();
   });
+
+  it("removes only a backend-rejected template grant and instructs the user to download again", async () => {
+    const submission = buildFileWorkspaceSubmission();
+    submission.files.fm_qad_001.fmQadTemplateVersionId = "version-2";
+    submission.files.fm_qad_001.fmQadTemplateRevisionLabel = "Rev. 02";
+    const grantKey = "cspams:fm-qad-grant:25:1:year-1:fm_qad_001";
+    const otherGrantKey = "cspams:fm-qad-grant:25:1:year-1:fm_qad_003";
+    sessionStorage.setItem(grantKey, JSON.stringify({
+      grantId: "grant-1", schoolId: "1", academicYearId: "year-1", scopeId: "fm_qad_001",
+      versionId: "version-2", revisionLabel: "Rev. 02", downloadedAt: "2026-07-31T00:00:00Z",
+    }));
+    sessionStorage.setItem(otherGrantKey, JSON.stringify({
+      grantId: "grant-3", schoolId: "1", academicYearId: "year-1", scopeId: "fm_qad_003",
+      versionId: "version-3", revisionLabel: "Rev. 03", downloadedAt: "2026-07-31T00:00:00Z",
+    }));
+    const uploadSubmissionFile = vi.fn().mockRejectedValue(new ApiError(
+      "Download the applicable FM-QAD template before uploading the accomplished file.",
+      422,
+      { errors: { fmQadTemplateDownloadGrantId: ["Rejected grant."] } },
+      { fmQadTemplateDownloadGrantId: ["Rejected grant."] },
+    ));
+    mockIndicatorPanelData([submission], { uploadSubmissionFile });
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    if (!fileTab) throw new Error("Expected FM-QAD-001 workspace tab.");
+    fireEvent.click(fileTab);
+    const input = view.container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected file input.");
+    fireEvent.change(input, {
+      target: { files: [new File(["replacement"], "replacement.pdf", { type: "application/pdf" })] },
+    });
+    const save = (await within(view.container).findAllByRole("button", { name: "Save" }))
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!save) throw new Error("Expected file Save button.");
+    fireEvent.click(save);
+
+    expect(await screen.findByText(/This template authorization is no longer valid/i)).toBeTruthy();
+    expect(sessionStorage.getItem(grantKey)).toBeNull();
+    expect(sessionStorage.getItem(otherGrantKey)).not.toBeNull();
+    expect(uploadSubmissionFile).toHaveBeenCalledWith(
+      submission.id,
+      "fm_qad_001",
+      expect.any(File),
+      "version-2",
+      "grant-1",
+    );
+    expect((input.files?.[0]?.name)).toBe("replacement.pdf");
+  }, 10_000);
+
+  it("preserves a valid grant for an unrelated upload validation error", async () => {
+    const submission = buildFileWorkspaceSubmission();
+    submission.files.fm_qad_001.fmQadTemplateVersionId = "version-2";
+    const grantKey = "cspams:fm-qad-grant:25:1:year-1:fm_qad_001";
+    sessionStorage.setItem(grantKey, JSON.stringify({
+      grantId: "grant-1", schoolId: "1", academicYearId: "year-1", scopeId: "fm_qad_001",
+      versionId: "version-2", revisionLabel: "Rev. 02", downloadedAt: "2026-07-31T00:00:00Z",
+    }));
+    const uploadSubmissionFile = vi.fn().mockRejectedValue(new ApiError(
+      "The file is too large.",
+      422,
+      { errors: { file: ["The file is too large."] } },
+      { file: ["The file is too large."] },
+    ));
+    mockIndicatorPanelData([submission], { uploadSubmissionFile });
+    const view = render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
+    const fileTab = (await within(view.container).findAllByRole("button", { name: /FM-QAD-001/i }))
+      .find((button) => button.getAttribute("data-category-id") === "fm_qad_001");
+    if (!fileTab) throw new Error("Expected FM-QAD-001 workspace tab.");
+    fireEvent.click(fileTab);
+    const input = view.container.querySelector('input[type="file"]');
+    if (!(input instanceof HTMLInputElement)) throw new Error("Expected file input.");
+    fireEvent.change(input, {
+      target: { files: [new File(["replacement"], "replacement.pdf", { type: "application/pdf" })] },
+    });
+    const save = (await within(view.container).findAllByRole("button", { name: "Save" }))
+      .find((button) => button.getAttribute("type") === "submit");
+    if (!save) throw new Error("Expected file Save button.");
+    fireEvent.click(save);
+
+    expect(await screen.findByText(/The file is too large/i)).toBeTruthy();
+    expect(sessionStorage.getItem(grantKey)).not.toBeNull();
+  }, 10_000);
 });
 
 describe("SchoolIndicatorPanel batch submit", () => {

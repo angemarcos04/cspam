@@ -6,6 +6,7 @@ const CLIENT_SESSION_STORAGE_PREFIXES = [
   "cspams.monitor.filters.v1:",
   "cspams:school-admin-dashboard:view-year:",
   "cspams:school-indicator-panel:workspace-year:",
+  "cspams:fm-qad-grant:",
 ] as const;
 const SCHOOL_HEAD_INDICATOR_AUTOSAVE_PREFIX = "cspams.schoolhead.indicator.autosave";
 

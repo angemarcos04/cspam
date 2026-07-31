@@ -2,10 +2,13 @@
 
 namespace App\Support\FmQad;
 
+use App\Models\AcademicYear;
 use App\Models\FmQadForm;
 use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
+use App\Models\IndicatorSubmission;
 use App\Models\IndicatorSubmissionFile;
+use App\Support\Indicators\RollingIndicatorYearWindow;
 
 class FmQadTemplateAudit
 {
@@ -14,6 +17,7 @@ class FmQadTemplateAudit
     {
         $issues = [
             'missingForms' => [], 'formsWithoutVersions' => [], 'formsWithoutActiveVersion' => [],
+            'academicYearsWithoutEffectiveVersion' => [],
             'duplicateActiveVersions' => [], 'missingBlobs' => [], 'hashMismatch' => [],
             'orphanedVersions' => [], 'brokenSubmissionReferences' => [],
             'invalidAcademicYearReferences' => [], 'invalidFormVersionReferences' => [],
@@ -22,8 +26,9 @@ class FmQadTemplateAudit
         $configuredScopes = collect(config('fm_qad.forms', []))->pluck('scope_id');
         $existingScopes = FmQadForm::query()->pluck('scope_id');
         $issues['missingForms'] = $configuredScopes->diff($existingScopes)->values()->all();
+        $relevantAcademicYears = $this->relevantAcademicYears();
 
-        FmQadForm::query()->enabled()->with(['versions.blob'])->each(function (FmQadForm $form) use (&$issues): void {
+        FmQadForm::query()->enabled()->with(['versions.blob'])->each(function (FmQadForm $form) use (&$issues, $relevantAcademicYears): void {
             if ($form->versions->isEmpty()) {
                 $issues['formsWithoutVersions'][] = $form->scope_id;
             }
@@ -33,6 +38,16 @@ class FmQadTemplateAudit
             $duplicates = $form->versions->where('status', FmQadTemplateVersion::ACTIVE)->groupBy(fn ($v) => $v->academic_year_id ?? 'baseline')->filter(fn ($group) => $group->count() > 1);
             foreach ($duplicates->keys() as $key) {
                 $issues['duplicateActiveVersions'][] = $form->scope_id.':'.$key;
+            }
+            $activeVersions = $form->versions->where('status', FmQadTemplateVersion::ACTIVE);
+            $hasBaseline = $activeVersions->contains(fn (FmQadTemplateVersion $version): bool => $version->academic_year_id === null);
+            foreach ($relevantAcademicYears as $academicYear) {
+                $hasExact = $activeVersions->contains(
+                    fn (FmQadTemplateVersion $version): bool => (int) $version->academic_year_id === (int) $academicYear->id,
+                );
+                if (! $hasBaseline && ! $hasExact) {
+                    $issues['academicYearsWithoutEffectiveVersion'][] = $form->scope_id.':'.$academicYear->id;
+                }
             }
             foreach ($form->versions as $version) {
                 if (! $version->blob) {
@@ -68,12 +83,33 @@ class FmQadTemplateAudit
                     || (int) $grant->version?->fm_qad_form_id !== (int) $grant->fm_qad_form_id
                     || ($grant->version?->academic_year_id !== null
                         && (int) $grant->version->academic_year_id !== (int) $grant->academic_year_id)
-                    || (int) $grant->user?->school_id !== (int) $grant->school_id;
+                    || ! $grant->downloaded_at
+                    || ! $grant->created_at
+                    || ! $grant->updated_at;
                 if ($invalid) {
                     $issues['invalidDownloadGrants'][] = (string) $grant->id;
                 }
             });
 
         return $issues;
+    }
+
+    /** @return \Illuminate\Database\Eloquent\Collection<int, AcademicYear> */
+    private function relevantAcademicYears()
+    {
+        $submissionYearIds = IndicatorSubmission::query()
+            ->whereNotNull('academic_year_id')
+            ->distinct()
+            ->pluck('academic_year_id');
+        $rollingYearNames = app(RollingIndicatorYearWindow::class)->windowYears();
+
+        return AcademicYear::query()
+            ->where(function ($query) use ($submissionYearIds, $rollingYearNames): void {
+                $query->where('is_current', true)
+                    ->orWhereIn('id', $submissionYearIds)
+                    ->orWhereIn('name', $rollingYearNames);
+            })
+            ->orderBy('id')
+            ->get(['id', 'name']);
     }
 }

@@ -24,11 +24,12 @@ Artisan::command('inspire', function () {
 Artisan::command('cspams:import-fm-qad-templates {--dry-run} {--force} {--form=}', function (LegacyFmQadTemplateImporter $importer): int {
     $result = $importer->run((bool) $this->option('dry-run'), $this->option('form') ?: null, (bool) $this->option('force'));
     $dryRun = (bool) $this->option('dry-run');
-    $this->table(['Checked', $dryRun ? 'Would import' : 'Imported', $dryRun ? 'Would skip' : 'Skipped', $dryRun ? 'Would reactivate' : 'Reactivated', 'Missing', 'Invalid'], [[
+    $this->table(['Checked', $dryRun ? 'Would import' : 'Imported', $dryRun ? 'Would skip' : 'Skipped', $dryRun ? 'Would reactivate' : 'Reactivated', 'Missing catalog', 'Missing files', 'Invalid files'], [[
         $result['checked'],
         $result[$dryRun ? 'wouldImport' : 'imported'],
         $result[$dryRun ? 'wouldSkip' : 'skipped'],
         $result[$dryRun ? 'wouldReactivate' : 'reactivated'],
+        implode(', ', $result['missingCatalog']),
         implode(', ', $result['missing']),
         implode(', ', array_keys($result['invalid'])),
     ]]);
@@ -36,7 +37,9 @@ Artisan::command('cspams:import-fm-qad-templates {--dry-run} {--force} {--form=}
         $this->error($scope.': '.$message);
     }
 
-    return ($result['missing'] === [] && $result['invalid'] === []) ? self::SUCCESS : self::FAILURE;
+    return ($result['missingCatalog'] === [] && $result['missing'] === [] && $result['invalid'] === [])
+        ? self::SUCCESS
+        : self::FAILURE;
 })->purpose('Import the bundled FM-QAD DOCX files into persistent version storage.');
 
 Artisan::command('cspams:audit-fm-qad-templates', function (FmQadTemplateAudit $audit): int {

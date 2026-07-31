@@ -73,6 +73,8 @@ describe("AuthProvider logout", () => {
     window.localStorage.setItem("cspams.monitor.filters.v1", JSON.stringify({ q: "north" }));
     window.localStorage.setItem("cspams.monitor.filters.v1:monitor:1", JSON.stringify({ q: "south" }));
     window.sessionStorage.setItem("cspams.monitor.nav.v1", JSON.stringify({ visible: true }));
+    window.sessionStorage.setItem("cspams:fm-qad-grant:1:42:year-1:fm_qad_003", "{}");
+    window.sessionStorage.setItem("unrelated:session-key", "keep");
     window.history.replaceState(null, "", "/?tab=reviews#/monitor");
 
     const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
@@ -105,8 +107,59 @@ describe("AuthProvider logout", () => {
     expect(window.localStorage.getItem("cspams.monitor.filters.v1")).toBeNull();
     expect(window.localStorage.getItem("cspams.monitor.filters.v1:monitor:1")).toBeNull();
     expect(window.sessionStorage.getItem("cspams.monitor.nav.v1")).toBeNull();
+    expect(window.sessionStorage.getItem("cspams:fm-qad-grant:1:42:year-1:fm_qad_003")).toBeNull();
+    expect(window.sessionStorage.getItem("unrelated:session-key")).toBe("keep");
     expect(window.location.search).toBe("");
     expect(window.location.hash).toBe("#/monitor");
+  });
+
+  it("clears FM-QAD grants after confirmed bearer-session expiry", async () => {
+    window.sessionStorage.setItem("cspams.auth.session.v2", JSON.stringify({
+      mode: "bearer",
+      token: "expired-token",
+      tokenType: "Bearer",
+    }));
+    window.sessionStorage.setItem("cspams:fm-qad-grant:7:42:year-1:fm_qad_003", "{}");
+    window.sessionStorage.setItem("unrelated:session-key", "keep");
+    const userPayload = {
+      user: {
+        id: 7,
+        name: "School Head",
+        email: "head@cspams.local",
+        role: "school_head",
+        schoolId: 42,
+        schoolCode: "401777",
+        schoolName: "Private School",
+      },
+    };
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify(userPayload), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "Unauthenticated." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message: "Unauthenticated." }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const wrapper = ({ children }: { children: ReactNode }) => <AuthProvider>{children}</AuthProvider>;
+    const { result } = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(result.current.user?.id).toBe(7));
+
+    let expired = false;
+    await act(async () => {
+      expired = await result.current.handleUnauthorizedResponse();
+    });
+
+    expect(expired).toBe(true);
+    expect(result.current.user).toBeNull();
+    expect(window.sessionStorage.getItem("cspams:fm-qad-grant:7:42:year-1:fm_qad_003")).toBeNull();
+    expect(window.sessionStorage.getItem("unrelated:session-key")).toBe("keep");
   });
 
   it("restores auth from a persisted cookie-session descriptor on hard reload", async () => {

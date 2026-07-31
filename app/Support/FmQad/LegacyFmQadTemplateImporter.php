@@ -19,7 +19,7 @@ class LegacyFmQadTemplateImporter
         }
         $result = $dryRun
             ? ['checked' => 0, 'wouldImport' => 0, 'wouldSkip' => 0, 'wouldReactivate' => 0, 'missingCatalog' => [], 'missing' => [], 'invalid' => []]
-            : ['checked' => 0, 'imported' => 0, 'skipped' => 0, 'reactivated' => 0, 'missing' => [], 'invalid' => []];
+            : ['checked' => 0, 'imported' => 0, 'skipped' => 0, 'reactivated' => 0, 'missingCatalog' => [], 'missing' => [], 'invalid' => []];
         foreach (config('fm_qad.forms', []) as $definition) {
             if ($scopeId && $definition['scope_id'] !== $scopeId) {
                 continue;
@@ -41,6 +41,8 @@ class LegacyFmQadTemplateImporter
             $form = FmQadForm::query()->where('scope_id', $definition['scope_id'])->first();
             if (! $form && $dryRun) {
                 $result['missingCatalog'][] = $definition['scope_id'];
+
+                continue;
             }
             $existing = $form?->versions()->where('sha256_hash', $validated['sha256'])->first();
             if ($existing) {

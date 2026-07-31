@@ -7,6 +7,7 @@ use App\Models\AuditLog;
 use App\Models\FmQadForm;
 use App\Models\FmQadTemplateVersion;
 use App\Models\User;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -67,37 +68,47 @@ class FmQadTemplateVersionManager
     public function activate(FmQadTemplateVersion $version, ?User $actor, ?Request $request = null): FmQadTemplateVersion
     {
         $previousId = null;
-        $activated = DB::transaction(function () use ($version, $actor, &$previousId): FmQadTemplateVersion {
-            $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($version->id);
-            $conflicts = FmQadTemplateVersion::query()
-                ->where('fm_qad_form_id', $target->fm_qad_form_id)
-                ->where('status', FmQadTemplateVersion::ACTIVE)
-                ->when($target->academic_year_id === null, fn ($q) => $q->whereNull('academic_year_id'), fn ($q) => $q->where('academic_year_id', $target->academic_year_id))
-                ->lockForUpdate()
-                ->get();
-            $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
-            foreach ($conflicts as $conflict) {
-                if ((int) $conflict->id === (int) $target->id) {
-                    continue;
+        try {
+            $activated = DB::transaction(function () use ($version, $actor, &$previousId): FmQadTemplateVersion {
+                $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($version->id);
+                $conflicts = FmQadTemplateVersion::query()
+                    ->where('fm_qad_form_id', $target->fm_qad_form_id)
+                    ->where('status', FmQadTemplateVersion::ACTIVE)
+                    ->when($target->academic_year_id === null, fn ($q) => $q->whereNull('academic_year_id'), fn ($q) => $q->where('academic_year_id', $target->academic_year_id))
+                    ->lockForUpdate()
+                    ->get();
+                $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
+                foreach ($conflicts as $conflict) {
+                    if ((int) $conflict->id === (int) $target->id) {
+                        continue;
+                    }
+                    $conflict->update([
+                        'status' => FmQadTemplateVersion::ARCHIVED,
+                        'activation_key' => null,
+                        'archived_by' => $actor?->id,
+                        'archived_at' => now(),
+                    ]);
                 }
-                $conflict->update([
-                    'status' => FmQadTemplateVersion::ARCHIVED,
-                    'activation_key' => null,
-                    'archived_by' => $actor?->id,
-                    'archived_at' => now(),
+                $target->update([
+                    'status' => FmQadTemplateVersion::ACTIVE,
+                    'activation_key' => $this->activationKey($target),
+                    'activated_by' => $actor?->id,
+                    'activated_at' => now(),
+                    'archived_by' => null,
+                    'archived_at' => null,
                 ]);
-            }
-            $target->update([
-                'status' => FmQadTemplateVersion::ACTIVE,
-                'activation_key' => $this->activationKey($target),
-                'activated_by' => $actor?->id,
-                'activated_at' => now(),
-                'archived_by' => null,
-                'archived_at' => null,
-            ]);
 
-            return $target;
-        });
+                return $target;
+            });
+        } catch (QueryException $exception) {
+            if (! $this->isActivationKeyConflict($exception)) {
+                throw $exception;
+            }
+
+            throw ValidationException::withMessages([
+                'version' => 'Another revision was activated at the same time. Refresh the version history and try again.',
+            ]);
+        }
 
         $this->audit($request, 'fm_qad_template.version_activated', $activated, $actor, ['previousActiveVersionId' => $previousId]);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($activated, 'fm_qad_template.version_activated')));
@@ -191,6 +202,19 @@ class FmQadTemplateVersionManager
     private function activationKey(FmQadTemplateVersion $version): string
     {
         return $version->fm_qad_form_id.':'.($version->academic_year_id ?? 'baseline');
+    }
+
+    private function isActivationKeyConflict(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        if (! in_array($sqlState, ['23505', '23000'], true)) {
+            return false;
+        }
+
+        $message = mb_strtolower($exception->getMessage());
+
+        return str_contains($message, 'fm_qad_template_versions_activation_key_unique')
+            || str_contains($message, 'fm_qad_template_versions.activation_key');
     }
 
     private function safeFilename(?string $filename, string $fallback): string
