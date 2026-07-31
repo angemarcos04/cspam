@@ -58,8 +58,8 @@ class FmQadTemplateClosureTest extends TestCase
             '--dry-run' => true,
             '--form' => 'fm_qad_003',
         ])->expectsTable(
-            ['Checked', 'Would import', 'Would skip', 'Would reactivate', 'Missing catalog', 'Missing files', 'Invalid files'],
-            [[1, 0, 0, 0, 'fm_qad_003', '', '']],
+            ['Checked', 'Would import', 'Would skip', 'Would reactivate', 'Inactive existing', 'Missing catalog', 'Missing files', 'Invalid files'],
+            [[1, 0, 0, 0, '', 'fm_qad_003', '', '']],
         )->assertExitCode(1);
         $this->assertSame($before, $this->databaseCounts());
     }
@@ -113,6 +113,14 @@ class FmQadTemplateClosureTest extends TestCase
             true,
         );
         $this->assertSame(FmQadTemplateVersion::ARCHIVED, $importedVersion->fresh()->status);
+        $inactiveDryRun = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)
+            ->run(true, 'fm_qad_003');
+        $this->assertSame(0, $inactiveDryRun['wouldSkip']);
+        $this->assertSame(['fm_qad_003:archived'], $inactiveDryRun['inactiveExisting']);
+        $this->artisan('cspams:import-fm-qad-templates', [
+            '--dry-run' => true,
+            '--form' => 'fm_qad_003',
+        ])->assertExitCode(1);
         $forceDryRun = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)
             ->run(true, 'fm_qad_003', true);
         $this->assertSame(1, $forceDryRun['wouldReactivate']);
@@ -120,6 +128,36 @@ class FmQadTemplateClosureTest extends TestCase
             ->run(false, 'fm_qad_003', true);
         $this->assertSame(1, $forceReal['reactivated']);
         $this->assertSame(FmQadTemplateVersion::ACTIVE, $importedVersion->fresh()->status);
+        $this->assertSame(2, FmQadTemplateVersion::query()->count());
+        $this->assertSame(2, \App\Models\FmQadTemplateVersionBlob::query()->count());
+    }
+
+    public function test_matching_draft_requires_force_and_reactivates_the_same_version(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        $directory = $this->legacyDirectoryForScope('fm_qad_003');
+        config()->set('fm_qad.legacy_directory', $directory);
+        $definition = collect(config('fm_qad.forms'))->firstWhere('scope_id', 'fm_qad_003');
+        $path = $directory.DIRECTORY_SEPARATOR.$definition['filename'];
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $draft = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            new UploadedFile($path, $definition['filename'], 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', null, true),
+            ['revision_label' => 'Rev. 02', 'academic_year_id' => null, 'change_notes' => 'Pre-existing inactive import.'],
+            null,
+        );
+        $blobHash = $draft->blob()->value('content_sha256');
+
+        $withoutForce = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(true, 'fm_qad_003');
+        $this->assertSame(['fm_qad_003:draft'], $withoutForce['inactiveExisting']);
+        $this->assertSame(0, $withoutForce['wouldSkip']);
+        $this->assertSame(1, app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(true, 'fm_qad_003', true)['wouldReactivate']);
+
+        $result = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(false, 'fm_qad_003', true);
+        $this->assertSame(1, $result['reactivated']);
+        $this->assertSame($draft->id, FmQadTemplateVersion::query()->sole()->id);
+        $this->assertSame(FmQadTemplateVersion::ACTIVE, $draft->fresh()->status);
+        $this->assertSame($blobHash, $draft->blob()->value('content_sha256'));
     }
 
     public function test_version_and_blob_creation_roll_back_together_when_storage_fails(): void
@@ -142,16 +180,13 @@ class FmQadTemplateClosureTest extends TestCase
         );
 
         try {
-            $manager->upload(
+            $manager->importAndActivateBaseline(
                 $form,
                 $this->validDocx('atomic.docx', 'atomic'),
                 [
                     'revision_label' => 'Atomic import',
-                    'academic_year_id' => null,
                     'change_notes' => 'Must roll back.',
                 ],
-                null,
-                true,
             );
             $this->fail('The simulated storage failure should be rethrown.');
         } catch (\RuntimeException $exception) {
@@ -160,6 +195,109 @@ class FmQadTemplateClosureTest extends TestCase
 
         $this->assertSame(0, FmQadTemplateVersion::query()->count());
         $this->assertSame(0, \App\Models\FmQadTemplateVersionBlob::query()->count());
+    }
+
+    public function test_import_activation_failure_rolls_back_new_state_and_emits_no_success_signal(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        Event::fake([CspamsUpdateBroadcast::class]);
+        $directory = $this->legacyDirectoryForScope('fm_qad_003');
+        config()->set('fm_qad.legacy_directory', $directory);
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $existing = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('existing.docx', 'existing'),
+            ['revision_label' => 'Existing baseline', 'academic_year_id' => null, 'change_notes' => 'Preserve on failure.'],
+            null,
+            true,
+        );
+        $before = $this->databaseCounts();
+        $broadcastsBefore = Event::dispatched(CspamsUpdateBroadcast::class)->count();
+        $failActivation = true;
+        FmQadTemplateVersion::updating(function (FmQadTemplateVersion $version) use (&$failActivation): void {
+            if ($failActivation && $version->revision_label === 'Rev. 02' && $version->status === FmQadTemplateVersion::ACTIVE) {
+                throw new \RuntimeException('Simulated import activation failure.');
+            }
+        });
+
+        try {
+            app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(false, 'fm_qad_003');
+            $this->fail('The simulated activation failure should be rethrown.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated import activation failure.', $exception->getMessage());
+        }
+
+        $this->assertSame($before, $this->databaseCounts());
+        $this->assertSame(FmQadTemplateVersion::ACTIVE, $existing->fresh()->status);
+        $this->assertSame($broadcastsBefore, Event::dispatched(CspamsUpdateBroadcast::class)->count());
+        $failActivation = false;
+        $this->assertSame(1, app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(false, 'fm_qad_003')['imported']);
+        $this->assertSame(2, FmQadTemplateVersion::query()->count());
+        $this->assertSame(2, \App\Models\FmQadTemplateVersionBlob::query()->count());
+    }
+
+    public function test_disabled_configured_form_fails_audit_and_seeder_restores_it_without_history_loss(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $version = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('disabled.docx', 'disabled'),
+            ['revision_label' => 'Preserved', 'academic_year_id' => null, 'change_notes' => 'Preserve while re-enabling.'],
+            null,
+            true,
+        );
+        $extra = FmQadForm::query()->create([
+            'scope_id' => 'fm_qad_999', 'code' => 'FM-QAD-999', 'name' => 'Disabled historical', 'sort_order' => 999, 'is_enabled' => false,
+        ]);
+        $form->update(['is_enabled' => false]);
+
+        $issues = app(FmQadTemplateAudit::class)->run();
+        $this->assertSame(['fm_qad_003'], $issues['disabledConfiguredForms']);
+        $this->assertNotContains($extra->scope_id, $issues['disabledConfiguredForms']);
+        $this->artisan('cspams:audit-fm-qad-templates')->assertExitCode(1);
+
+        $this->seed(FmQadFormSeeder::class);
+        $this->assertTrue((bool) $form->fresh()->is_enabled);
+        $this->assertSame($version->id, $form->versions()->sole()->id);
+        $this->assertSame(FmQadTemplateVersion::ACTIVE, $version->fresh()->status);
+    }
+
+    public function test_all_retained_docx_assets_validate_import_as_active_baselines_and_audit_cleanly(): void
+    {
+        $definitions = collect(config('fm_qad.forms', []));
+        $this->assertCount(10, $definitions);
+        $validator = app(\App\Support\FmQad\FmQadDocxValidator::class);
+        foreach ($definitions as $definition) {
+            $path = rtrim((string) config('fm_qad.legacy_directory'), DIRECTORY_SEPARATOR).DIRECTORY_SEPARATOR.$definition['filename'];
+            $this->assertFileExists($path);
+            $this->assertSame('docx', strtolower(pathinfo($path, PATHINFO_EXTENSION)));
+            $validated = $validator->validatePath($path);
+            $this->assertNotSame('', $validated['sha256']);
+        }
+
+        $this->seed(FmQadFormSeeder::class);
+        $importer = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class);
+        $dryRun = $importer->run(true);
+        $this->assertSame(10, $dryRun['checked']);
+        $this->assertSame(10, $dryRun['wouldImport']);
+        $this->assertSame([], $dryRun['missingCatalog']);
+        $this->assertSame([], $dryRun['missing']);
+        $this->assertSame([], $dryRun['invalid']);
+        $this->assertSame([], $dryRun['inactiveExisting']);
+
+        $result = $importer->run();
+        $this->assertSame(10, $result['imported']);
+        $this->assertSame(10, FmQadTemplateVersion::query()->count());
+        $this->assertSame(10, \App\Models\FmQadTemplateVersionBlob::query()->count());
+        $this->assertSame(10, FmQadTemplateVersion::query()->active()->whereNull('academic_year_id')->count());
+        $this->assertSame('Rev. 02', FmQadTemplateVersion::query()->whereHas('form', fn ($query) => $query->where('scope_id', 'fm_qad_003'))->value('revision_label'));
+        $this->assertSame(9, FmQadTemplateVersion::query()->where('revision_label', 'Initial Version')->count());
+        $post = $importer->run(true);
+        $this->assertSame(10, $post['wouldSkip']);
+        $this->assertSame([], $post['inactiveExisting']);
+        $this->assertTrue(collect(app(FmQadTemplateAudit::class)->run())->every(fn (array $values): bool => $values === []));
+        $this->artisan('cspams:audit-fm-qad-templates')->assertExitCode(0);
     }
 
     public function test_import_reports_missing_and_invalid_docx_files(): void

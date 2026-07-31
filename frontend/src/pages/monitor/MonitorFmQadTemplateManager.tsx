@@ -225,20 +225,23 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       !selectedForm
       || !file
       || !uploadDraft.revisionLabel.trim()
-      || !uploadDraft.academicYearId
       || !uploadDraft.changeNotes.trim()
     ) {
-      setError("Form, revision label, Academic Year, change notes, and a DOCX file are required.");
+      setError("Form, revision label, change notes, and a DOCX file are required.");
       return;
     }
-    if (activate && !window.confirm(
-      `Activate ${selectedForm.code} ${uploadDraft.revisionLabel.trim()}?\n\nThis will make it the current template for the selected Academic Year. Existing uploaded, submitted, returned, and verified files will not be changed.`,
-    )) return;
+    if (activate) {
+      const confirmation = uploadDraft.academicYearId
+        ? `Activate ${selectedForm.code} ${uploadDraft.revisionLabel.trim()}?\n\nThis will make it the current template for the selected Academic Year. Existing uploaded, submitted, returned, and verified files will not be changed.`
+        : `Activate ${selectedForm.code} ${uploadDraft.revisionLabel.trim()} as the baseline template?\n\nIt will be used only when no Academic-Year-specific active revision exists. Existing uploaded, submitted, returned, and verified files will not be changed.`;
+      if (!window.confirm(confirmation)) return;
+    }
     setIsSaving(true);
     setError("");
     try {
       await uploadFmQadVersion(apiToken, selectedForm.id, {
         ...uploadDraft,
+        academicYearId: uploadDraft.academicYearId || null,
         file,
         activate,
       });
@@ -355,7 +358,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
           {showUpload && (
             <form className="mt-4 grid gap-3 rounded-sm bg-slate-50 p-4 md:grid-cols-2" onSubmit={(event) => void submitUpload(event, false)}>
               <label className="text-xs font-semibold">Revision Label<input aria-label="Revision Label" value={uploadDraft.revisionLabel} onChange={(e) => setUploadDraft((draft) => ({ ...draft, revisionLabel: e.target.value }))} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
-              <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Effective Academic Year" value={uploadDraft.academicYearId} onChange={(e) => setUploadDraft((draft) => ({ ...draft, academicYearId: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Select Academic Year</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
+              <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Effective Academic Year" value={uploadDraft.academicYearId} onChange={(e) => setUploadDraft((draft) => ({ ...draft, academicYearId: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Baseline — used when no Academic-Year-specific revision exists</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
               <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Change Notes" value={uploadDraft.changeNotes} onChange={(e) => setUploadDraft((draft) => ({ ...draft, changeNotes: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Internal Note (optional)<input aria-label="Internal Note" value={uploadDraft.internalNote} onChange={(e) => setUploadDraft((draft) => ({ ...draft, internalNote: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Template File<input aria-label="Template File" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setUploadDraft((draft) => ({ ...draft, file: e.target.files?.[0] ?? null }))} className="mt-1 block w-full text-sm" /></label>

@@ -10,19 +10,17 @@ use App\Models\AcademicYear;
 use App\Models\FmQadForm;
 use App\Models\FmQadTemplateVersion;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\FmQad\ConfiguredFmQadCatalog;
 use App\Support\FmQad\FmQadTemplateVersionManager;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class MonitorFmQadTemplateController extends Controller
 {
-    public function forms(Request $request): JsonResponse
+    public function forms(Request $request, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
         $this->monitor($request);
-        $configuredScopeIds = collect(config('fm_qad.forms', []))
-            ->pluck('scope_id')
-            ->filter(fn ($scopeId): bool => is_string($scopeId) && $scopeId !== '')
-            ->values();
+        $configuredScopeIds = $catalogGuard->scopeIds();
         $catalog = FmQadForm::query()
             ->whereIn('scope_id', $configuredScopeIds)
             ->get(['scope_id', 'is_enabled']);
@@ -60,16 +58,18 @@ class MonitorFmQadTemplateController extends Controller
         ]);
     }
 
-    public function versions(Request $request, FmQadForm $form): JsonResponse
+    public function versions(Request $request, FmQadForm $form, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
         $this->monitor($request);
+        $catalogGuard->ensureForm($form);
         $versions = $form->versions()->with(['form', 'academicYear', 'uploader', 'activator', 'submissionFiles'])->latest()->get();
 
         return response()->json(['data' => FmQadTemplateVersionResource::collection($versions)->resolve($request)]);
     }
 
-    public function store(UploadFmQadTemplateVersionRequest $request, FmQadForm $form, FmQadTemplateVersionManager $manager): JsonResponse
+    public function store(UploadFmQadTemplateVersionRequest $request, FmQadForm $form, FmQadTemplateVersionManager $manager, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
+        $catalogGuard->ensureForm($form);
         $version = $manager->upload($form, $request->file('file'), [
             'revision_label' => $request->string('revisionLabel')->toString(),
             'academic_year_id' => $request->filled('academicYearId') ? (int) $request->input('academicYearId') : null,
@@ -80,8 +80,9 @@ class MonitorFmQadTemplateController extends Controller
         return response()->json(['data' => (new FmQadTemplateVersionResource($version))->resolve($request)], 201);
     }
 
-    public function update(UpdateFmQadTemplateVersionRequest $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager): JsonResponse
+    public function update(UpdateFmQadTemplateVersionRequest $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
+        $catalogGuard->ensureVersion($version);
         $values = [];
         if ($request->has('revisionLabel')) {
             $values['revision_label'] = $request->string('revisionLabel')->toString();
@@ -100,16 +101,18 @@ class MonitorFmQadTemplateController extends Controller
         return response()->json(['data' => (new FmQadTemplateVersionResource($updated))->resolve($request)]);
     }
 
-    public function activate(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager): JsonResponse
+    public function activate(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
         $this->monitor($request);
+        $catalogGuard->ensureVersion($version);
 
         return response()->json(['data' => (new FmQadTemplateVersionResource($manager->activate($version, $request->user(), $request)))->resolve($request)]);
     }
 
-    public function archive(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager): JsonResponse
+    public function archive(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
         $this->monitor($request);
+        $catalogGuard->ensureVersion($version);
 
         return response()->json(['data' => (new FmQadTemplateVersionResource($manager->archive($version, $request->user(), $request)))->resolve($request)]);
     }

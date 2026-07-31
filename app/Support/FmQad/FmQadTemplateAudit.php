@@ -16,7 +16,7 @@ class FmQadTemplateAudit
     public function run(): array
     {
         $issues = [
-            'missingForms' => [], 'formsWithoutVersions' => [], 'formsWithoutActiveVersion' => [],
+            'missingForms' => [], 'disabledConfiguredForms' => [], 'formsWithoutVersions' => [], 'formsWithoutActiveVersion' => [],
             'academicYearsWithoutEffectiveVersion' => [],
             'duplicateActiveVersions' => [], 'missingBlobs' => [], 'hashMismatch' => [],
             'orphanedVersions' => [], 'brokenSubmissionReferences' => [],
@@ -26,6 +26,12 @@ class FmQadTemplateAudit
         $configuredScopes = collect(config('fm_qad.forms', []))->pluck('scope_id');
         $existingScopes = FmQadForm::query()->pluck('scope_id');
         $issues['missingForms'] = $configuredScopes->diff($existingScopes)->values()->all();
+        $issues['disabledConfiguredForms'] = FmQadForm::query()
+            ->whereIn('scope_id', $configuredScopes)
+            ->where('is_enabled', false)
+            ->orderBy('sort_order')
+            ->pluck('scope_id')
+            ->all();
         $relevantAcademicYears = $this->relevantAcademicYears();
 
         FmQadForm::query()->enabled()->with(['versions.blob'])->each(function (FmQadForm $form) use (&$issues, $relevantAcademicYears): void {

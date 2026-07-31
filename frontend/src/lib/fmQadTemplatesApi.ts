@@ -100,7 +100,7 @@ export async function fetchFmQadVersions(token: string, formId: string, signal?:
 
 export async function uploadFmQadVersion(token: string, formId: string, payload: {
   revisionLabel: string;
-  academicYearId: string;
+  academicYearId: string | null;
   changeNotes: string;
   internalNote?: string;
   file: File;
@@ -108,7 +108,7 @@ export async function uploadFmQadVersion(token: string, formId: string, payload:
 }) {
   const body = new FormData();
   body.append("revisionLabel", payload.revisionLabel);
-  body.append("academicYearId", payload.academicYearId);
+  if (payload.academicYearId !== null) body.append("academicYearId", payload.academicYearId);
   body.append("changeNotes", payload.changeNotes);
   if (payload.internalNote) body.append("internalNote", payload.internalNote);
   body.append("file", payload.file);

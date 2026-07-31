@@ -313,6 +313,78 @@ describe("MonitorFmQadTemplateManager", () => {
     ));
   });
 
+  it("offers an explicit baseline and saves it with a null Academic Year", async () => {
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
+
+    const period = screen.getByLabelText("Effective Academic Year") as HTMLSelectElement;
+    expect(period.options[0].textContent).toContain("Baseline");
+    expect(period.options[0].textContent).toContain("no Academic-Year-specific revision exists");
+    expect(period.value).toBe("");
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Baseline Rev." } });
+    fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Baseline coverage" } });
+    const file = new File(["docx"], "baseline.docx", {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+    fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+    await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
+      "monitor-token",
+      "form-1",
+      expect.objectContaining({
+        revisionLabel: "Baseline Rev.",
+        academicYearId: null,
+        file,
+        activate: false,
+      }),
+    ));
+  });
+
+  it("uses baseline-specific activation confirmation and sends null", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 04" } });
+    fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Baseline activation" } });
+    fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [new File(["docx"], "baseline.docx")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload and Activate" }));
+
+    await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
+      "monitor-token",
+      "form-1",
+      expect.objectContaining({ academicYearId: null, activate: true }),
+    ));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("as the baseline template"));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("only when no Academic-Year-specific active revision exists"));
+    confirm.mockRestore();
+  });
+
+  it("keeps the Academic-Year-specific activation confirmation and payload", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 05" } });
+    fireEvent.change(screen.getByLabelText("Effective Academic Year"), { target: { value: "year-1" } });
+    fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Year activation" } });
+    fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [new File(["docx"], "year.docx")] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload and Activate" }));
+
+    await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
+      "monitor-token",
+      "form-1",
+      expect.objectContaining({ academicYearId: "year-1", activate: true }),
+    ));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("selected Academic Year"));
+    confirm.mockRestore();
+  });
+
   it("ignores stale history and aborts pending requests when the manager closes", async () => {
     let resolveFirst!: (versions: FmQadTemplateVersion[]) => void;
     let resolveSecond!: (versions: FmQadTemplateVersion[]) => void;

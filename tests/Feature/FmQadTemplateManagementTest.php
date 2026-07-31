@@ -63,6 +63,79 @@ class FmQadTemplateManagementTest extends TestCase
         $this->assertSame('FM-QAD-003', FmQadForm::query()->where('scope_id', 'fm_qad_003')->value('code'));
     }
 
+    public function test_unconfigured_form_and_its_version_are_hidden_from_every_management_route(): void
+    {
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $extra = FmQadForm::query()->create([
+            'scope_id' => 'fm_qad_999',
+            'code' => 'FM-QAD-999',
+            'name' => 'Historical extra form',
+            'sort_order' => 999,
+            'is_enabled' => true,
+        ]);
+        $version = app(FmQadTemplateVersionManager::class)->upload($extra, $this->validDocx('extra.docx', 'extra'), [
+            'revision_label' => 'Historical',
+            'academic_year_id' => null,
+            'change_notes' => 'Must remain inaccessible and unchanged.',
+        ], $monitor);
+        $blobHash = $version->blob()->value('content_sha256');
+
+        Sanctum::actingAs($monitor, ['role:monitor']);
+        $this->getJson('/api/monitor/fm-qad/forms')
+            ->assertOk()
+            ->assertJsonMissing(['scopeId' => 'fm_qad_999']);
+        $this->getJson("/api/monitor/fm-qad/forms/{$extra->id}/versions")->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/forms/{$extra->id}/versions", [
+            'revisionLabel' => 'Rejected',
+            'changeNotes' => 'Rejected.',
+            'file' => $this->validDocx('rejected.docx', 'rejected'),
+        ])->assertNotFound();
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$version->id}", [
+            'revisionLabel' => 'Changed',
+        ])->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/template-versions/{$version->id}/activate")->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/template-versions/{$version->id}/archive")->assertNotFound();
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download")->assertNotFound();
+
+        $this->assertSame('Historical extra form', $extra->fresh()->name);
+        $this->assertSame(FmQadTemplateVersion::DRAFT, $version->fresh()->status);
+        $this->assertSame('Historical', $version->fresh()->revision_label);
+        $this->assertSame($blobHash, $version->blob()->value('content_sha256'));
+        $configured = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $this->getJson("/api/monitor/fm-qad/forms/{$configured->id}/versions")->assertOk();
+    }
+
+    public function test_monitor_can_upload_and_activate_a_baseline_without_changing_historical_files(): void
+    {
+        Event::fake([CspamsUpdateBroadcast::class]);
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        Sanctum::actingAs($monitor, ['role:monitor']);
+
+        $draftResponse = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Baseline Draft',
+            'changeNotes' => 'Nullable Academic Year remains a baseline.',
+            'file' => $this->validDocx('baseline-draft.docx', 'baseline-draft'),
+        ])->assertCreated()
+            ->assertJsonPath('data.status', FmQadTemplateVersion::DRAFT)
+            ->assertJsonPath('data.academicYearId', null);
+
+        $activeResponse = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Baseline Active',
+            'changeNotes' => 'Activate this baseline.',
+            'activate' => true,
+            'file' => $this->validDocx('baseline-active.docx', 'baseline-active'),
+        ])->assertCreated()
+            ->assertJsonPath('data.status', FmQadTemplateVersion::ACTIVE)
+            ->assertJsonPath('data.academicYearId', null);
+
+        $draft = FmQadTemplateVersion::query()->findOrFail($draftResponse->json('data.id'));
+        $active = FmQadTemplateVersion::query()->findOrFail($activeResponse->json('data.id'));
+        $this->assertNull($draft->academic_year_id);
+        $this->assertSame($active->id, app(FmQadTemplateVersionManager::class)->effective($form, $this->year()->id)?->id);
+        $this->assertSame(0, IndicatorSubmissionFile::query()->count());
+    }
+
     public function test_monitor_uploads_a_valid_docx_but_school_head_cannot_manage_versions(): void
     {
         Event::fake([CspamsUpdateBroadcast::class]);

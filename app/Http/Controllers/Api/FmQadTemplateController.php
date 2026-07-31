@@ -10,6 +10,7 @@ use App\Models\FmQadTemplateDownloadGrant;
 use App\Models\FmQadTemplateVersion;
 use App\Models\IndicatorSubmissionFile;
 use App\Support\Auth\UserRoleResolver;
+use App\Support\FmQad\ConfiguredFmQadCatalog;
 use App\Support\FmQad\FmQadTemplateStorage;
 use App\Support\FmQad\FmQadTemplateVersionManager;
 use Illuminate\Http\JsonResponse;
@@ -18,7 +19,7 @@ use Symfony\Component\HttpFoundation\Response;
 
 class FmQadTemplateController extends Controller
 {
-    public function index(Request $request, FmQadTemplateVersionManager $manager): JsonResponse
+    public function index(Request $request, FmQadTemplateVersionManager $manager, ConfiguredFmQadCatalog $catalogGuard): JsonResponse
     {
         $user = $request->user();
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
@@ -31,7 +32,11 @@ class FmQadTemplateController extends Controller
         }
 
         $academicYearId = $request->filled('academic_year_id') ? (int) $request->query('academic_year_id') : null;
-        $forms = FmQadForm::query()->enabled()->orderBy('sort_order')->get();
+        $forms = FmQadForm::query()
+            ->whereIn('scope_id', $catalogGuard->scopeIds())
+            ->enabled()
+            ->orderBy('sort_order')
+            ->get();
         $data = $forms->map(function (FmQadForm $form) use ($manager, $academicYearId, $request): array {
             $version = $manager->effective($form, $academicYearId);
 
@@ -47,12 +52,13 @@ class FmQadTemplateController extends Controller
         return response()->json(['data' => $data]);
     }
 
-    public function download(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager, FmQadTemplateStorage $storage)
+    public function download(Request $request, FmQadTemplateVersion $version, FmQadTemplateVersionManager $manager, FmQadTemplateStorage $storage, ConfiguredFmQadCatalog $catalogGuard)
     {
         $user = $request->user();
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         abort_unless($isMonitor || $isSchoolHead, Response::HTTP_FORBIDDEN);
+        $catalogGuard->ensureVersion($version);
 
         if ($isSchoolHead && strtolower(trim((string) $user?->school?->type)) !== 'private') {
             abort(Response::HTTP_FORBIDDEN, 'FM-QAD templates are available only to private schools.');

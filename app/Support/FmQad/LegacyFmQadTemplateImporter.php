@@ -18,8 +18,8 @@ class LegacyFmQadTemplateImporter
             app(FmQadFormSeeder::class)->run();
         }
         $result = $dryRun
-            ? ['checked' => 0, 'wouldImport' => 0, 'wouldSkip' => 0, 'wouldReactivate' => 0, 'missingCatalog' => [], 'missing' => [], 'invalid' => []]
-            : ['checked' => 0, 'imported' => 0, 'skipped' => 0, 'reactivated' => 0, 'missingCatalog' => [], 'missing' => [], 'invalid' => []];
+            ? ['checked' => 0, 'wouldImport' => 0, 'wouldSkip' => 0, 'wouldReactivate' => 0, 'inactiveExisting' => [], 'missingCatalog' => [], 'missing' => [], 'invalid' => []]
+            : ['checked' => 0, 'imported' => 0, 'skipped' => 0, 'reactivated' => 0, 'inactiveExisting' => [], 'missingCatalog' => [], 'missing' => [], 'invalid' => []];
         foreach (config('fm_qad.forms', []) as $definition) {
             if ($scopeId && $definition['scope_id'] !== $scopeId) {
                 continue;
@@ -46,7 +46,12 @@ class LegacyFmQadTemplateImporter
             }
             $existing = $form?->versions()->where('sha256_hash', $validated['sha256'])->first();
             if ($existing) {
-                if ($force && $existing->status !== FmQadTemplateVersion::ACTIVE) {
+                if ($existing->status === FmQadTemplateVersion::ACTIVE) {
+                    $result[$dryRun ? 'wouldSkip' : 'skipped']++;
+
+                    continue;
+                }
+                if ($force) {
                     if ($dryRun) {
                         $result['wouldReactivate']++;
 
@@ -57,7 +62,7 @@ class LegacyFmQadTemplateImporter
 
                     continue;
                 }
-                $result[$dryRun ? 'wouldSkip' : 'skipped']++;
+                $result['inactiveExisting'][] = $definition['scope_id'].':'.$existing->status;
 
                 continue;
             }
@@ -68,12 +73,11 @@ class LegacyFmQadTemplateImporter
             }
             $form ??= FmQadForm::query()->where('scope_id', $definition['scope_id'])->firstOrFail();
             $file = new UploadedFile($path, basename($path), $validated['mime_type'], null, true);
-            $this->manager->upload($form, $file, [
+            $this->manager->importAndActivateBaseline($form, $file, [
                 'revision_label' => $definition['revision_label'] ?? 'Initial Version',
-                'academic_year_id' => null,
                 'change_notes' => 'Imported from the original CSPAMS static FM-QAD template library.',
                 'internal_note' => 'Legacy template import',
-            ], null, true);
+            ]);
             $result['imported']++;
         }
 

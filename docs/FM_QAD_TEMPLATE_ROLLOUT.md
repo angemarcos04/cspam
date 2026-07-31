@@ -20,7 +20,13 @@ The active Render web startup script runs pending migrations and the idempotent 
 
 The initial dry run must report no missing catalog entries, missing files, or invalid files. On an empty version library it should report ten would-import decisions. The real import should then import those revisions (or skip hashes already present), and the post-import dry run should report zero would-import and ten would-skip decisions. Any missing-catalog, missing-file, invalid-file, or audit issue makes the command fail and must stop the rollout.
 
+The dry run must also report `Inactive existing` as empty. A matching active hash is a safe skip. A matching draft or archived hash is a failed preflight unless an administrator deliberately uses `--force`; a forced dry run reports would-reactivate, and a forced real run activates that same version ID without creating a duplicate blob. Investigate the inactive state before using force.
+
 Catalog initialization and template-version initialization are separate. Ten `fm_qad_forms` rows prove only that the permanent identities exist. On an empty version library, a successful import creates ten persistent version rows and ten database blobs, activates each as an Academic-Year-neutral baseline, and uses `Initial Version` unless a configured retained filename has an approved label such as `Rev. 02`. Do not force these counts when valid history already exists.
+
+All ten configured permanent form identities are always enabled. Template Management controls revisions, not permanent-form availability. The deployment seeder restores a disabled configured row, while the read-only integrity audit reports `disabledConfiguredForms` and fails until the drift is corrected. Extra historical rows are neither enabled nor deleted by this policy.
+
+New legacy versions are created, stored, conflict-resolved, and activated in one importer-only database transaction. If blob storage or activation fails, the new version/blob and conflict changes roll back together; success audit and realtime messages are emitted only after commit. Normal Monitor uploads continue to save legitimate drafts.
 
 The retained files resolve from `base_path('frontend/public/templates/fm-qad')`, so importer behavior does not depend on the shell working directory. The root Docker build uses `COPY . .`; because the repository has no `.dockerignore` and the ten DOCX files are tracked, they are included in the Render image. Confirm their presence in the deployed image if a dry run reports missing files.
 

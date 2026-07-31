@@ -65,49 +65,71 @@ class FmQadTemplateVersionManager
         return $activate ? $this->activate($version, $actor, $request) : $version->fresh(['form', 'academicYear', 'uploader', 'blob']);
     }
 
+    /**
+     * Import a retained legacy template as one atomic active baseline.
+     *
+     * @param  array{revision_label:string, change_notes:string, internal_note?:string|null}  $metadata
+     */
+    public function importAndActivateBaseline(FmQadForm $form, UploadedFile $file, array $metadata): FmQadTemplateVersion
+    {
+        $validatedFile = $this->validator->validateUploadedFile($file);
+        $label = trim(preg_replace('/\s+/', ' ', $metadata['revision_label']) ?? '');
+        $normalizedLabel = mb_strtolower($label);
+
+        if ($label === '' || mb_strlen($label) > 50) {
+            throw ValidationException::withMessages(['revisionLabel' => 'Revision label is required and may not exceed 50 characters.']);
+        }
+        if (trim($metadata['change_notes']) === '') {
+            throw ValidationException::withMessages(['changeNotes' => 'Change notes are required.']);
+        }
+        if ($form->versions()->where('normalized_revision_label', $normalizedLabel)->exists()) {
+            throw ValidationException::withMessages(['revisionLabel' => 'This revision label already exists for the selected FM-QAD form.']);
+        }
+        if ($form->versions()->where('sha256_hash', $validatedFile['sha256'])->exists()) {
+            throw ValidationException::withMessages(['file' => 'This exact template file has already been uploaded for the selected FM-QAD form.']);
+        }
+
+        $previousId = null;
+        try {
+            $version = DB::transaction(function () use ($form, $file, $metadata, $label, $normalizedLabel, $validatedFile, &$previousId): FmQadTemplateVersion {
+                $draft = $form->versions()->create([
+                    'academic_year_id' => null,
+                    'revision_label' => $label,
+                    'normalized_revision_label' => $normalizedLabel,
+                    'status' => FmQadTemplateVersion::DRAFT,
+                    'original_filename' => $this->safeFilename($file->getClientOriginalName(), $form->code.'.docx'),
+                    'mime_type' => $validatedFile['mime_type'],
+                    'size_bytes' => $validatedFile['size_bytes'],
+                    'sha256_hash' => $validatedFile['sha256'],
+                    'change_notes' => trim($metadata['change_notes']),
+                    'internal_note' => isset($metadata['internal_note']) ? trim((string) $metadata['internal_note']) ?: null : null,
+                    'uploaded_by' => null,
+                ]);
+                $this->storage->put($draft, $validatedFile['content'], $validatedFile['sha256']);
+
+                return $this->activateLocked($draft->id, null, $previousId);
+            });
+        } catch (QueryException $exception) {
+            $this->throwControlledActivationConflict($exception);
+        }
+
+        $this->audit(null, 'fm_qad_template.version_uploaded', $version, null);
+        $this->audit(null, 'fm_qad_template.version_activated', $version, null, ['previousActiveVersionId' => $previousId]);
+        event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_uploaded')));
+        event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_activated')));
+
+        return $version->fresh(['form', 'academicYear', 'uploader', 'activator', 'blob']);
+    }
+
     public function activate(FmQadTemplateVersion $version, ?User $actor, ?Request $request = null): FmQadTemplateVersion
     {
         $previousId = null;
         try {
             $activated = DB::transaction(function () use ($version, $actor, &$previousId): FmQadTemplateVersion {
-                $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($version->id);
-                $conflicts = FmQadTemplateVersion::query()
-                    ->where('fm_qad_form_id', $target->fm_qad_form_id)
-                    ->where('status', FmQadTemplateVersion::ACTIVE)
-                    ->when($target->academic_year_id === null, fn ($q) => $q->whereNull('academic_year_id'), fn ($q) => $q->where('academic_year_id', $target->academic_year_id))
-                    ->lockForUpdate()
-                    ->get();
-                $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
-                foreach ($conflicts as $conflict) {
-                    if ((int) $conflict->id === (int) $target->id) {
-                        continue;
-                    }
-                    $conflict->update([
-                        'status' => FmQadTemplateVersion::ARCHIVED,
-                        'activation_key' => null,
-                        'archived_by' => $actor?->id,
-                        'archived_at' => now(),
-                    ]);
-                }
-                $target->update([
-                    'status' => FmQadTemplateVersion::ACTIVE,
-                    'activation_key' => $this->activationKey($target),
-                    'activated_by' => $actor?->id,
-                    'activated_at' => now(),
-                    'archived_by' => null,
-                    'archived_at' => null,
-                ]);
-
-                return $target;
+                return $this->activateLocked($version->id, $actor, $previousId);
             });
         } catch (QueryException $exception) {
-            if (! $this->isActivationKeyConflict($exception)) {
-                throw $exception;
-            }
-
-            throw ValidationException::withMessages([
-                'version' => 'Another revision was activated at the same time. Refresh the version history and try again.',
-            ]);
+            $this->throwControlledActivationConflict($exception);
         }
 
         $this->audit($request, 'fm_qad_template.version_activated', $activated, $actor, ['previousActiveVersionId' => $previousId]);
@@ -202,6 +224,50 @@ class FmQadTemplateVersionManager
     private function activationKey(FmQadTemplateVersion $version): string
     {
         return $version->fm_qad_form_id.':'.($version->academic_year_id ?? 'baseline');
+    }
+
+    private function activateLocked(int $versionId, ?User $actor, ?int &$previousId): FmQadTemplateVersion
+    {
+        $target = FmQadTemplateVersion::query()->lockForUpdate()->findOrFail($versionId);
+        $conflicts = FmQadTemplateVersion::query()
+            ->where('fm_qad_form_id', $target->fm_qad_form_id)
+            ->where('status', FmQadTemplateVersion::ACTIVE)
+            ->when($target->academic_year_id === null, fn ($q) => $q->whereNull('academic_year_id'), fn ($q) => $q->where('academic_year_id', $target->academic_year_id))
+            ->lockForUpdate()
+            ->get();
+        $previousId = $conflicts->firstWhere('id', '!=', $target->id)?->id;
+        foreach ($conflicts as $conflict) {
+            if ((int) $conflict->id === (int) $target->id) {
+                continue;
+            }
+            $conflict->update([
+                'status' => FmQadTemplateVersion::ARCHIVED,
+                'activation_key' => null,
+                'archived_by' => $actor?->id,
+                'archived_at' => now(),
+            ]);
+        }
+        $target->update([
+            'status' => FmQadTemplateVersion::ACTIVE,
+            'activation_key' => $this->activationKey($target),
+            'activated_by' => $actor?->id,
+            'activated_at' => now(),
+            'archived_by' => null,
+            'archived_at' => null,
+        ]);
+
+        return $target;
+    }
+
+    private function throwControlledActivationConflict(QueryException $exception): never
+    {
+        if (! $this->isActivationKeyConflict($exception)) {
+            throw $exception;
+        }
+
+        throw ValidationException::withMessages([
+            'version' => 'Another revision was activated at the same time. Refresh the version history and try again.',
+        ]);
     }
 
     private function isActivationKeyConflict(QueryException $exception): bool

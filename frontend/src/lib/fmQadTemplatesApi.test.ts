@@ -3,6 +3,7 @@ import { ApiError, apiRequest } from "@/lib/api";
 import {
   fetchMonitorFmQadForms,
   parseMonitorFmQadCatalog,
+  uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
 
 vi.mock("@/lib/api", async (importOriginal) => {
@@ -100,5 +101,30 @@ describe("FM-QAD Monitor catalog API", () => {
     vi.mocked(apiRequest).mockRejectedValue(error);
 
     await expect(fetchMonitorFmQadForms("monitor-token")).rejects.toBe(error);
+  });
+
+  it("omits Academic Year for baseline uploads and includes a selected year", async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ data: {} });
+    const file = new File(["docx"], "template.docx");
+
+    await uploadFmQadVersion("monitor-token", "form-1", {
+      revisionLabel: "Baseline",
+      academicYearId: null,
+      changeNotes: "Baseline notes",
+      file,
+      activate: false,
+    });
+    const baselineBody = vi.mocked(apiRequest).mock.calls[0][1]?.body as FormData;
+    expect(baselineBody.has("academicYearId")).toBe(false);
+
+    await uploadFmQadVersion("monitor-token", "form-1", {
+      revisionLabel: "Year-specific",
+      academicYearId: "year-1",
+      changeNotes: "Year notes",
+      file,
+      activate: true,
+    });
+    const yearBody = vi.mocked(apiRequest).mock.calls[1][1]?.body as FormData;
+    expect(yearBody.get("academicYearId")).toBe("year-1");
   });
 });
