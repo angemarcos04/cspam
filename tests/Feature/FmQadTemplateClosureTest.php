@@ -81,6 +81,13 @@ class FmQadTemplateClosureTest extends TestCase
         $this->assertSame([], $real['missingCatalog']);
         $this->assertSame(1, FmQadTemplateVersion::query()->count());
         $this->assertSame(1, \App\Models\FmQadTemplateVersionBlob::query()->count());
+        $imported = FmQadTemplateVersion::query()->with('blob')->firstOrFail();
+        $this->assertSame(FmQadTemplateVersion::ACTIVE, $imported->status);
+        $this->assertNull($imported->academic_year_id);
+        $this->assertSame('Rev. 02', $imported->revision_label);
+        $this->assertNotNull($imported->activation_key);
+        $this->assertNotNull($imported->activated_at);
+        $this->assertSame($imported->sha256_hash, $imported->blob?->content_sha256);
 
         $secondDryRun = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)
             ->run(true, 'fm_qad_003');
@@ -113,6 +120,46 @@ class FmQadTemplateClosureTest extends TestCase
             ->run(false, 'fm_qad_003', true);
         $this->assertSame(1, $forceReal['reactivated']);
         $this->assertSame(FmQadTemplateVersion::ACTIVE, $importedVersion->fresh()->status);
+    }
+
+    public function test_version_and_blob_creation_roll_back_together_when_storage_fails(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $storage = new class extends \App\Support\FmQad\FmQadTemplateStorage
+        {
+            public function put(
+                FmQadTemplateVersion $version,
+                string $content,
+                string $sha256,
+            ): \App\Models\FmQadTemplateVersionBlob {
+                throw new \RuntimeException('Simulated blob write failure.');
+            }
+        };
+        $manager = new FmQadTemplateVersionManager(
+            app(\App\Support\FmQad\FmQadDocxValidator::class),
+            $storage,
+        );
+
+        try {
+            $manager->upload(
+                $form,
+                $this->validDocx('atomic.docx', 'atomic'),
+                [
+                    'revision_label' => 'Atomic import',
+                    'academic_year_id' => null,
+                    'change_notes' => 'Must roll back.',
+                ],
+                null,
+                true,
+            );
+            $this->fail('The simulated storage failure should be rethrown.');
+        } catch (\RuntimeException $exception) {
+            $this->assertSame('Simulated blob write failure.', $exception->getMessage());
+        }
+
+        $this->assertSame(0, FmQadTemplateVersion::query()->count());
+        $this->assertSame(0, \App\Models\FmQadTemplateVersionBlob::query()->count());
     }
 
     public function test_import_reports_missing_and_invalid_docx_files(): void

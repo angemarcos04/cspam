@@ -20,6 +20,10 @@ The active Render web startup script runs pending migrations and the idempotent 
 
 The initial dry run must report no missing catalog entries, missing files, or invalid files. On an empty version library it should report ten would-import decisions. The real import should then import those revisions (or skip hashes already present), and the post-import dry run should report zero would-import and ten would-skip decisions. Any missing-catalog, missing-file, invalid-file, or audit issue makes the command fail and must stop the rollout.
 
+Catalog initialization and template-version initialization are separate. Ten `fm_qad_forms` rows prove only that the permanent identities exist. On an empty version library, a successful import creates ten persistent version rows and ten database blobs, activates each as an Academic-Year-neutral baseline, and uses `Initial Version` unless a configured retained filename has an approved label such as `Rev. 02`. Do not force these counts when valid history already exists.
+
+The retained files resolve from `base_path('frontend/public/templates/fm-qad')`, so importer behavior does not depend on the shell working directory. The root Docker build uses `COPY . .`; because the repository has no `.dockerignore` and the ten DOCX files are tracked, they are included in the Render image. Confirm their presence in the deployed image if a dry run reports missing files.
+
 ## Resolution and history
 
 For the selected Academic Year, CSPAMS resolves the exact active revision first, then an active baseline revision whose `academic_year_id` is null. Archived revisions are never selected. Activation locks the competing rows and replaces the prior active revision in one transaction. Existing uploaded, submitted, returned, verified, and finalized files are not modified; their nullable version foreign key preserves history.
@@ -47,6 +51,21 @@ php artisan tinker --execute="dump(App\Models\FmQadForm::count());"
 ```
 
 The route list must include `GET api/monitor/fm-qad/forms`, all FM-QAD migrations must be applied, and the form count must be exactly `10`. Confirm the Render deploy identifies the same Git revision selected for the Vercel production deployment. A healthy public `/api/health` response proves availability but does not prove catalog seeding or frontend/backend revision parity.
+
+Before importing, classify the deployed template library with a read-only count:
+
+```bash
+php artisan tinker --execute="dump([
+    'forms' => App\Models\FmQadForm::count(),
+    'versions' => App\Models\FmQadTemplateVersion::count(),
+    'blobs' => App\Models\FmQadTemplateVersionBlob::count(),
+    'active' => App\Models\FmQadTemplateVersion::query()->active()->count(),
+    'draft' => App\Models\FmQadTemplateVersion::query()->draft()->count(),
+    'archived' => App\Models\FmQadTemplateVersion::query()->archived()->count(),
+]);"
+```
+
+If forms are `10` and versions are `0`, the catalog seeder ran but the controlled importer did not. If versions exist without active rows or blobs, stop and investigate rather than rerunning with `--force`. After a clean initial import, expect forms `10`, versions `10`, blobs `10`, and active baseline versions `10`; then run the post-import dry run and integrity audit before enabling School Head use.
 
 ## Configuration
 

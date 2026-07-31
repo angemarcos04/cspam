@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MonitorFmQadTemplateManager } from "@/pages/monitor/MonitorFmQadTemplateManager";
+import {
+  MonitorFmQadTemplateManager,
+  selectMonitorDisplayVersion,
+} from "@/pages/monitor/MonitorFmQadTemplateManager";
 import {
   fetchFmQadVersions,
   fetchMonitorFmQadForms,
@@ -57,6 +60,69 @@ const draftVersion: FmQadTemplateVersion = {
   downloadUrl: "/v3",
 };
 
+const activeVersion = (
+  id: string,
+  revisionLabel: string,
+  academicYearId: string | null,
+): FmQadTemplateVersion => ({
+  ...draftVersion,
+  id,
+  revisionLabel,
+  status: "active",
+  academicYearId,
+  academicYearLabel: academicYearId,
+  activatedAt: "2026-07-31T00:00:00.000Z",
+});
+
+describe("selectMonitorDisplayVersion", () => {
+  const academicYears = [
+    { id: "year-current", name: "20262027", isCurrent: true },
+    { id: "year-previous", name: "20252026", isCurrent: false },
+  ];
+
+  it("prefers the exact active revision for the current Academic Year", () => {
+    const baseline = activeVersion("baseline", "Baseline", null);
+    const exact = activeVersion("exact", "Current Year", "year-current");
+    const form = { ...forms[0], activeVersions: [baseline, exact] };
+
+    expect(selectMonitorDisplayVersion(form, academicYears)?.id).toBe("exact");
+  });
+
+  it("uses the active baseline when the current Academic Year has no exact revision", () => {
+    const previous = activeVersion("previous", "Previous Year", "year-previous");
+    const baseline = activeVersion("baseline", "Baseline", null);
+    const form = { ...forms[0], activeVersions: [previous, baseline] };
+
+    expect(selectMonitorDisplayVersion(form, academicYears)?.id).toBe("baseline");
+  });
+
+  it("uses the first active fallback only without an exact or baseline revision", () => {
+    const fallback = activeVersion("fallback", "Most Recent Active", "year-previous");
+    const form = {
+      ...forms[0],
+      activeVersions: [
+        { ...draftVersion, id: "archived", status: "archived" as const },
+        draftVersion,
+        fallback,
+      ],
+    };
+
+    expect(selectMonitorDisplayVersion(form, [])?.id).toBe("fallback");
+  });
+
+  it("returns null when no active revision exists", () => {
+    const form = {
+      ...forms[0],
+      activeVersions: [
+        draftVersion,
+        { ...draftVersion, id: "archived", status: "archived" as const },
+      ],
+    };
+
+    expect(selectMonitorDisplayVersion(form, academicYears)).toBeNull();
+  });
+});
+
 describe("MonitorFmQadTemplateManager", () => {
   afterEach(cleanup);
   beforeEach(() => {
@@ -77,6 +143,22 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     await waitFor(() => expect(fetchFmQadVersions).toHaveBeenCalledWith("monitor-token", "form-1", expect.any(AbortSignal)));
     expect(screen.getByText(/Newest revisions first/i)).toBeTruthy();
+  });
+
+  it("uses the requested heading, accessible close name, and non-wrapping table layout", async () => {
+    const onClose = vi.fn();
+    render(<MonitorFmQadTemplateManager onClose={onClose} />);
+
+    expect(await screen.findByRole("heading", { name: "Template Management" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "FM-QAD Template Management" })).toBeNull();
+    expect(screen.getByRole("columnheader", { name: "Code" }).className).toContain("whitespace-nowrap");
+    expect(screen.getByRole("columnheader", { name: "Form name" }).className).toContain("min-w-72");
+    expect(screen.getByText("FM-QAD-001").closest("td")?.className).toContain("whitespace-nowrap");
+    expect(screen.getByText("FM-QAD-001").closest(".overflow-x-auto")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Manage" })[0].closest("div")?.className).toContain("min-w-max");
+
+    fireEvent.click(screen.getByRole("button", { name: "Close Template Management" }));
+    expect(onClose).toHaveBeenCalled();
   });
 
   it("renders a semantic loading row instead of a blank table body", () => {
@@ -151,6 +233,44 @@ describe("MonitorFmQadTemplateManager", () => {
     expect(screen.getAllByRole("button", { name: "Manage" })).toHaveLength(10);
   });
 
+  it("explains forms with no revisions while keeping upload available", async () => {
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+
+    expect(await screen.findByText("No template revisions have been uploaded for this form.")).toBeTruthy();
+    expect(screen.getByText(/Upload an official DOCX revision/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Upload New Version/i })).toBeTruthy();
+  });
+
+  it("explains forms whose existing revisions are inactive", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+
+    expect(await screen.findByText("Template revisions exist, but none is active.")).toBeTruthy();
+    expect(screen.getByText(/Activate a draft or archived revision/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Activate" })).toBeTruthy();
+  });
+
+  it("renders the current-year active revision instead of the first active response row", async () => {
+    const baseline = activeVersion("baseline", "Baseline Revision", null);
+    const exact = activeVersion("exact", "Current Year Revision", "year-1");
+    vi.mocked(fetchMonitorFmQadForms).mockResolvedValue({
+      data: [{ ...forms[0], activeVersions: [baseline, exact] }],
+      academicYears: [{ id: "year-1", name: "20262027", isCurrent: true }],
+    });
+
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+
+    expect(await screen.findByText("Current Year Revision")).toBeTruthy();
+    expect(screen.queryByText("Baseline Revision")).toBeNull();
+    expect(screen.getByText("Active")).toBeTruthy();
+  });
+
   it("shows request and deployment mismatch errors with retry actions", async () => {
     vi.mocked(fetchMonitorFmQadForms).mockRejectedValueOnce(new Error("The FM-QAD catalog response is invalid."));
     const { unmount } = render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
@@ -215,7 +335,7 @@ describe("MonitorFmQadTemplateManager", () => {
     await Promise.resolve();
     expect(screen.queryByText("STALE REVISION")).toBeNull();
     const secondSignal = vi.mocked(fetchFmQadVersions).mock.calls[1][2] as AbortSignal;
-    fireEvent.click(screen.getByRole("button", { name: "Close FM-QAD Template Management" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close Template Management" }));
     expect(secondSignal.aborted).toBe(true);
     expect(onClose).toHaveBeenCalled();
   });

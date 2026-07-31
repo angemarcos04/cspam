@@ -40,6 +40,24 @@ const emptyUploadDraft = (): FmQadUploadDraft => ({
   file: null,
 });
 
+export function selectMonitorDisplayVersion(
+  form: FmQadTemplateForm,
+  academicYears: AcademicYearOption[],
+): FmQadTemplateVersion | null {
+  const activeVersions = (form.activeVersions ?? []).filter(
+    (version) => version.status === "active",
+  );
+  const currentYear = academicYears.find((year) => year.isCurrent) ?? null;
+  const exactCurrentYear = currentYear
+    ? activeVersions.find((version) => version.academicYearId === currentYear.id)
+    : null;
+
+  return exactCurrentYear
+    ?? activeVersions.find((version) => version.academicYearId === null)
+    ?? activeVersions[0]
+    ?? null;
+}
+
 export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }) {
   const { apiToken } = useAuth();
   const [forms, setForms] = useState<FmQadTemplateForm[]>([]);
@@ -48,6 +66,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   const [selectedForm, setSelectedForm] = useState<FmQadTemplateForm | null>(null);
   const [versions, setVersions] = useState<FmQadTemplateVersion[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isVersionsLoading, setIsVersionsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
   const [showUpload, setShowUpload] = useState(false);
@@ -65,9 +84,16 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
     versionAbortControllerRef.current?.abort();
     const controller = new AbortController();
     versionAbortControllerRef.current = controller;
-    const result = await fetchFmQadVersions(apiToken, formId, controller.signal);
-    if (sequence === versionRequestSequenceRef.current && selectedFormIdRef.current === formId) {
-      setVersions(result);
+    setIsVersionsLoading(true);
+    try {
+      const result = await fetchFmQadVersions(apiToken, formId, controller.signal);
+      if (sequence === versionRequestSequenceRef.current && selectedFormIdRef.current === formId) {
+        setVersions(result);
+      }
+    } finally {
+      if (sequence === versionRequestSequenceRef.current && selectedFormIdRef.current === formId) {
+        setIsVersionsLoading(false);
+      }
     }
   }, [apiToken]);
 
@@ -256,7 +282,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={() => void refresh()} className="inline-flex items-center gap-1 rounded-sm border px-3 py-2 text-xs font-semibold"><RefreshCw className="h-3.5 w-3.5" /> Refresh</button>
-          <button type="button" onClick={closeManager} aria-label="Close FM-QAD Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
+          <button type="button" onClick={closeManager} aria-label="Close Template Management" className="rounded-sm border p-2"><X className="h-4 w-4" /></button>
         </div>
       </div>
       {error && (
@@ -281,7 +307,18 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       {!error && (
         <div className="mt-4 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
-            <thead><tr className="border-b text-xs uppercase text-slate-500"><th className="p-2">Code</th><th className="p-2">Form name</th><th className="p-2">Active revision</th><th className="p-2">Academic Year</th><th className="p-2">File</th><th className="p-2">Status</th><th className="p-2">Activated</th><th className="p-2">Actions</th></tr></thead>
+            <thead>
+              <tr className="border-b text-xs uppercase text-slate-500">
+                <th className="min-w-28 whitespace-nowrap p-2">Code</th>
+                <th className="min-w-72 p-2">Form name</th>
+                <th className="min-w-32 p-2">Active revision</th>
+                <th className="min-w-28 p-2">Academic Year</th>
+                <th className="min-w-36 p-2">File</th>
+                <th className="min-w-32 p-2">Status</th>
+                <th className="min-w-24 p-2">Activated</th>
+                <th className="whitespace-nowrap p-2">Actions</th>
+              </tr>
+            </thead>
             <tbody>
               {isLoading && <tr><td colSpan={8} className="p-6 text-center text-slate-600">Loading FM-QAD forms</td></tr>}
               {!isLoading && catalogMeta && catalogIsUninitialized && (
@@ -302,8 +339,8 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
                 </td></tr>
               )}
               {!isLoading && forms.map((form) => {
-                const current = form.activeVersions?.[0] ?? null;
-                return <tr key={form.id} className="border-b align-top"><td className="p-2 font-bold">{form.code}</td><td className="p-2">{form.name}</td><td className="p-2">{current?.revisionLabel ?? "Not configured"}</td><td className="p-2">{current?.academicYearLabel ?? (current ? "Baseline" : "—")}</td><td className="p-2"><span className="block max-w-48 break-words">{current?.originalFilename ?? "—"}</span>{current && <span className="text-xs text-slate-500">{(current.sizeBytes / 1024).toFixed(1)} KB</span>}</td><td className="p-2 capitalize">{current?.status ?? "No active revision"}</td><td className="p-2">{current?.activatedAt ? new Date(current.activatedAt).toLocaleDateString() : "—"}</td><td className="p-2"><div className="flex flex-col items-start gap-1"><button type="button" onClick={() => void openVersions(form)} className="font-semibold text-primary-700 underline">Manage</button>{current && <button type="button" onClick={() => void downloadFmQadVersion(apiToken, current)} className="font-semibold text-slate-700 underline">Download active</button>}</div></td></tr>;
+                const current = selectMonitorDisplayVersion(form, years);
+                return <tr key={form.id} className="border-b align-top"><td className="whitespace-nowrap p-2 font-bold">{form.code}</td><td className="p-2">{form.name}</td><td className="p-2">{current?.revisionLabel ?? "Not configured"}</td><td className="p-2">{current?.academicYearLabel ?? (current ? "Baseline" : "—")}</td><td className="p-2"><span className="block max-w-48 break-words">{current?.originalFilename ?? "—"}</span>{current && <span className="text-xs text-slate-500">{(current.sizeBytes / 1024).toFixed(1)} KB</span>}</td><td className="p-2">{current ? "Active" : "No active revision"}</td><td className="p-2">{current?.activatedAt ? new Date(current.activatedAt).toLocaleDateString() : "—"}</td><td className="p-2"><div className="flex min-w-max flex-col items-start gap-1"><button type="button" onClick={() => void openVersions(form)} className="font-semibold text-primary-700 underline">Manage</button>{current && <button type="button" onClick={() => void downloadFmQadVersion(apiToken, current)} className="font-semibold text-slate-700 underline">Download active</button>}</div></td></tr>;
               })}
             </tbody>
           </table>
@@ -333,6 +370,18 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
               <label className="text-xs font-semibold">Internal Note<input aria-label="Edit Internal Note" value={editDraft.internalNote} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, internalNote: e.target.value }) : draft)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <div className="flex items-end gap-2"><button type="submit" disabled={isSaving} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Save Details</button><button type="button" onClick={cancelEdit} className="rounded-sm border px-3 py-2 text-xs font-semibold">Cancel</button></div>
             </form>
+          )}
+          {!isVersionsLoading && versions.length === 0 && (
+            <div className="mt-4 rounded-sm border border-dashed border-slate-300 p-4 text-sm text-slate-600">
+              <p className="font-semibold text-slate-800">No template revisions have been uploaded for this form.</p>
+              <p className="mt-1">Upload an official DOCX revision to make the template available to private School Heads.</p>
+            </div>
+          )}
+          {!isVersionsLoading && versions.length > 0 && !versions.some((version) => version.status === "active") && (
+            <div className="mt-4 rounded-sm border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+              <p className="font-semibold">Template revisions exist, but none is active.</p>
+              <p className="mt-1">Activate a draft or archived revision to make the form available.</p>
+            </div>
           )}
           <div className="mt-4 space-y-2">{versions.map((version) => (
             <article key={version.id} className="rounded-sm border p-3">

@@ -31,6 +31,7 @@ class MonitorFmQadTemplateController extends Controller
             ->values();
         $years = AcademicYear::query()->orderByDesc('start_date')->get(['id', 'name', 'is_current']);
         $forms = FmQadForm::query()
+            ->whereIn('scope_id', $configuredScopeIds)
             ->enabled()
             ->with(['versions' => fn ($q) => $q->active()->with('academicYear')->latest('activated_at')])
             ->orderBy('sort_order')

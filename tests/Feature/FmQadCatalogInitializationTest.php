@@ -71,7 +71,15 @@ class FmQadCatalogInitializationTest extends TestCase
     public function test_seeded_catalog_returns_stably_sorted_rows_even_without_versions(): void
     {
         $this->seed(FmQadFormSeeder::class);
+        FmQadForm::query()->create([
+            'scope_id' => 'fm_qad_999',
+            'code' => 'FM-QAD-999',
+            'name' => 'Enabled historical form outside the permanent catalog',
+            'sort_order' => 0,
+            'is_enabled' => true,
+        ]);
         Sanctum::actingAs($this->user('monitor@example.test', 'monitor'), ['role:monitor']);
+        $before = $this->databaseCounts();
 
         $response = $this->getJson('/api/monitor/fm-qad/forms');
 
@@ -87,6 +95,25 @@ class FmQadCatalogInitializationTest extends TestCase
             ->assertJsonPath('meta.enabledCatalogCount', 10)
             ->assertJsonPath('meta.initializationRequired', false)
             ->assertJsonPath('meta.missingScopeIds', []);
+        $this->assertNotContains('fm_qad_999', $response->json('data.*.scopeId'));
+        $this->assertSame($before, $this->databaseCounts());
+    }
+
+    public function test_disabled_configured_form_is_omitted_without_becoming_missing(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        FmQadForm::query()->where('scope_id', 'fm_qad_003')->update(['is_enabled' => false]);
+        Sanctum::actingAs($this->user('monitor@example.test', 'monitor'), ['role:monitor']);
+
+        $response = $this->getJson('/api/monitor/fm-qad/forms');
+
+        $response->assertOk()
+            ->assertJsonCount(9, 'data')
+            ->assertJsonPath('meta.catalogCount', 10)
+            ->assertJsonPath('meta.enabledCatalogCount', 9)
+            ->assertJsonPath('meta.initializationRequired', false)
+            ->assertJsonPath('meta.missingScopeIds', []);
+        $this->assertNotContains('fm_qad_003', $response->json('data.*.scopeId'));
     }
 
     public function test_seeder_is_idempotent_updates_configuration_and_preserves_related_history(): void
