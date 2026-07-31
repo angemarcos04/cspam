@@ -251,7 +251,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
     <section aria-labelledby="fm-qad-manager-title" className="border-b border-slate-200 bg-white p-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 id="fm-qad-manager-title" className="text-base font-bold text-slate-900">FM-QAD Template Management</h2>
+          <h2 id="fm-qad-manager-title" className="text-base font-bold text-slate-900">Template Management</h2>
           <p className="mt-1 text-xs text-slate-500">Manage official DOCX revisions without changing permanent FM-QAD submission scopes.</p>
         </div>
         <div className="flex gap-2">
