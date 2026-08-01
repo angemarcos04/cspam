@@ -57,10 +57,9 @@ class FmQadTemplateClosureTest extends TestCase
         $this->artisan('cspams:import-fm-qad-templates', [
             '--dry-run' => true,
             '--form' => 'fm_qad_003',
-        ])->expectsTable(
-            ['Checked', 'Would import', 'Would skip', 'Would reactivate', 'Inactive existing', 'Missing catalog', 'Missing files', 'Invalid files'],
-            [[1, 0, 0, 0, '', 'fm_qad_003', '', '']],
-        )->assertExitCode(1);
+        ])->expectsOutputToContain('Label conflicts')
+            ->expectsOutputToContain('fm_qad_003')
+            ->assertExitCode(1);
         $this->assertSame($before, $this->databaseCounts());
     }
 
@@ -236,6 +235,92 @@ class FmQadTemplateClosureTest extends TestCase
         $this->assertSame(2, \App\Models\FmQadTemplateVersionBlob::query()->count());
     }
 
+    public function test_import_audit_failures_roll_back_data_audits_and_realtime_until_retry_succeeds(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        Event::fake([CspamsUpdateBroadcast::class]);
+        config()->set('fm_qad.legacy_directory', $this->legacyDirectoryForScope('fm_qad_003'));
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $existing = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('existing.docx', 'existing-baseline'),
+            ['revision_label' => 'Existing baseline', 'academic_year_id' => null, 'change_notes' => 'Must survive failures.'],
+            null,
+            true,
+        );
+        $before = $this->databaseCounts();
+        $broadcastsBefore = Event::dispatched(CspamsUpdateBroadcast::class)->count();
+        $failureAction = null;
+        AuditLog::creating(function (AuditLog $audit) use (&$failureAction): void {
+            if ($failureAction === $audit->action) {
+                throw new \RuntimeException('Simulated '.$failureAction.' audit failure.');
+            }
+        });
+
+        foreach (['fm_qad_template.version_uploaded', 'fm_qad_template.version_activated'] as $action) {
+            $failureAction = $action;
+            try {
+                app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(false, 'fm_qad_003');
+                $this->fail('The simulated audit failure should be rethrown.');
+            } catch (\RuntimeException $exception) {
+                $this->assertSame('Simulated '.$action.' audit failure.', $exception->getMessage());
+            }
+
+            $this->assertSame($before, $this->databaseCounts());
+            $this->assertSame(FmQadTemplateVersion::ACTIVE, $existing->fresh()->status);
+            $this->assertSame($broadcastsBefore, Event::dispatched(CspamsUpdateBroadcast::class)->count());
+        }
+
+        $failureAction = null;
+        $result = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class)->run(false, 'fm_qad_003');
+        $this->assertSame(1, $result['imported']);
+        $imported = FmQadTemplateVersion::query()->where('revision_label', 'Rev. 02')->firstOrFail();
+        $this->assertSame(FmQadTemplateVersion::ACTIVE, $imported->status);
+        $this->assertSame(FmQadTemplateVersion::ARCHIVED, $existing->fresh()->status);
+        $this->assertSame(1, AuditLog::query()->where('auditable_id', (string) $imported->id)->where('action', 'fm_qad_template.version_uploaded')->count());
+        $this->assertSame(1, AuditLog::query()->where('auditable_id', (string) $imported->id)->where('action', 'fm_qad_template.version_activated')->count());
+        $this->assertSame($broadcastsBefore + 2, Event::dispatched(CspamsUpdateBroadcast::class)->count());
+    }
+
+    public function test_same_label_different_content_is_a_structured_non_destructive_import_conflict(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        $retainedDirectory = config('fm_qad.legacy_directory');
+        config()->set('fm_qad.legacy_directory', $this->legacyDirectoryForScope('fm_qad_003'));
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $existing = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('existing.docx', 'different-content'),
+            ['revision_label' => '  REV.   02 ', 'academic_year_id' => null, 'change_notes' => 'Human review required.'],
+            null,
+        );
+        $blobHash = $existing->blob()->value('content_sha256');
+        $before = $this->databaseCounts();
+        $importer = app(\App\Support\FmQad\LegacyFmQadTemplateImporter::class);
+
+        foreach ([false, true] as $force) {
+            $result = $importer->run(true, 'fm_qad_003', $force);
+            $this->assertSame([[
+                'scopeId' => 'fm_qad_003',
+                'revisionLabel' => 'Rev. 02',
+                'existingVersionId' => (string) $existing->id,
+                'existingStatus' => FmQadTemplateVersion::DRAFT,
+            ]], $result['labelConflicts']);
+            $this->assertSame(0, $result['wouldImport']);
+            $this->assertSame($before, $this->databaseCounts());
+        }
+
+        config()->set('fm_qad.legacy_directory', $retainedDirectory);
+        $this->artisan('cspams:import-fm-qad-templates')
+            ->expectsOutputToContain('fm_qad_003: Rev. 02 already exists with different file content.')
+            ->assertExitCode(1);
+        $this->artisan('cspams:import-fm-qad-templates', ['--force' => true])
+            ->assertExitCode(1);
+        $this->assertSame($before, $this->databaseCounts());
+        $this->assertSame($blobHash, $existing->blob()->value('content_sha256'));
+        $this->assertSame($existing->id, FmQadTemplateVersion::query()->sole()->id);
+    }
+
     public function test_disabled_configured_form_fails_audit_and_seeder_restores_it_without_history_loss(): void
     {
         $this->seed(FmQadFormSeeder::class);
@@ -263,6 +348,31 @@ class FmQadTemplateClosureTest extends TestCase
         $this->assertSame(FmQadTemplateVersion::ACTIVE, $version->fresh()->status);
     }
 
+    public function test_unexpected_enabled_forms_have_their_own_read_only_audit_category(): void
+    {
+        $this->seed(FmQadFormSeeder::class);
+        $unexpected = FmQadForm::query()->create([
+            'scope_id' => 'fm_qad_999', 'code' => 'FM-QAD-999', 'name' => 'Unexpected enabled', 'sort_order' => 999, 'is_enabled' => true,
+        ]);
+        FmQadForm::query()->create([
+            'scope_id' => 'fm_qad_998', 'code' => 'FM-QAD-998', 'name' => 'Historical disabled', 'sort_order' => 998, 'is_enabled' => false,
+        ]);
+        $before = $this->databaseCounts();
+
+        $issues = app(FmQadTemplateAudit::class)->run();
+
+        $this->assertSame(['fm_qad_999'], $issues['unexpectedEnabledForms']);
+        $this->assertNotContains('fm_qad_999', $issues['formsWithoutVersions']);
+        $this->assertNotContains('fm_qad_999', $issues['formsWithoutActiveVersion']);
+        $this->assertFalse(collect($issues['academicYearsWithoutEffectiveVersion'])->contains(
+            fn (string $issue): bool => str_starts_with($issue, 'fm_qad_999:'),
+        ));
+        $this->assertNotContains('fm_qad_998', $issues['unexpectedEnabledForms']);
+        $this->assertSame($before, $this->databaseCounts());
+        $this->assertTrue((bool) $unexpected->fresh()->is_enabled);
+        $this->artisan('cspams:audit-fm-qad-templates')->assertExitCode(1);
+    }
+
     public function test_all_retained_docx_assets_validate_import_as_active_baselines_and_audit_cleanly(): void
     {
         $definitions = collect(config('fm_qad.forms', []));
@@ -285,6 +395,7 @@ class FmQadTemplateClosureTest extends TestCase
         $this->assertSame([], $dryRun['missing']);
         $this->assertSame([], $dryRun['invalid']);
         $this->assertSame([], $dryRun['inactiveExisting']);
+        $this->assertSame([], $dryRun['labelConflicts']);
 
         $result = $importer->run();
         $this->assertSame(10, $result['imported']);
@@ -296,6 +407,7 @@ class FmQadTemplateClosureTest extends TestCase
         $post = $importer->run(true);
         $this->assertSame(10, $post['wouldSkip']);
         $this->assertSame([], $post['inactiveExisting']);
+        $this->assertSame([], $post['labelConflicts']);
         $this->assertTrue(collect(app(FmQadTemplateAudit::class)->run())->every(fn (array $values): bool => $values === []));
         $this->artisan('cspams:audit-fm-qad-templates')->assertExitCode(0);
     }

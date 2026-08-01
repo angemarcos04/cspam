@@ -58,7 +58,7 @@ class FmQadTemplateController extends Controller
         $isMonitor = UserRoleResolver::has($user, UserRoleResolver::MONITOR);
         $isSchoolHead = UserRoleResolver::has($user, UserRoleResolver::SCHOOL_HEAD);
         abort_unless($isMonitor || $isSchoolHead, Response::HTTP_FORBIDDEN);
-        $catalogGuard->ensureVersion($version);
+        $catalogGuard->ensureManageableVersion($version);
 
         if ($isSchoolHead && strtolower(trim((string) $user?->school?->type)) !== 'private') {
             abort(Response::HTTP_FORBIDDEN, 'FM-QAD templates are available only to private schools.');

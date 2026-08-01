@@ -105,6 +105,45 @@ class FmQadTemplateManagementTest extends TestCase
         $this->getJson("/api/monitor/fm-qad/forms/{$configured->id}/versions")->assertOk();
     }
 
+    public function test_disabled_configured_form_is_hidden_from_direct_routes_until_seeder_repair(): void
+    {
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        $version = app(FmQadTemplateVersionManager::class)->upload(
+            $form,
+            $this->validDocx('disabled.docx', 'disabled-content'),
+            ['revision_label' => 'Preserved draft', 'academic_year_id' => null, 'change_notes' => 'Preserve history.'],
+            $monitor,
+        );
+        $blobHash = $version->blob()->value('content_sha256');
+        $form->update(['is_enabled' => false]);
+
+        Sanctum::actingAs($monitor, ['role:monitor']);
+        $this->getJson('/api/monitor/fm-qad/forms')->assertOk()->assertJsonMissing(['scopeId' => 'fm_qad_003']);
+        $this->getJson("/api/monitor/fm-qad/forms/{$form->id}/versions")->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Rejected',
+            'changeNotes' => 'Rejected.',
+            'file' => $this->validDocx('rejected.docx', 'rejected'),
+        ])->assertNotFound();
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$version->id}", ['revisionLabel' => 'Changed'])->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/template-versions/{$version->id}/activate")->assertNotFound();
+        $this->postJson("/api/monitor/fm-qad/template-versions/{$version->id}/archive")->assertNotFound();
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download")->assertNotFound();
+
+        $this->assertSame('Preserved draft', $version->fresh()->revision_label);
+        $this->assertSame(FmQadTemplateVersion::DRAFT, $version->status);
+        $this->assertSame($blobHash, $version->blob()->value('content_sha256'));
+
+        $this->seed(FmQadFormSeeder::class);
+        $this->assertTrue((bool) $form->fresh()->is_enabled);
+        $this->getJson("/api/monitor/fm-qad/forms/{$form->id}/versions")
+            ->assertOk()
+            ->assertJsonPath('data.0.id', (string) $version->id);
+        $this->get("/api/fm-qad/template-versions/{$version->id}/download")->assertOk();
+        $this->assertSame($blobHash, $version->blob()->value('content_sha256'));
+    }
+
     public function test_monitor_can_upload_and_activate_a_baseline_without_changing_historical_files(): void
     {
         Event::fake([CspamsUpdateBroadcast::class]);

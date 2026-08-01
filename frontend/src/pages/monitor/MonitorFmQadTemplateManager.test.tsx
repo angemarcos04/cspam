@@ -7,6 +7,7 @@ import {
 import {
   fetchFmQadVersions,
   fetchMonitorFmQadForms,
+  mutateFmQadVersion,
   updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
@@ -133,6 +134,7 @@ describe("MonitorFmQadTemplateManager", () => {
     });
     vi.mocked(fetchFmQadVersions).mockResolvedValue([]);
     vi.mocked(uploadFmQadVersion).mockResolvedValue({} as never);
+    vi.mocked(mutateFmQadVersion).mockResolvedValue({} as never);
     vi.mocked(updateFmQadVersionMetadata).mockResolvedValue(draftVersion);
   });
 
@@ -292,7 +294,7 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
     fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 03" } });
-    fireEvent.change(screen.getByLabelText("Effective Academic Year"), { target: { value: "year-1" } });
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "year-1" } });
     fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Updated signature section" } });
     const file = new File(["docx"], "FM-QAD-001-Rev-03.docx", {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -313,15 +315,16 @@ describe("MonitorFmQadTemplateManager", () => {
     ));
   });
 
-  it("offers an explicit baseline and saves it with a null Academic Year", async () => {
+  it("requires a deliberate effective period and resets it when reopened", async () => {
     render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
     await screen.findByText("FM-QAD-001");
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
 
-    const period = screen.getByLabelText("Effective Academic Year") as HTMLSelectElement;
-    expect(period.options[0].textContent).toContain("Baseline");
-    expect(period.options[0].textContent).toContain("no Academic-Year-specific revision exists");
+    const period = screen.getByLabelText("Effective period") as HTMLSelectElement;
+    expect(period.options[0].textContent).toBe("Select effective period");
+    expect(period.options[1].textContent).toContain("Baseline");
+    expect(period.options[1].textContent).toContain("no Academic-Year-specific revision exists");
     expect(period.value).toBe("");
     fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Baseline Rev." } });
     fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Baseline coverage" } });
@@ -329,6 +332,11 @@ describe("MonitorFmQadTemplateManager", () => {
       type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     });
     fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [file] } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+    expect(await screen.findByText("Select Baseline or an Academic Year.")).toBeTruthy();
+    expect(uploadFmQadVersion).not.toHaveBeenCalled();
+    fireEvent.change(period, { target: { value: "__baseline__" } });
     fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
 
     await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
@@ -341,6 +349,8 @@ describe("MonitorFmQadTemplateManager", () => {
         activate: false,
       }),
     ));
+    fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
+    expect((screen.getByLabelText("Effective period") as HTMLSelectElement).value).toBe("");
   });
 
   it("uses baseline-specific activation confirmation and sends null", async () => {
@@ -350,6 +360,7 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
     fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 04" } });
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "__baseline__" } });
     fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Baseline activation" } });
     fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [new File(["docx"], "baseline.docx")] } });
     fireEvent.click(screen.getByRole("button", { name: "Upload and Activate" }));
@@ -371,7 +382,7 @@ describe("MonitorFmQadTemplateManager", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
     fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
     fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "Rev. 05" } });
-    fireEvent.change(screen.getByLabelText("Effective Academic Year"), { target: { value: "year-1" } });
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "year-1" } });
     fireEvent.change(screen.getByLabelText("Change Notes"), { target: { value: "Year activation" } });
     fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [new File(["docx"], "year.docx")] } });
     fireEvent.click(screen.getByRole("button", { name: "Upload and Activate" }));
@@ -382,6 +393,48 @@ describe("MonitorFmQadTemplateManager", () => {
       expect.objectContaining({ academicYearId: "year-1", activate: true }),
     ));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("selected Academic Year"));
+    confirm.mockRestore();
+  });
+
+  it("uses baseline wording for an existing baseline draft and honors cancellation", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([{
+      ...draftVersion,
+      id: "baseline-draft",
+      academicYearId: null,
+      academicYearLabel: null,
+    }]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Details/i }));
+    expect((screen.getByLabelText("Edit Effective Academic Year") as HTMLSelectElement).value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    const activate = await screen.findByRole("button", { name: "Activate" });
+
+    fireEvent.click(activate);
+    expect(mutateFmQadVersion).not.toHaveBeenCalled();
+    expect(confirm.mock.calls[0][0]).toContain("as the baseline template");
+    expect(confirm.mock.calls[0][0]).toContain("only when no Academic-Year-specific active revision exists");
+    expect(confirm.mock.calls[0][0]).not.toContain("for this Academic Year");
+
+    fireEvent.click(activate);
+    await waitFor(() => expect(mutateFmQadVersion).toHaveBeenCalledWith("monitor-token", "baseline-draft", "activate"));
+    await waitFor(() => expect(fetchMonitorFmQadForms).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
+
+  it("uses Academic-Year wording for an existing year-specific draft", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: "Activate" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("selected Academic Year"));
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("for that Academic Year"));
+    expect(mutateFmQadVersion).not.toHaveBeenCalled();
     confirm.mockRestore();
   });
 

@@ -107,14 +107,18 @@ class FmQadTemplateVersionManager
                 ]);
                 $this->storage->put($draft, $validatedFile['content'], $validatedFile['sha256']);
 
-                return $this->activateLocked($draft->id, null, $previousId);
+                $version = $this->activateLocked($draft->id, null, $previousId);
+                $this->createAuditRecord('fm_qad_template.version_uploaded', $version, null);
+                $this->createAuditRecord('fm_qad_template.version_activated', $version, null, [
+                    'previousActiveVersionId' => $previousId,
+                ]);
+
+                return $version;
             });
         } catch (QueryException $exception) {
             $this->throwControlledActivationConflict($exception);
         }
 
-        $this->audit(null, 'fm_qad_template.version_uploaded', $version, null);
-        $this->audit(null, 'fm_qad_template.version_activated', $version, null, ['previousActiveVersionId' => $previousId]);
         event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_uploaded')));
         event(new CspamsUpdateBroadcast($this->broadcastPayload($version, 'fm_qad_template.version_activated')));
 
@@ -293,8 +297,14 @@ class FmQadTemplateVersionManager
 
     private function audit(?Request $request, string $action, FmQadTemplateVersion $version, ?User $actor, array $extra = []): void
     {
+        $this->createAuditRecord($action, $version, $actor, $extra, $request);
+    }
+
+    private function createAuditRecord(string $action, FmQadTemplateVersion $version, ?User $actor, array $extra = [], ?Request $request = null): AuditLog
+    {
         $version->loadMissing('form');
-        AuditLog::query()->create([
+
+        return AuditLog::query()->create([
             'user_id' => $actor?->id,
             'action' => $action,
             'auditable_type' => FmQadTemplateVersion::class,

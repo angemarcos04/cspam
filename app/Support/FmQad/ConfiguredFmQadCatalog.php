@@ -17,15 +17,21 @@ class ConfiguredFmQadCatalog
             ->values();
     }
 
-    public function ensureForm(FmQadForm $form): void
+    public function ensureConfiguredForm(FmQadForm $form): void
     {
         abort_unless($this->scopeIds()->contains($form->scope_id), 404);
     }
 
-    public function ensureVersion(FmQadTemplateVersion $version): void
+    public function ensureManageableForm(FmQadForm $form): void
+    {
+        $this->ensureConfiguredForm($form);
+        abort_unless($form->is_enabled, 404);
+    }
+
+    public function ensureManageableVersion(FmQadTemplateVersion $version): void
     {
         $version->loadMissing('form');
         abort_unless($version->form, 404);
-        $this->ensureForm($version->form);
+        $this->ensureManageableForm($version->form);
     }
 }

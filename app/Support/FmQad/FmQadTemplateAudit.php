@@ -16,7 +16,7 @@ class FmQadTemplateAudit
     public function run(): array
     {
         $issues = [
-            'missingForms' => [], 'disabledConfiguredForms' => [], 'formsWithoutVersions' => [], 'formsWithoutActiveVersion' => [],
+            'missingForms' => [], 'disabledConfiguredForms' => [], 'unexpectedEnabledForms' => [], 'formsWithoutVersions' => [], 'formsWithoutActiveVersion' => [],
             'academicYearsWithoutEffectiveVersion' => [],
             'duplicateActiveVersions' => [], 'missingBlobs' => [], 'hashMismatch' => [],
             'orphanedVersions' => [], 'brokenSubmissionReferences' => [],
@@ -32,9 +32,15 @@ class FmQadTemplateAudit
             ->orderBy('sort_order')
             ->pluck('scope_id')
             ->all();
+        $issues['unexpectedEnabledForms'] = FmQadForm::query()
+            ->whereNotIn('scope_id', $configuredScopes)
+            ->where('is_enabled', true)
+            ->orderBy('scope_id')
+            ->pluck('scope_id')
+            ->all();
         $relevantAcademicYears = $this->relevantAcademicYears();
 
-        FmQadForm::query()->enabled()->with(['versions.blob'])->each(function (FmQadForm $form) use (&$issues, $relevantAcademicYears): void {
+        FmQadForm::query()->whereIn('scope_id', $configuredScopes)->with(['versions.blob'])->each(function (FmQadForm $form) use (&$issues, $relevantAcademicYears): void {
             if ($form->versions->isEmpty()) {
                 $issues['formsWithoutVersions'][] = $form->scope_id;
             }

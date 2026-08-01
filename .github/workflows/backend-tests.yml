@@ -55,3 +55,6 @@ jobs:
 
       - name: Run student authorization tests
         run: php artisan test --filter=StudentCrudAuthorizationTest
+
+      - name: Run FM-QAD integrity tests
+        run: php artisan test --filter=FmQad

@@ -19,11 +19,14 @@ import type {
 
 interface FmQadUploadDraft {
   revisionLabel: string;
-  academicYearId: string;
+  effectivePeriod: string;
   changeNotes: string;
   internalNote: string;
   file: File | null;
 }
+
+const UNSELECTED_EFFECTIVE_PERIOD = "";
+const BASELINE_EFFECTIVE_PERIOD = "__baseline__";
 
 interface FmQadEditDraft {
   revisionLabel: string;
@@ -34,11 +37,15 @@ interface FmQadEditDraft {
 
 const emptyUploadDraft = (): FmQadUploadDraft => ({
   revisionLabel: "",
-  academicYearId: "",
+  effectivePeriod: UNSELECTED_EFFECTIVE_PERIOD,
   changeNotes: "",
   internalNote: "",
   file: null,
 });
+
+function selectedAcademicYearId(effectivePeriod: string): string | null {
+  return effectivePeriod === BASELINE_EFFECTIVE_PERIOD ? null : effectivePeriod;
+}
 
 export function selectMonitorDisplayVersion(
   form: FmQadTemplateForm,
@@ -221,6 +228,10 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
   const submitUpload = async (event: FormEvent, activate: boolean) => {
     event.preventDefault();
     const file = uploadDraft.file;
+    if (uploadDraft.effectivePeriod === UNSELECTED_EFFECTIVE_PERIOD) {
+      setError("Select Baseline or an Academic Year.");
+      return;
+    }
     if (
       !selectedForm
       || !file
@@ -231,7 +242,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       return;
     }
     if (activate) {
-      const confirmation = uploadDraft.academicYearId
+      const confirmation = uploadDraft.effectivePeriod !== BASELINE_EFFECTIVE_PERIOD
         ? `Activate ${selectedForm.code} ${uploadDraft.revisionLabel.trim()}?\n\nThis will make it the current template for the selected Academic Year. Existing uploaded, submitted, returned, and verified files will not be changed.`
         : `Activate ${selectedForm.code} ${uploadDraft.revisionLabel.trim()} as the baseline template?\n\nIt will be used only when no Academic-Year-specific active revision exists. Existing uploaded, submitted, returned, and verified files will not be changed.`;
       if (!window.confirm(confirmation)) return;
@@ -240,8 +251,10 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
     setError("");
     try {
       await uploadFmQadVersion(apiToken, selectedForm.id, {
-        ...uploadDraft,
-        academicYearId: uploadDraft.academicYearId || null,
+        revisionLabel: uploadDraft.revisionLabel,
+        academicYearId: selectedAcademicYearId(uploadDraft.effectivePeriod),
+        changeNotes: uploadDraft.changeNotes,
+        internalNote: uploadDraft.internalNote,
         file,
         activate,
       });
@@ -256,7 +269,9 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
 
   const performAction = async (version: FmQadTemplateVersion, action: "activate" | "archive") => {
     const message = action === "activate"
-      ? `Activate ${version.code} ${version.revisionLabel}?\n\nThe current revision for this Academic Year will be archived. Existing submission files will not be changed.`
+      ? version.academicYearId === null
+        ? `Activate ${version.code} ${version.revisionLabel} as the baseline template?\n\nIt will be used only when no Academic-Year-specific active revision exists.\n\nThe current active baseline, if any, will be archived.\nExisting uploaded, submitted, returned, and verified files will not be changed.`
+        : `Activate ${version.code} ${version.revisionLabel}?\n\nThis will make it the current template for the selected Academic Year.\n\nThe current active revision for that Academic Year will be archived.\nExisting uploaded, submitted, returned, and verified files will not be changed.`
       : `Archive ${version.code} ${version.revisionLabel}?\n\nThe file and historical submission references will be preserved.`;
     if (!window.confirm(message)) return;
     setIsSaving(true);
@@ -358,7 +373,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
           {showUpload && (
             <form className="mt-4 grid gap-3 rounded-sm bg-slate-50 p-4 md:grid-cols-2" onSubmit={(event) => void submitUpload(event, false)}>
               <label className="text-xs font-semibold">Revision Label<input aria-label="Revision Label" value={uploadDraft.revisionLabel} onChange={(e) => setUploadDraft((draft) => ({ ...draft, revisionLabel: e.target.value }))} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
-              <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Effective Academic Year" value={uploadDraft.academicYearId} onChange={(e) => setUploadDraft((draft) => ({ ...draft, academicYearId: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Baseline — used when no Academic-Year-specific revision exists</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
+              <label className="text-xs font-semibold">Effective Period<select aria-label="Effective period" value={uploadDraft.effectivePeriod} onChange={(e) => setUploadDraft((draft) => ({ ...draft, effectivePeriod: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value={UNSELECTED_EFFECTIVE_PERIOD}>Select effective period</option><option value={BASELINE_EFFECTIVE_PERIOD}>Baseline — used when no Academic-Year-specific revision exists</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
               <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Change Notes" value={uploadDraft.changeNotes} onChange={(e) => setUploadDraft((draft) => ({ ...draft, changeNotes: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Internal Note (optional)<input aria-label="Internal Note" value={uploadDraft.internalNote} onChange={(e) => setUploadDraft((draft) => ({ ...draft, internalNote: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Template File<input aria-label="Template File" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setUploadDraft((draft) => ({ ...draft, file: e.target.files?.[0] ?? null }))} className="mt-1 block w-full text-sm" /></label>
