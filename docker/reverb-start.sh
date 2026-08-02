@@ -9,4 +9,8 @@ sanitize_runtime_environment
 php artisan optimize:clear
 php artisan config:cache
 
-exec php artisan reverb:start --host=0.0.0.0 --port="${REVERB_PORT:-8080}"
+SERVER_HOST="${REVERB_SERVER_HOST:-0.0.0.0}"
+SERVER_PORT="${PORT:-${REVERB_SERVER_PORT:-8080}}"
+
+echo "Reverb listen address: ${SERVER_HOST}:${SERVER_PORT}"
+exec php artisan reverb:start --host="${SERVER_HOST}" --port="${SERVER_PORT}"

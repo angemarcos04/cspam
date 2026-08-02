@@ -663,18 +663,22 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
     $schoolHeadEmail = 'school-head-e2e@cspams.local';
     $returnSchoolCode = '401778';
     $returnSchoolHeadEmail = 'school-head-return-e2e@cspams.local';
+    $publicSchoolCode = '401779';
+    $publicSchoolHeadEmail = 'school-head-public-e2e@cspams.local';
     $fileType = 'fm_qad_001';
     $schoolHeadSendFileType = 'fm_qad_002';
     $filePath = 'e2e-monitor-review/fm-qad-001.pdf';
     $schoolHeadSendFilePath = 'e2e-monitor-review/fm-qad-002-send.pdf';
     $returnFilePath = 'e2e-monitor-review/fm-qad-001-return.pdf';
+    $publicSmeaFilePath = 'e2e-monitor-review/smea-send.xlsx';
     $now = now();
 
     Storage::disk('local')->put($filePath, "%PDF-1.4\n% CSPAMS live E2E monitor review file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
     Storage::disk('local')->put($schoolHeadSendFilePath, "%PDF-1.4\n% CSPAMS live E2E School Head send file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
     Storage::disk('local')->put($returnFilePath, "%PDF-1.4\n% CSPAMS live E2E monitor return file\n1 0 obj\n<< /Type /Catalog >>\nendobj\n%%EOF");
+    Storage::disk('local')->put($publicSmeaFilePath, 'CSPAMS live E2E SMEA workbook fixture');
 
-    DB::transaction(function () use ($monitorEmail, $monitorPassword, $schoolCode, $schoolHeadEmail, $returnSchoolCode, $returnSchoolHeadEmail, $fileType, $schoolHeadSendFileType, $filePath, $schoolHeadSendFilePath, $returnFilePath, $now): void {
+    DB::transaction(function () use ($monitorEmail, $monitorPassword, $schoolCode, $schoolHeadEmail, $returnSchoolCode, $returnSchoolHeadEmail, $publicSchoolCode, $publicSchoolHeadEmail, $fileType, $schoolHeadSendFileType, $filePath, $schoolHeadSendFilePath, $returnFilePath, $publicSmeaFilePath, $now): void {
         \Spatie\Permission\Models\Role::query()->firstOrCreate([
             'name' => \App\Support\Auth\UserRoleResolver::MONITOR,
             'guard_name' => 'web',
@@ -856,10 +860,138 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
             'created_at' => $now,
         ]);
 
+        \App\Models\IndicatorSubmissionScopeSubmission::query()->updateOrCreate(
+            [
+                'indicator_submission_id' => $submission->id,
+                'scope_id' => $fileType,
+            ],
+            [
+                'scope_type' => 'file',
+                'submitted_by' => $schoolHead->id,
+                'submitted_at' => $now,
+            ],
+        );
+
         $school->forceFill([
             'submitted_by' => $schoolHead->id,
             'submitted_at' => $now,
         ])->save();
+
+        /** @var \App\Models\School $publicSchool */
+        $publicSchool = \App\Models\School::withTrashed()->updateOrCreate(
+            ['school_code' => $publicSchoolCode],
+            [
+                'name' => 'CSPAMS Public Realtime School',
+                'level' => 'High School',
+                'district' => 'Santiago City',
+                'address' => 'Santiago City',
+                'region' => 'Region II',
+                'type' => 'public',
+                'status' => 'active',
+                'reported_student_count' => 1,
+                'reported_teacher_count' => 1,
+            ],
+        );
+        if ($publicSchool->trashed()) {
+            $publicSchool->restore();
+        }
+
+        /** @var \App\Models\User $publicSchoolHead */
+        $publicSchoolHead = \App\Models\User::query()->updateOrCreate(
+            ['email' => $publicSchoolHeadEmail],
+            [
+                'name' => 'Public School Head E2E',
+                'password' => \Illuminate\Support\Facades\Hash::make('E2eSchoolHead@2026!'),
+                'must_reset_password' => false,
+                'password_changed_at' => $now,
+                'school_id' => $publicSchool->id,
+            ],
+        );
+        $publicSchoolHead->forceFill([
+            'account_status' => \App\Support\Domain\AccountStatus::ACTIVE->value,
+            'account_type' => \App\Support\Auth\UserRoleResolver::SCHOOL_HEAD,
+            'email_verified_at' => $now,
+        ])->save();
+        $publicSchoolHead->syncRoles([\App\Support\Auth\UserRoleResolver::SCHOOL_HEAD]);
+
+        $existingPublicSubmissionIds = \App\Models\IndicatorSubmission::query()
+            ->where('school_id', $publicSchool->id)
+            ->pluck('id');
+        if ($existingPublicSubmissionIds->isNotEmpty()) {
+            \App\Models\IndicatorSubmissionScopeReview::query()->whereIn('indicator_submission_id', $existingPublicSubmissionIds)->delete();
+            \App\Models\IndicatorSubmissionFile::query()->whereIn('indicator_submission_id', $existingPublicSubmissionIds)->delete();
+            \App\Models\FormSubmissionHistory::query()
+                ->where('form_type', \App\Models\IndicatorSubmission::FORM_TYPE)
+                ->whereIn('submission_id', $existingPublicSubmissionIds)
+                ->delete();
+            \App\Models\IndicatorSubmission::query()->whereIn('id', $existingPublicSubmissionIds)->delete();
+        }
+
+        /** @var \App\Models\IndicatorSubmission $publicSubmission */
+        $publicSubmission = \App\Models\IndicatorSubmission::query()->create([
+            'school_id' => $publicSchool->id,
+            'academic_year_id' => $academicYear->id,
+            'reporting_period' => null,
+            'version' => 1,
+            'status' => \App\Support\Domain\FormSubmissionStatus::DRAFT->value,
+            'notes' => 'Live E2E public compliance package.',
+            'created_by' => $publicSchoolHead->id,
+            'submitted_by' => $publicSchoolHead->id,
+            'smea_file_path' => $publicSmeaFilePath,
+            'smea_original_filename' => 'SMEA-Realtime.xlsx',
+            'smea_file_size' => strlen((string) Storage::disk('local')->get($publicSmeaFilePath)),
+            'smea_uploaded_at' => $now,
+        ]);
+
+        \App\Models\IndicatorSubmissionFile::query()->create([
+            'indicator_submission_id' => $publicSubmission->id,
+            'type' => 'smea',
+            'path' => $publicSmeaFilePath,
+            'original_filename' => 'SMEA-Realtime.xlsx',
+            'size_bytes' => strlen((string) Storage::disk('local')->get($publicSmeaFilePath)),
+            'uploaded_at' => $now,
+        ]);
+
+        $schoolAchievementCodes = \App\Support\Indicators\GroupBWorkspaceDefinition::metricCodesFor(
+            \App\Support\Indicators\GroupBWorkspaceDefinition::SCHOOL_ACHIEVEMENTS,
+        );
+        $keyPerformanceCodes = \App\Support\Indicators\GroupBWorkspaceDefinition::metricCodesFor(
+            \App\Support\Indicators\GroupBWorkspaceDefinition::KEY_PERFORMANCE,
+        );
+        $metricCodes = [...$schoolAchievementCodes, ...$keyPerformanceCodes];
+        $yearName = (string) $academicYear->name;
+        foreach ($metricCodes as $index => $metricCode) {
+            \App\Models\PerformanceMetric::query()->updateOrCreate(
+                ['code' => $metricCode],
+                [
+                    'name' => str_replace('_', ' ', $metricCode),
+                    'category' => \App\Support\Domain\MetricCategory::COMPLIANCE->value,
+                    'framework' => in_array($metricCode, $keyPerformanceCodes, true) ? 'targets_met' : 'i_meta',
+                    'data_type' => \App\Support\Domain\MetricDataType::YEARLY_MATRIX->value,
+                    'input_schema' => [
+                        'years' => [$yearName],
+                        'valueType' => 'number',
+                        'comparison' => 'greater_or_equal',
+                    ],
+                    'sort_order' => 10_000 + $index,
+                    'is_active' => true,
+                ],
+            );
+        }
+        foreach (\App\Models\PerformanceMetric::query()->whereIn('code', $metricCodes)->get() as $metric) {
+            $publicSubmission->items()->create([
+                'performance_metric_id' => $metric->id,
+                'target_value' => 1,
+                'target_typed_value' => ['values' => [$yearName => 1], 'value' => 1],
+                'actual_value' => 1,
+                'actual_typed_value' => ['values' => [$yearName => 1], 'value' => 1],
+                'variance_value' => 0,
+                'target_display' => '1',
+                'actual_display' => '1',
+                'compliance_status' => 'met',
+                'remarks' => 'Realtime E2E fixture.',
+            ]);
+        }
 
         /** @var \App\Models\School $returnSchool */
         $returnSchool = \App\Models\School::withTrashed()->updateOrCreate(
@@ -973,6 +1105,18 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
             'created_at' => $now,
         ]);
 
+        \App\Models\IndicatorSubmissionScopeSubmission::query()->updateOrCreate(
+            [
+                'indicator_submission_id' => $returnSubmission->id,
+                'scope_id' => $fileType,
+            ],
+            [
+                'scope_type' => 'file',
+                'submitted_by' => $returnSchoolHead->id,
+                'submitted_at' => $now,
+            ],
+        );
+
         $returnSchool->forceFill([
             'submitted_by' => $returnSchoolHead->id,
             'submitted_at' => $now,
@@ -983,6 +1127,7 @@ Artisan::command('e2e:seed-monitor-review', function (): int {
     $this->line('Monitor login: '.$monitorEmail);
     $this->line('Verify school: AMA Computer College-Santiago City');
     $this->line('Return school: CSPAMS Return Flow School');
+    $this->line('Public realtime school: CSPAMS Public Realtime School');
 
     return self::SUCCESS;
 })->purpose('Seed isolated test-only monitor review data for live Playwright smoke tests.');

@@ -79,11 +79,20 @@ Immediate School Head, Monitor, and Audit Trail updates require both the databas
 2. Run these processes under the host's process supervisor. Do not rely on an interactive terminal:
    ```powershell
    php artisan queue:work database --queue=mail,broadcasts,default --sleep=1 --tries=3 --timeout=90
-   php artisan reverb:start --host=0.0.0.0 --port=8080
+   bash docker/reverb-start.sh
    ```
-   Use your deployment platform's restart policy, log retention, and alerting to restart either process after failure. Configure Reverb app keys and database credentials through the deployment environment, never this document.
+   On Render, the script binds to the platform `PORT`; `REVERB_SERVER_PORT` is only the local fallback. Public clients still connect to `REVERB_HOST` over `REVERB_PORT=443` and `REVERB_SCHEME=https`. Use your deployment platform's restart policy, log retention, and alerting to restart either process after failure. Configure Reverb app keys and database credentials through the deployment environment, never this document.
 
-3. Local proof of realtime audit delivery uses a separate test-only stack:
+3. Verify production schema and queues without exposing payloads:
+   ```powershell
+   php artisan migrate --force
+   php artisan migrate:status
+   php artisan queue:monitor mail,broadcasts,default
+   php artisan queue:failed
+   ```
+   Use the safe table and count-only Tinker commands in `DEPLOYMENT.md` to confirm the delivery ledger and queue tables.
+
+4. Local proof of realtime audit delivery uses a separate test-only stack:
    ```powershell
    cd C:\Users\Angie\Desktop\cspam-git\frontend
    npm.cmd run e2e:realtime

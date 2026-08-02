@@ -125,7 +125,12 @@ jobs:
         run: php artisan test --filter=NotificationCenterApiTest
 
       - name: Run PostgreSQL notification dispatcher tests
-        run: php artisan test --filter=MonitorSubmissionNotification
+        run: php artisan test --filter=MonitorSubmissionNotificationDispatcherTest
+
+      - name: Run PostgreSQL concurrent delivery and database queue tests
+        env:
+          QUEUE_CONNECTION: database
+        run: php artisan test --filter=MonitorSubmissionNotificationPostgresTest
 
       - name: Verify worker queue configuration
         run: php artisan test --filter=WorkerQueueConfigurationTest

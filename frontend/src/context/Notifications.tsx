@@ -185,6 +185,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const markAsRead = useCallback(
     async (id: string) => {
       if (!token) return;
+      const target = notifications.find((entry) => entry.id === id);
+      const targetWasUnread = Boolean(target && !target.readAt);
 
       invalidateNotificationListRequests();
 
@@ -198,7 +200,13 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
         if (next) {
           setNotifications((current) => current.map((entry) => (entry.id === id ? next : entry)));
-          setUnreadCount((current) => Math.max(0, current - 1));
+          if (targetWasUnread && next.readAt) {
+            setUnreadCount((current) => Math.max(0, current - 1));
+          }
+
+          if (!target) {
+            await syncNotifications(true);
+          }
         } else {
           await syncNotifications(true);
         }
@@ -206,7 +214,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         await handleApiError(err);
       }
     },
-    [token, syncNotifications, handleApiError, invalidateNotificationListRequests],
+    [token, notifications, syncNotifications, handleApiError, invalidateNotificationListRequests],
   );
 
   const markAllAsRead = useCallback(async () => {

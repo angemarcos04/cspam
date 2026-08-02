@@ -107,7 +107,9 @@ export function NotificationCenter() {
   };
 
   const handleNotificationClick = (notification: AppNotification) => {
-    void Promise.resolve(markAsRead(notification.id)).catch(() => undefined);
+    if (!notification.readAt) {
+      void Promise.resolve(markAsRead(notification.id)).catch(() => undefined);
+    }
     const actionUrl = notificationActionUrl(notification);
     if (actionUrl) {
       setOpen(false);

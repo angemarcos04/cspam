@@ -3,6 +3,7 @@ import { expect, test, type Browser, type Page } from "@playwright/test";
 const monitorLogin = "monitor-e2e@cspams.local";
 const monitorPassword = "E2eMonitor@2026!";
 const schoolHeadLogin = "401777";
+const publicSchoolHeadLogin = "401779";
 const schoolHeadPassword = "E2eSchoolHead@2026!";
 const verifySchoolName = "AMA Computer College-Santiago City";
 
@@ -38,11 +39,11 @@ async function signInAsMonitor(page: Page) {
   await expect(page.getByRole("heading", { name: "Review Inbox" })).toBeVisible({ timeout: 30_000 });
 }
 
-async function signInAsSchoolHead(page: Page) {
+async function signInAsSchoolHead(page: Page, login = schoolHeadLogin) {
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await bootstrapCsrfCookie(page);
   await page.getByRole("button", { name: "School Head" }).click();
-  await page.getByLabel("Login ID").fill(schoolHeadLogin);
+  await page.getByLabel("Login ID").fill(login);
   await page.locator("#passcode").fill(schoolHeadPassword);
   const loginResponse = page.waitForResponse((response) => (
     new URL(response.url()).pathname === "/api/auth/login"
@@ -52,7 +53,7 @@ async function signInAsSchoolHead(page: Page) {
   if (!response.ok()) {
     throw new Error(`School Head E2E login returned HTTP ${response.status()}.`);
   }
-  await expect(page.getByRole("heading", { name: "School Head Dashboard" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator("#imeta-compliance")).toBeVisible({ timeout: 60_000 });
 }
 
 async function waitForRealtimeSubscription(page: Page) {
@@ -200,7 +201,7 @@ test("refreshes an open Monitor drawer after School Head sends a saved file scop
     const notificationsButton = monitorPage.getByRole("button", { name: "Notifications" });
     await expect(notificationsButton.locator("span")).toBeVisible({ timeout: 30_000 });
     await notificationsButton.click();
-    const submissionNotification = monitorPage.locator("button", { hasText: "FM-QAD-002 sent for review" }).first();
+    const submissionNotification = monitorPage.locator("button", { hasText: "FM-QAD-002 file sent for review" }).first();
     await expect(submissionNotification).toBeVisible();
     await submissionNotification.click();
     await expect(monitorPage).toHaveURL(/section=reviews.*submissionId=.*scopeId=fm_qad_002/);
@@ -212,6 +213,77 @@ test("refreshes an open Monitor drawer after School Head sends a saved file scop
     await monitorContext.close();
   }
 });
+
+for (const scenario of [
+  {
+    label: "SMEA",
+    scopeId: "smea",
+    notificationText: "SMEA file sent for review",
+  },
+  {
+    label: "TARGETS-MET Key Performance",
+    scopeId: "key_performance_indicators",
+    notificationText: "Key Performance section sent for review",
+  },
+]) {
+  test(`delivers and opens the ${scenario.label} notification through real Reverb`, async ({ browser }: { browser: Browser }) => {
+    const monitorContext = await browser.newContext();
+    const schoolHeadContext = await browser.newContext();
+    const monitorPage = await monitorContext.newPage();
+    const schoolHeadPage = await schoolHeadContext.newPage();
+    let schoolHeadClosed = false;
+
+    try {
+      await signInAsMonitor(monitorPage);
+      await waitForRealtimeSubscription(monitorPage);
+
+      await signInAsSchoolHead(schoolHeadPage, publicSchoolHeadLogin);
+      const workspace = schoolHeadPage.locator("#imeta-compliance");
+      const scopeTab = workspace.locator(`[data-category-id="${scenario.scopeId}"]`);
+      await expect(scopeTab).toBeVisible({ timeout: 90_000 });
+      await scopeTab.click();
+
+      const sendButton = workspace.getByRole("button", { name: "Send", exact: true });
+      await expect(sendButton).toBeEnabled({ timeout: 90_000 });
+      const sendResponse = schoolHeadPage.waitForResponse((response) => (
+        response.request().method() === "POST"
+        && /\/api\/indicators\/submissions\/\d+\/submit-scopes$/.test(new URL(response.url()).pathname)
+      ));
+      await sendButton.click();
+      expect((await sendResponse).ok()).toBe(true);
+
+      await schoolHeadContext.close();
+      schoolHeadClosed = true;
+
+      const publicQueueRow = monitorPage.locator("tr", { hasText: "CSPAMS Public Realtime School" }).first();
+      await expect(publicQueueRow.getByText("For Review", { exact: true })).toBeVisible({ timeout: 90_000 });
+      const notificationsButton = monitorPage.getByRole("button", { name: "Notifications" });
+      await expect(notificationsButton.locator("span")).toBeVisible({ timeout: 90_000 });
+      await notificationsButton.click();
+      const notification = monitorPage.locator("button", { hasText: scenario.notificationText }).first();
+      await expect(notification).toBeVisible({ timeout: 30_000 });
+      const authoritativeSubmissionResponse = monitorPage.waitForResponse((response) => (
+        response.ok()
+        && response.request().method() === "GET"
+        && /^\/api\/indicators\/submissions\/\d+$/.test(new URL(response.url()).pathname)
+      ), { timeout: 90_000 });
+      await notification.click();
+
+      await expect(monitorPage).toHaveURL(new RegExp(`section=reviews.*submissionId=.*scopeId=${scenario.scopeId}`));
+      const authoritativeSubmission = await (await authoritativeSubmissionResponse).json() as {
+        data?: { school?: { name?: string }; scopeProgress?: { submittedScopeIds?: string[] } };
+      };
+      expect(authoritativeSubmission.data?.school?.name).toBe("CSPAMS Public Realtime School");
+      expect(authoritativeSubmission.data?.scopeProgress?.submittedScopeIds).toContain(scenario.scopeId);
+      await expect(monitorPage.getByRole("heading", { name: "Review Inbox" })).toBeVisible();
+    } finally {
+      if (!schoolHeadClosed) {
+        await schoolHeadContext.close();
+      }
+      await monitorContext.close();
+    }
+  });
+}
 
 test("refreshes Monitor Audit Trail through real Reverb after a scope review", async ({ browser }: { browser: Browser }) => {
   const observerContext = await browser.newContext();

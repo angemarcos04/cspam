@@ -81,6 +81,7 @@ function NotificationsHarness() {
       <p data-testid="notification-loading">{isLoading ? "loading" : "idle"}</p>
       <button type="button" onClick={() => void refreshNotifications()}>Refresh</button>
       <button type="button" onClick={() => void markAsRead("n1")}>Read one</button>
+      <button type="button" onClick={() => void markAsRead("missing")}>Read missing</button>
       <button type="button" onClick={() => void markAllAsRead()}>Read all</button>
       <button type="button" onClick={() => void clearNotification("n1")}>Clear one</button>
       <button type="button" onClick={() => void clearAllNotifications()}>Clear all</button>
@@ -321,6 +322,36 @@ describe("NotificationProvider", () => {
         token: "monitor-token",
       });
     });
+  });
+
+  it("does not decrement unread count when an already-read row is marked again", async () => {
+    const readRow = notificationRow("n1", "2026-06-26T01:00:00.000Z");
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([readRow, notificationRow("n2")], 1))
+      .mockResolvedValueOnce({ data: { data: readRow } });
+
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("unread-count").textContent).toBe("1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Read one" }));
+
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(2));
+    expect(screen.getByTestId("unread-count").textContent).toBe("1");
+  });
+
+  it("refreshes instead of guessing the unread count for a missing local row", async () => {
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockResolvedValueOnce({ data: { data: notificationRow("missing", "2026-06-26T01:00:00.000Z") } })
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1));
+
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("unread-count").textContent).toBe("1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Read missing" }));
+
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(3));
+    expect(screen.getByTestId("unread-count").textContent).toBe("1");
   });
 
   it("shows a user-safe error for server notification load failures", async () => {

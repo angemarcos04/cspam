@@ -1,4 +1,6 @@
 services:
+  # Reverb is intentionally provisioned as a separate Render web service so this
+  # blueprint does not silently add another paid service. See DEPLOYMENT_RENDER.md.
   - type: web
     name: cspam-backend
     env: docker

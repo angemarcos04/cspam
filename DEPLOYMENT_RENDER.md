@@ -242,6 +242,21 @@ CSPAMS_MONITOR_MFA_QUEUE=mail
 
 Queued delivery requires the `cspam-backend-worker` service from `render.yaml` to be deployed, running, and configured with the same `APP_KEY`, database, and mail settings as the web service. The worker explicitly sets `CSPAMS_QUEUE_NAMES=mail,broadcasts,default`: Monitor MFA mail stays first, realtime refresh signals are second, and ordinary default work remains available. If the worker is stopped or misconfigured, Monitor MFA messages and realtime updates can remain queued; do not expose codes or switch off MFA as a workaround. Verify safely with `php artisan queue:monitor broadcasts` and `php artisan queue:failed`.
 
+## Manually provisioned Reverb service
+
+`render.yaml` deliberately does not add a third paid service. Provision one separate Render **Web Service** when realtime is enabled:
+
+- Repository/build: this repository, `composer install --prefer-dist --no-dev --no-interaction --optimize-autoloader`
+- Start command: `bash docker/reverb-start.sh`
+- Shared secrets/config: the same `APP_KEY`, database values, `REVERB_APP_ID`, `REVERB_APP_KEY`, and `REVERB_APP_SECRET` used by the web service
+- Server binding: Render supplies internal `PORT`; `REVERB_SERVER_HOST` defaults to `0.0.0.0`
+- Public client/broadcaster settings: `REVERB_HOST=<service-hostname>`, `REVERB_PORT=443`, `REVERB_SCHEME=https`
+- Responsibilities: websocket server only—do not run migrations, seeders, or queue workers in this service
+
+After deployment, confirm the startup log reports the assigned listen address, the frontend connects over `wss`, and `/broadcasting/auth` authorizes `cspams-updates.monitor`. Do not copy the app secret into Vercel; only the Reverb app key is public.
+
+Run `php artisan migrate --force` and `php artisan migrate:status` from the backend release shell. Then use the table/count and queue verification commands in `DEPLOYMENT.md`; all four notification, delivery-ledger, jobs, and failed-jobs tables must exist.
+
 The permanent school-removal endpoint commits deletion before it queues the School Head removal email. Its response reports `queued`, not `sent`; later delivery failures are handled by Laravel queue retry and failed-job operations and cannot roll back or restore the deleted school. School Head authentication does not use the Monitor MFA queue and is unchanged.
 
 ## Cold-Start Limitation

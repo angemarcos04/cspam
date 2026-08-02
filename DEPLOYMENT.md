@@ -431,10 +431,10 @@ The frontend now treats realtime as opt-in. Leave `VITE_REALTIME_ENABLED=false` 
 **Dedicated Reverb process:**
 
 ```bash
-php artisan reverb:start --host=0.0.0.0 --port=8080
+bash docker/reverb-start.sh
 ```
 
-This repo includes `docker/reverb-start.sh` so the websocket service can be deployed separately from the web service.
+This repo includes `docker/reverb-start.sh` so the websocket service can be deployed separately from the web service. The process binds internally to Render's `PORT` (falling back to `REVERB_SERVER_PORT`, then `8080`) on `REVERB_SERVER_HOST=0.0.0.0`. That server-listen port is distinct from the public client settings: Laravel and Vercel normally use `REVERB_HOST=<public-reverb-host>`, `REVERB_PORT=443`, and `REVERB_SCHEME=https`.
 
 ## Deploy sequence
 
@@ -455,18 +455,32 @@ The notification dropdown requires the active backend database to have the Larav
 
 ```bash
 php artisan migrate --force
+php artisan migrate:status
 php artisan route:list | grep notifications
 ```
 
 Then confirm the active database state in Tinker:
 
-```php
-Schema::hasTable('notifications');
-Schema::hasColumn('notifications', 'cleared_at');
-DB::table('notifications')->count();
+```bash
+php artisan tinker --execute="dump([
+    'notifications_table' => Schema::hasTable('notifications'),
+    'deliveries_table' => Schema::hasTable('monitor_submission_notification_deliveries'),
+    'queue_jobs_table' => Schema::hasTable('jobs'),
+    'failed_jobs_table' => Schema::hasTable('failed_jobs'),
+]);"
+
+php artisan tinker --execute="dump([
+    'notifications' => DB::table('notifications')->count(),
+    'deliveries' => DB::table('monitor_submission_notification_deliveries')->count(),
+    'pending_broadcast_jobs' => DB::table('jobs')->where('queue', 'broadcasts')->count(),
+    'pending_default_jobs' => DB::table('jobs')->where('queue', 'default')->count(),
+]);"
+
+php artisan queue:monitor mail,broadcasts,default
+php artisan queue:failed
 ```
 
-Expected results are `true`, `true`, and an integer count of `0` or higher. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`. If the notification bell shows a server error, check this first, then confirm the frontend rewrites target `https://cspams.onrender.com`.
+All four table checks must be `true`; counts must be non-negative integers. These commands expose counts only, not notification payloads or credentials. If `CSPAMS_DIAGNOSTICS_TOKEN` is configured, the protected readiness response should also report `checks.notifications.clearedAtColumn: true`.
 
 ## Runtime layout
 

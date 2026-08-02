@@ -167,18 +167,51 @@ final class MonitorSubmissionNotificationDispatcher
                 throw new RuntimeException('Monitor notification delivery reservation could not be acquired.');
             }
 
-            if ($this->notificationExists($recipient, $notificationKey)) {
-                return 'existing';
+            $referencedNotificationId = trim((string) ($reservation->notification_id ?? ''));
+            if ($referencedNotificationId !== '') {
+                if ($recipient->notifications()->whereKey($referencedNotificationId)->exists()) {
+                    return 'existing';
+                }
+            } else {
+                $legacyNotification = $this->legacyNotification($recipient, $notificationKey);
+                if ($legacyNotification) {
+                    $this->recordDelivery(
+                        (int) $reservation->id,
+                        (string) $legacyNotification->id,
+                        $legacyNotification->created_at ?? now(),
+                    );
+
+                    return 'existing';
+                }
             }
 
-            Notification::sendNow($recipient, new IndicatorSubmissionReceivedNotification(
+            $notification = new IndicatorSubmissionReceivedNotification(
                 $submission,
                 $schoolHead,
                 $eventType,
                 $scopeIds,
                 $scopeLabels,
                 $notificationKey,
-            ), ['database']);
+            );
+            Notification::sendNow($recipient, $notification, ['database']);
+
+            $notificationId = trim((string) ($notification->id ?? ''));
+            if ($notificationId === '') {
+                $persistedNotification = $recipient->notifications()
+                    ->latest('created_at')
+                    ->limit(10)
+                    ->get(['id', 'data'])
+                    ->first(static fn ($row): bool => (
+                        (string) (($row->data ?? [])['notificationKey'] ?? '') === $notificationKey
+                    ));
+                $notificationId = trim((string) ($persistedNotification->id ?? ''));
+            }
+
+            if ($notificationId === '') {
+                throw new RuntimeException('Persisted Monitor notification could not be resolved.');
+            }
+
+            $this->recordDelivery((int) $reservation->id, $notificationId, now());
 
             return 'created';
         });
@@ -186,11 +219,37 @@ final class MonitorSubmissionNotificationDispatcher
 
     private function notificationExists(User $recipient, string $notificationKey): bool
     {
+        $reservation = DB::table('monitor_submission_notification_deliveries')
+            ->where('recipient_id', $recipient->id)
+            ->where('notification_key', $notificationKey)
+            ->first(['notification_id']);
+        $referencedNotificationId = trim((string) ($reservation->notification_id ?? ''));
+
+        if ($referencedNotificationId !== '') {
+            return $recipient->notifications()->whereKey($referencedNotificationId)->exists();
+        }
+
+        return $this->legacyNotification($recipient, $notificationKey) !== null;
+    }
+
+    private function legacyNotification(User $recipient, string $notificationKey): ?object
+    {
         return $recipient->notifications()
-            ->get(['data'])
-            ->contains(static fn ($notification): bool => (
+            ->get(['id', 'data', 'created_at'])
+            ->first(static fn ($notification): bool => (
                 (string) (($notification->data ?? [])['notificationKey'] ?? '') === $notificationKey
             ));
+    }
+
+    private function recordDelivery(int $reservationId, string $notificationId, mixed $deliveredAt): void
+    {
+        DB::table('monitor_submission_notification_deliveries')
+            ->where('id', $reservationId)
+            ->update([
+                'notification_id' => $notificationId,
+                'delivered_at' => $deliveredAt,
+                'updated_at' => now(),
+            ]);
     }
 
     /** @param list<string> $scopeIds @param list<string> $scopeLabels */

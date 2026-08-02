@@ -167,6 +167,29 @@ describe("NotificationCenter", () => {
     expect(screen.queryByText("SMEA sent for review")).toBeNull();
   });
 
+  it("navigates an already-read notification without marking it again", () => {
+    setNotificationState({
+      unreadCount: 3,
+      notifications: [{
+        id: "n-read",
+        type: "database",
+        eventType: "indicator_scope_submitted",
+        title: "Read SMEA notification",
+        message: "A school sent SMEA for review.",
+        readAt: "2026-06-26T01:00:00.000Z",
+        createdAt: null,
+        data: { actionUrl: "/monitor?section=reviews&submissionId=123&scopeId=smea" },
+      }],
+    });
+
+    render(<NotificationCenter />);
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("Read SMEA notification").closest("button") as HTMLButtonElement);
+
+    expect(notificationMocks.markAsRead).not.toHaveBeenCalled();
+    expect(notificationMocks.navigate).toHaveBeenCalledWith("/monitor?section=reviews&submissionId=123&scopeId=smea");
+  });
+
   it.each([
     "https://example.com",
     "//example.com",
