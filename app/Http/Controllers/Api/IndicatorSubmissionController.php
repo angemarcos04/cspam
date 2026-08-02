@@ -970,33 +970,35 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $submission->forceFill([
-            'status' => FormSubmissionStatus::SUBMITTED->value,
-            'submitted_by' => $user->id,
-            'submitted_at' => now(),
-            'reviewed_by' => null,
-            'reviewed_at' => null,
-            'review_notes' => null,
-        ])->save();
-        $this->touchSubmissionScopeState($submission);
+        DB::transaction(function () use ($request, $submission, $user, $fromStatus): void {
+            $submission->forceFill([
+                'status' => FormSubmissionStatus::SUBMITTED->value,
+                'submitted_by' => $user->id,
+                'submitted_at' => now(),
+                'reviewed_by' => null,
+                'reviewed_at' => null,
+                'review_notes' => null,
+            ])->save();
+            $this->touchSubmissionScopeState($submission);
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: 'submitted',
-            fromStatus: $fromStatus,
-            toStatus: FormSubmissionStatus::SUBMITTED,
-            actorId: $user->id,
-            notes: 'Indicator package submitted to monitor.',
-        );
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: 'submitted',
+                fromStatus: $fromStatus,
+                toStatus: FormSubmissionStatus::SUBMITTED,
+                actorId: $user->id,
+                notes: 'Indicator package submitted to monitor.',
+            );
 
-        $this->auditSubmissionEvent($request, 'submission.final_submitted', $submission, $user, [
-            'old_status' => $fromStatus,
-            'new_status' => FormSubmissionStatus::SUBMITTED->value,
-            'submitted_scope_count' => count(app(SubmissionScopeProgressResolver::class)->buildScopeProgressForSubmission($submission)['requiredScopeIds'] ?? []),
-        ]);
+            $this->auditSubmissionEvent($request, 'submission.final_submitted', $submission, $user, [
+                'old_status' => $fromStatus,
+                'new_status' => FormSubmissionStatus::SUBMITTED->value,
+                'submitted_scope_count' => count(app(SubmissionScopeProgressResolver::class)->buildScopeProgressForSubmission($submission)['requiredScopeIds'] ?? []),
+            ]);
+        });
 
         $this->notifyMonitorsOfSubmissionReceived(
             $submission,
@@ -1056,59 +1058,68 @@ class IndicatorSubmissionController extends Controller
             ]);
         }
 
-        $this->upsertSubmittedScopes($submission, $targets, $user);
+        [$scopeLabelsById, $hasReturnedTarget] = DB::transaction(function () use (
+            $request,
+            $submission,
+            $user,
+            $fromStatus,
+            $targets,
+            $scopeProgressResolver,
+        ): array {
+            $this->upsertSubmittedScopes($submission, $targets, $user);
 
-        app(FormSubmissionHistoryLogger::class)->log(
-            formType: IndicatorSubmission::FORM_TYPE,
-            submissionId: $submission->id,
-            schoolId: $submission->school_id,
-            academicYearId: $submission->academic_year_id,
-            action: 'scope_submitted',
-            fromStatus: $fromStatus,
-            toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
-            actorId: $user->id,
-            notes: 'Submission scopes sent for monitor review: '.implode(', ', array_map(
-                [$scopeProgressResolver, 'scopeLabel'],
-                $targets,
-            )).'.',
-            metadata: [
-                'targets' => $targets,
-            ],
-        );
-
-        $scopeLabelsById = [];
-        $hasReturnedTarget = false;
-        $returnedTargets = [];
-        foreach ($targets as $target) {
-            $previousDecision = $this->latestScopeDecisionForAudit($submission, $target);
-            $isResend = $previousDecision === 'returned';
-            $hasReturnedTarget = $hasReturnedTarget || $isResend;
-            if ($isResend) {
-                $returnedTargets[] = $target;
-            }
-            $scopeType = $this->scopeTypeFor($target);
-            $scopeLabel = $scopeProgressResolver->scopeLabel($target);
-            $scopeLabelsById[$target] = $scopeLabel;
-            $this->auditSubmissionEvent(
-                $request,
-                $isResend
-                    ? ($scopeType === 'file' ? 'submission.file_resent' : 'submission.scope_resent')
-                    : ($scopeType === 'file' ? 'submission.file_sent' : 'submission.scope_sent'),
-                $submission,
-                $user,
-                [
-                    'old_status' => $fromStatus,
-                    'new_status' => $fromStatus ?? FormSubmissionStatus::DRAFT->value,
-                    'scope_id' => $target,
-                    'scope_type' => $scopeType,
-                    'scope_label' => $scopeLabel,
-                    'file_type' => $scopeType === 'file' ? $target : null,
-                    'previous_decision' => $previousDecision,
-                ],
+            app(FormSubmissionHistoryLogger::class)->log(
+                formType: IndicatorSubmission::FORM_TYPE,
+                submissionId: $submission->id,
+                schoolId: $submission->school_id,
+                academicYearId: $submission->academic_year_id,
+                action: 'scope_submitted',
+                fromStatus: $fromStatus,
+                toStatus: $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+                actorId: $user->id,
+                notes: 'Submission scopes sent for monitor review: '.implode(', ', array_map(
+                    [$scopeProgressResolver, 'scopeLabel'],
+                    $targets,
+                )).'.',
+                metadata: ['targets' => $targets],
             );
-        }
 
-        $this->clearReturnedScopeReviews($submission, $returnedTargets);
+            $scopeLabelsById = [];
+            $hasReturnedTarget = false;
+            $returnedTargets = [];
+            foreach ($targets as $target) {
+                $previousDecision = $this->latestScopeDecisionForAudit($submission, $target);
+                $isResend = $previousDecision === 'returned';
+                $hasReturnedTarget = $hasReturnedTarget || $isResend;
+                if ($isResend) {
+                    $returnedTargets[] = $target;
+                }
+                $scopeType = $this->scopeTypeFor($target);
+                $scopeLabel = $scopeProgressResolver->scopeLabel($target);
+                $scopeLabelsById[$target] = $scopeLabel;
+                $this->auditSubmissionEvent(
+                    $request,
+                    $isResend
+                        ? ($scopeType === 'file' ? 'submission.file_resent' : 'submission.scope_resent')
+                        : ($scopeType === 'file' ? 'submission.file_sent' : 'submission.scope_sent'),
+                    $submission,
+                    $user,
+                    [
+                        'old_status' => $fromStatus,
+                        'new_status' => $fromStatus ?? FormSubmissionStatus::DRAFT->value,
+                        'scope_id' => $target,
+                        'scope_type' => $scopeType,
+                        'scope_label' => $scopeLabel,
+                        'file_type' => $scopeType === 'file' ? $target : null,
+                        'previous_decision' => $previousDecision,
+                    ],
+                );
+            }
+
+            $this->clearReturnedScopeReviews($submission, $returnedTargets);
+
+            return [$scopeLabelsById, $hasReturnedTarget];
+        });
 
         $this->notifyMonitorsOfSubmissionReceived(
             $submission,

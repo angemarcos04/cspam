@@ -50,7 +50,7 @@ export interface UseSchoolDrawerResult {
   accurateSyncedCountsBySchoolKey: Record<string, { students: number; teachers: number }>;
   syncedCountsLoadingSchoolKey: string | null;
   syncedCountsError: string;
-  openSchoolDrawer: (schoolKey: string) => void;
+  openSchoolDrawer: (schoolKey: string, submissionId?: string | null) => void;
   closeSchoolDrawer: () => void;
   refreshSchoolDrawer: () => void;
   setActiveSchoolDrawerTab: Dispatch<SetStateAction<SchoolDrawerTab>>;
@@ -199,6 +199,7 @@ export function useSchoolDrawer({
   const [submissionRefreshTick, setSubmissionRefreshTick] = useState(0);
   const [countsRefreshTick, setCountsRefreshTick] = useState(0);
   const [realtimeSubmissionDetailId, setRealtimeSubmissionDetailId] = useState("");
+  const [targetSubmissionDetailId, setTargetSubmissionDetailId] = useState("");
   const schoolDetailCountsCacheRef = useRef<Map<string, SchoolDetailCountsCacheEntry>>(
     new Map(),
   );
@@ -238,7 +239,7 @@ export function useSchoolDrawer({
     );
   }, [schoolDrawerSubmissions]);
 
-  const openSchoolDrawer = useCallback((schoolKey: string) => {
+  const openSchoolDrawer = useCallback((schoolKey: string, submissionId?: string | null) => {
     hasManuallySelectedSchoolDrawerYearRef.current = false;
     setSchoolDrawerKey(schoolKey);
     setActiveSchoolDrawerTab("submissions");
@@ -246,6 +247,7 @@ export function useSchoolDrawer({
     setExpandedDrawerIndicatorRows({});
     setHighlightedDrawerIndicatorKey(null);
     setRealtimeSubmissionDetailId("");
+    setTargetSubmissionDetailId(String(submissionId ?? "").trim());
   }, []);
 
   const closeSchoolDrawer = useCallback(() => {
@@ -254,6 +256,7 @@ export function useSchoolDrawer({
     setSelectedSchoolDrawerYearState(null);
     setHighlightedDrawerIndicatorKey(null);
     setRealtimeSubmissionDetailId("");
+    setTargetSubmissionDetailId("");
   }, []);
 
   const setSelectedSchoolDrawerYear: Dispatch<SetStateAction<string | null>> = useCallback((value) => {
@@ -293,6 +296,7 @@ export function useSchoolDrawer({
     setSubmissionRefreshTick(0);
     setCountsRefreshTick(0);
     setRealtimeSubmissionDetailId("");
+    setTargetSubmissionDetailId("");
   }, [authSessionKey]);
 
   useEffect(() => {
@@ -354,7 +358,7 @@ export function useSchoolDrawer({
 
   useEffect(() => {
     const schoolSubmissionLookupKey = schoolDrawerSchoolCode || schoolDrawerRecordId;
-    const preferredSubmissionDetailId = realtimeSubmissionDetailId || schoolDrawerLatestSubmissionId;
+    const preferredSubmissionDetailId = targetSubmissionDetailId || realtimeSubmissionDetailId || schoolDrawerLatestSubmissionId;
     if ((!schoolSubmissionLookupKey && !preferredSubmissionDetailId) || !isAuthenticated) {
       setSchoolDrawerSubmissions([]);
       setIsSchoolDrawerSubmissionsLoading(false);
@@ -383,6 +387,10 @@ export function useSchoolDrawer({
           }
           setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, []));
           setSchoolDrawerSubmissionsError("");
+          if (targetSubmissionDetailId) {
+            setIsSchoolDrawerSubmissionsLoading(false);
+            return;
+          }
         } catch (err) {
           if (!active) {
             return;
@@ -453,6 +461,7 @@ export function useSchoolDrawer({
     schoolDrawerRecordId,
     schoolDrawerSchoolCode,
     submissionRefreshTick,
+    targetSubmissionDetailId,
   ]);
 
   const availableSchoolDrawerYears = useMemo(

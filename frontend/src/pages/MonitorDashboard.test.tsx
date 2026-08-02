@@ -1,5 +1,6 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { act, cleanup, fireEvent, render as renderWithTestingLibrary, screen, waitFor, within } from "@testing-library/react";
+import type { ReactElement, ReactNode } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { MonitorDashboard, resolveMonitorDashboardError } from "@/pages/MonitorDashboard";
 import { AuditTrailPanel } from "@/pages/monitor/MonitorAuditTrail";
@@ -11,6 +12,10 @@ import { useTeacherData } from "@/context/TeacherData";
 import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import type { StudentDataContextType } from "@/context/StudentData";
 import type { TeacherDataContextType } from "@/context/TeacherData";
+
+function render(ui: ReactElement) {
+  return renderWithTestingLibrary(ui, { wrapper: MemoryRouter });
+}
 
 vi.mock("@/context/Auth", () => ({
   useAuth: vi.fn(),

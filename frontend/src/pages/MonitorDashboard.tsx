@@ -73,6 +73,7 @@ import { useMonitorRequirementData } from "@/pages/monitor/useMonitorRequirement
 import { useMonitorReviewInbox } from "@/pages/monitor/useMonitorReviewInbox";
 import { refreshMonitorReviewData } from "@/pages/monitor/monitorReviewDataRefresh";
 import { useMonitorSchoolActionRouter } from "@/pages/monitor/useMonitorSchoolActionRouter";
+import { useMonitorSubmissionDeepLink } from "@/pages/monitor/useMonitorSubmissionDeepLink";
 import { useMonitorSchoolsSection } from "@/pages/monitor/useMonitorSchoolsSection";
 import { useMonitorDashboardBindings } from "@/pages/monitor/useMonitorDashboardBindings";
 import { useMonitorDashboardCommands } from "@/pages/monitor/useMonitorDashboardCommands";
@@ -807,7 +808,12 @@ export function MonitorDashboard() {
 
       const summary = reviewInboxRequirementByKey.get(schoolKey) ?? null;
       const record = resolveSchoolDrawerRecord(schoolKey);
-      return (summary?.schoolCode ?? record?.schoolId ?? record?.schoolCode ?? "").trim();
+      const resolvedCode = (summary?.schoolCode ?? record?.schoolId ?? record?.schoolCode ?? "").trim();
+      if (resolvedCode) {
+        return resolvedCode;
+      }
+
+      return schoolKey.startsWith("code:") ? schoolKey.slice("code:".length).trim() : "";
     },
     [resolveSchoolDrawerRecord, reviewInboxRequirementByKey],
   );
@@ -885,6 +891,19 @@ export function MonitorDashboard() {
     listSubmissionsForSchool,
     queryStudents,
     listTeachers,
+  });
+
+  useMonitorSubmissionDeepLink({
+    filtersHydrated,
+    fetchSubmission,
+    refreshSubmissions,
+    refreshReviewInbox,
+    setActiveTopNavigator,
+    openSchoolDrawer,
+    setActiveSchoolDrawerTab,
+    setSelectedSchoolDrawerYear,
+    setHighlightedDrawerIndicatorKey,
+    pushToast,
   });
 
   const selectedSchoolDrawerRecord = useMemo(

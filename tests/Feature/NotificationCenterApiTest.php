@@ -601,6 +601,11 @@ class NotificationCenterApiTest extends TestCase
         $this->assertSame((string) $schoolHead->school_id, data_get($notification?->data, 'schoolId'));
         $this->assertNotEmpty(data_get($notification?->data, 'schoolName'));
         $this->assertNotEmpty(data_get($notification?->data, 'academicYearId'));
+        $this->assertSame('reviews', data_get($notification?->data, 'targetSection'));
+        $this->assertNull(data_get($notification?->data, 'primaryScopeId'));
+        $this->assertStringStartsWith('/monitor?section=reviews&submissionId=', data_get($notification?->data, 'actionUrl'));
+        $this->assertStringNotContainsString('scopeId=', data_get($notification?->data, 'actionUrl'));
+        $this->assertStringNotContainsString('token', strtolower(data_get($notification?->data, 'actionUrl')));
     }
 
     public function test_monitor_receives_full_package_resubmitted_notification_after_return(): void
@@ -756,6 +761,28 @@ class NotificationCenterApiTest extends TestCase
         $this->assertSame('indicator_scope_submitted', data_get($notification?->data, 'eventType'));
         $this->assertSame(['bmef'], data_get($notification?->data, 'scopeIds'));
         $this->assertContains('BMEF file', data_get($notification?->data, 'scopeLabels'));
+        $this->assertSame('bmef', data_get($notification?->data, 'primaryScopeId'));
+        $this->assertStringContainsString('scopeId=bmef', data_get($notification?->data, 'actionUrl'));
+    }
+
+    public function test_multi_scope_notification_preserves_scopes_without_selecting_one(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+
+        [, $schoolHeadToken, $monitor] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')->assertOk();
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'smea', 'smea.pdf', 'application/pdf')->assertOk();
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef', 'smea'],
+        ])->assertOk();
+
+        $notification = $this->monitorSubmissionNotificationByEvent($monitor, 'indicator_scope_submitted');
+        $this->assertSame(['bmef', 'smea'], data_get($notification?->data, 'scopeIds'));
+        $this->assertNull(data_get($notification?->data, 'primaryScopeId'));
+        $this->assertStringNotContainsString('scopeId=', data_get($notification?->data, 'actionUrl'));
     }
 
     public function test_monitor_receives_grouped_scope_resent_notification_after_return(): void

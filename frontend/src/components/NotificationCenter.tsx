@@ -23,10 +23,24 @@ function notificationNotePreview(notification: AppNotification): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
 
-function notificationActionUrl(notification: AppNotification): string | null {
+export function notificationActionUrl(notification: AppNotification): string | null {
   const value = notification.data?.actionUrl;
 
-  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+  if (typeof value !== "string") return null;
+
+  const trimmed = value.trim();
+  if (trimmed === "/monitor" || trimmed.startsWith("/monitor?")) {
+    return trimmed;
+  }
+
+  if (
+    trimmed === "/school-admin"
+    && (notification.eventType === "reminder_sent" || notification.eventType === "school_records.reminder_sent")
+  ) {
+    return trimmed;
+  }
+
+  return null;
 }
 
 export function NotificationCenter() {
@@ -70,9 +84,8 @@ export function NotificationCenter() {
     }
   };
 
-  const handleNotificationClick = async (notification: AppNotification) => {
-    await markAsRead(notification.id);
-
+  const handleNotificationClick = (notification: AppNotification) => {
+    void Promise.resolve(markAsRead(notification.id)).catch(() => undefined);
     const actionUrl = notificationActionUrl(notification);
     if (actionUrl) {
       setOpen(false);

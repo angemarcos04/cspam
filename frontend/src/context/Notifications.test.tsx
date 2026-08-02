@@ -127,6 +127,30 @@ describe("NotificationProvider", () => {
     });
   });
 
+  it("debounces a burst of submission realtime events into one notification refresh", async () => {
+    apiRequestRawMock.mockResolvedValue(listResponse([notificationRow("n1")], 1));
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(1));
+
+    for (const eventType of ["indicators.submitted", "indicators.scopes_submitted", "indicators.scope_returned"]) {
+      window.dispatchEvent(new CustomEvent("cspams:update", { detail: { entity: "indicators", eventType } }));
+    }
+
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("ignores irrelevant realtime events", async () => {
+    apiRequestRawMock.mockResolvedValue(listResponse([notificationRow("n1")], 1));
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(1));
+
+    window.dispatchEvent(new CustomEvent("cspams:update", {
+      detail: { entity: "students", eventType: "students.updated" },
+    }));
+    await new Promise((resolve) => window.setTimeout(resolve, 350));
+    expect(apiRequestRawMock).toHaveBeenCalledTimes(1);
+  });
+
   it("refreshes notifications on school reminder realtime events after login", async () => {
     apiRequestRawMock
       .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))

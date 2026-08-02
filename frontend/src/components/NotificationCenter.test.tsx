@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NotificationCenter } from "@/components/NotificationCenter";
+import { NotificationCenter, notificationActionUrl } from "@/components/NotificationCenter";
 
 const notificationMocks = vi.hoisted(() => ({
   refreshNotifications: vi.fn(),
@@ -140,6 +140,72 @@ describe("NotificationCenter", () => {
     await waitFor(() => {
       expect(notificationMocks.navigate).toHaveBeenCalledWith("/school-admin");
     });
+  });
+
+  it("navigates to a safe monitor deep link and closes the menu without waiting for mark as read", async () => {
+    notificationMocks.markAsRead.mockReturnValue(new Promise(() => undefined));
+    setNotificationState({
+      unreadCount: 1,
+      notifications: [{
+        id: "n-monitor",
+        type: "database",
+        eventType: "indicator_scope_submitted",
+        title: "SMEA sent for review",
+        message: "A school sent SMEA for review.",
+        readAt: null,
+        createdAt: null,
+        data: { actionUrl: "/monitor?section=reviews&submissionId=123&scopeId=smea" },
+      }],
+    });
+
+    render(<NotificationCenter />);
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("SMEA sent for review").closest("button") as HTMLButtonElement);
+
+    expect(notificationMocks.markAsRead).toHaveBeenCalledWith("n-monitor");
+    expect(notificationMocks.navigate).toHaveBeenCalledWith("/monitor?section=reviews&submissionId=123&scopeId=smea");
+    expect(screen.queryByText("SMEA sent for review")).toBeNull();
+  });
+
+  it.each([
+    "https://example.com",
+    "//example.com",
+    "javascript:alert(1)",
+    "/school-admin",
+    "/monitoring",
+  ])("rejects unsafe monitor notification action url %s", (actionUrl) => {
+    expect(notificationActionUrl({
+      id: "unsafe",
+      type: "database",
+      eventType: "indicator_scope_submitted",
+      title: "Unsafe",
+      message: "Unsafe",
+      readAt: null,
+      createdAt: null,
+      data: { actionUrl },
+    })).toBeNull();
+  });
+
+  it("does not crash or navigate when mark as read fails", async () => {
+    notificationMocks.markAsRead.mockRejectedValue(new Error("temporary failure"));
+    setNotificationState({
+      notifications: [{
+        id: "n-failure",
+        type: "database",
+        eventType: "indicator_scope_submitted",
+        title: "No action",
+        message: "No action URL.",
+        readAt: null,
+        createdAt: null,
+        data: {},
+      }],
+    });
+
+    render(<NotificationCenter />);
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+    fireEvent.click(screen.getByText("No action").closest("button") as HTMLButtonElement);
+    await waitFor(() => expect(notificationMocks.markAsRead).toHaveBeenCalledWith("n-failure"));
+    expect(notificationMocks.navigate).not.toHaveBeenCalled();
   });
 
   it("calls clear all from the dropdown action", () => {

@@ -307,6 +307,7 @@ export function MonitorSchoolDrawer({
     activeTopNavigator,
     activeSchoolDrawerTab,
     selectedSchoolDrawerYear,
+    highlightedDrawerIndicatorKey,
   } = viewState;
   const {
     isSchoolDrawerSubmissionsLoading,
@@ -348,6 +349,19 @@ export function MonitorSchoolDrawer({
   useEffect(() => {
     setTargetsMetExportError("");
   }, [activeSchoolDrawerTab, selectedSchoolDrawerYear, schoolDetail?.schoolKey]);
+
+  useEffect(() => {
+    if (!isOpen || !highlightedDrawerIndicatorKey || !schoolDrawerYearDetail?.packageRows.length) return;
+
+    const timeoutId = window.setTimeout(() => {
+      document.getElementById(`monitor-package-row-${highlightedDrawerIndicatorKey}`)?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    }, 80);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [highlightedDrawerIndicatorKey, isOpen, schoolDrawerYearDetail?.packageRows]);
 
   const closeFilePreview = () => {
     revokeBlobUrl(activeFilePreviewUrl);
@@ -690,7 +704,11 @@ export function MonitorSchoolDrawer({
                                 && (displayRow.canReview || isVerifiedRow);
 
                               return (
-                              <tr key={`monitor-package-row-${displayRow.id}`} className="bg-white">
+                              <tr
+                                id={`monitor-package-row-${displayRow.id}`}
+                                key={`monitor-package-row-${displayRow.id}`}
+                                className={highlightedDrawerIndicatorKey === displayRow.id ? "bg-amber-50 ring-1 ring-inset ring-amber-300" : "bg-white"}
+                              >
                                 <td className="px-3 py-3 align-top">
                                   <p className="font-semibold text-slate-900">{displayRow.label}</p>
                                   <p className="mt-0.5 text-xs text-slate-500">{displayRow.detail}</p>

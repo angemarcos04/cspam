@@ -42,6 +42,7 @@ class IndicatorSubmissionReceivedNotification extends Notification implements Sh
 
         $schoolName = (string) ($this->submission->school?->name ?? 'A school');
         $scopeLabelText = $this->scopeLabelText();
+        $primaryScopeId = count($this->scopeIds) === 1 ? $this->scopeIds[0] : null;
 
         return [
             'eventType' => $this->eventType,
@@ -56,8 +57,27 @@ class IndicatorSubmissionReceivedNotification extends Notification implements Sh
             'submittedByName' => (string) ($this->schoolHead->name ?? 'School Head'),
             'scopeIds' => $this->scopeIds,
             'scopeLabels' => $this->scopeLabels,
+            'targetSection' => 'reviews',
+            'primaryScopeId' => $primaryScopeId,
+            'actionUrl' => $this->buildActionUrl($primaryScopeId),
             'createdAt' => now()->toISOString(),
         ];
+    }
+
+    private function buildActionUrl(?string $primaryScopeId): string
+    {
+        $query = [
+            'section' => 'reviews',
+            'submissionId' => (string) $this->submission->id,
+            'schoolId' => (string) $this->submission->school_id,
+            'academicYearId' => (string) $this->submission->academic_year_id,
+        ];
+
+        if ($primaryScopeId !== null) {
+            $query['scopeId'] = $primaryScopeId;
+        }
+
+        return '/monitor?'.http_build_query($query, '', '&', PHP_QUERY_RFC3986);
     }
 
     private function title(string $scopeLabelText): string

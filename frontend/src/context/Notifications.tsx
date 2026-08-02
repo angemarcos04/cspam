@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -50,6 +51,18 @@ const AUTO_SYNC_INTERVAL_MS = 60_000;
 const DEFAULT_PER_PAGE = 40;
 const NOTIFICATION_LOAD_ERROR =
   "Unable to load notifications. Try refreshing. If this continues, contact the administrator.";
+const REALTIME_REFRESH_DEBOUNCE_MS = 250;
+const NOTIFICATION_REALTIME_EVENTS = new Set([
+  "indicators.submitted",
+  "indicators.scopes_submitted",
+  "school_records.reminder_sent",
+]);
+
+export function isNotificationRealtimeUpdate(payload: { entity?: string; eventType?: string } | null | undefined): boolean {
+  if (!payload?.eventType) return false;
+  return NOTIFICATION_REALTIME_EVENTS.has(payload.eventType)
+    || (payload.entity === "indicators" && payload.eventType.startsWith("indicators.scope_"));
+}
 
 function normalizeMeta(meta: AppNotificationListMeta | undefined, notifications: AppNotification[]): AppNotificationListMeta {
   return {
@@ -74,6 +87,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState("");
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [isSyncActive, setIsSyncActive] = useState(false);
+  const realtimeRefreshTimerRef = useRef<number | null>(null);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -243,11 +257,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     const syncOnRealtime = (event: Event) => {
       const payload = (event as CustomEvent<{ entity?: string; eventType?: string }>).detail;
-      if (!payload) return;
+      if (!isNotificationRealtimeUpdate(payload)) return;
 
-      if (payload.entity === "indicators" || payload.eventType === "school_records.reminder_sent") {
-        void syncNotifications(true);
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
       }
+      realtimeRefreshTimerRef.current = window.setTimeout(() => {
+        realtimeRefreshTimerRef.current = null;
+        void syncNotifications(true);
+      }, REALTIME_REFRESH_DEBOUNCE_MS);
     };
 
     window.addEventListener("focus", syncOnFocus);
@@ -256,6 +274,10 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
     return () => {
       window.clearInterval(interval);
+      if (realtimeRefreshTimerRef.current !== null) {
+        window.clearTimeout(realtimeRefreshTimerRef.current);
+        realtimeRefreshTimerRef.current = null;
+      }
       window.removeEventListener("focus", syncOnFocus);
       window.removeEventListener("online", syncOnFocus);
       window.removeEventListener("cspams:update", syncOnRealtime);

@@ -752,6 +752,21 @@ export interface AuditLogEntry {
   createdAt: string | null;
 }
 
+export interface AppNotificationData {
+  actionUrl?: string | null;
+  targetSection?: "reviews" | string | null;
+  submissionId?: string | null;
+  academicYearId?: string | null;
+  schoolId?: string | null;
+  schoolCode?: string | null;
+  schoolName?: string | null;
+  scopeIds?: string[];
+  scopeLabels?: string[];
+  primaryScopeId?: string | null;
+  notePreview?: string | null;
+  [key: string]: unknown;
+}
+
 export interface AppNotification {
   id: string;
   type: string;
@@ -760,7 +775,7 @@ export interface AppNotification {
   message: string;
   readAt: string | null;
   createdAt: string | null;
-  data: Record<string, unknown>;
+  data: AppNotificationData;
 }
 
 export interface AppNotificationListMeta {
