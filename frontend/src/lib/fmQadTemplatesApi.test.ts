@@ -3,6 +3,7 @@ import { ApiError, apiRequest } from "@/lib/api";
 import {
   fetchMonitorFmQadForms,
   parseMonitorFmQadCatalog,
+  updateFmQadVersionMetadata,
   uploadFmQadVersion,
 } from "@/lib/fmQadTemplatesApi";
 
@@ -126,5 +127,49 @@ describe("FM-QAD Monitor catalog API", () => {
     });
     const yearBody = vi.mocked(apiRequest).mock.calls[1][1]?.body as FormData;
     expect(yearBody.get("academicYearId")).toBe("year-1");
+  });
+
+  it("omits blank upload Change Notes and trims nonblank notes", async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ data: {} });
+    const file = new File(["docx"], "template.docx");
+
+    await uploadFmQadVersion("monitor-token", "form-1", {
+      revisionLabel: "Blank notes",
+      academicYearId: null,
+      changeNotes: "   ",
+      file,
+      activate: false,
+    });
+    const blankBody = vi.mocked(apiRequest).mock.calls[0][1]?.body as FormData;
+    expect(blankBody.has("changeNotes")).toBe(false);
+
+    await uploadFmQadVersion("monitor-token", "form-1", {
+      revisionLabel: "Described",
+      academicYearId: null,
+      changeNotes: "  Descriptive notes  ",
+      file,
+      activate: false,
+    });
+    const describedBody = vi.mocked(apiRequest).mock.calls[1][1]?.body as FormData;
+    expect(describedBody.get("changeNotes")).toBe("Descriptive notes");
+  });
+
+  it("keeps an explicit empty Change Notes value in metadata updates", async () => {
+    vi.mocked(apiRequest).mockResolvedValue({ data: {} });
+
+    await updateFmQadVersionMetadata("monitor-token", "version-1", {
+      revisionLabel: "Rev. 01",
+      academicYearId: null,
+      changeNotes: "",
+      internalNote: null,
+    });
+
+    expect(apiRequest).toHaveBeenCalledWith(
+      "/api/monitor/fm-qad/template-versions/version-1",
+      expect.objectContaining({
+        method: "PATCH",
+        body: expect.objectContaining({ changeNotes: "" }),
+      }),
+    );
   });
 });

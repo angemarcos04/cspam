@@ -21,6 +21,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\ValidationException;
 use Laravel\Sanctum\Sanctum;
 use Spatie\Permission\Models\Role;
 use Tests\TestCase;
@@ -173,6 +174,119 @@ class FmQadTemplateManagementTest extends TestCase
         $this->assertNull($draft->academic_year_id);
         $this->assertSame($active->id, app(FmQadTemplateVersionManager::class)->effective($form, $this->year()->id)?->id);
         $this->assertSame(0, IndicatorSubmissionFile::query()->count());
+    }
+
+    public function test_monitor_can_upload_draft_and_active_versions_without_change_notes(): void
+    {
+        Event::fake([CspamsUpdateBroadcast::class]);
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->where('scope_id', 'fm_qad_003')->firstOrFail();
+        Sanctum::actingAs($monitor, ['role:monitor']);
+
+        $draftId = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Optional Notes Draft',
+            'file' => $this->validDocx('optional-notes-draft.docx', 'optional-notes-draft'),
+        ])->assertCreated()
+            ->assertJsonPath('data.status', FmQadTemplateVersion::DRAFT)
+            ->assertJsonPath('data.changeNotes', '')
+            ->json('data.id');
+
+        $activeId = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Optional Notes Active',
+            'changeNotes' => '',
+            'activate' => true,
+            'file' => $this->validDocx('optional-notes-active.docx', 'optional-notes-active'),
+        ])->assertCreated()
+            ->assertJsonPath('data.status', FmQadTemplateVersion::ACTIVE)
+            ->assertJsonPath('data.changeNotes', '')
+            ->json('data.id');
+
+        $whitespaceId = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Whitespace Notes Draft',
+            'changeNotes' => '   ',
+            'file' => $this->validDocx('whitespace-notes.docx', 'whitespace-notes'),
+        ])->assertCreated()->assertJsonPath('data.changeNotes', '')->json('data.id');
+
+        $nullId = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Null Notes Draft',
+            'changeNotes' => null,
+            'file' => $this->validDocx('null-notes.docx', 'null-notes'),
+        ])->assertCreated()->assertJsonPath('data.changeNotes', '')->json('data.id');
+
+        foreach ([$draftId, $activeId, $whitespaceId, $nullId] as $versionId) {
+            $this->assertDatabaseHas('fm_qad_template_versions', [
+                'id' => $versionId,
+                'change_notes' => '',
+            ]);
+        }
+    }
+
+    public function test_draft_change_notes_can_be_cleared_or_preserved_when_omitted(): void
+    {
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->firstOrFail();
+        $draft = app(FmQadTemplateVersionManager::class)->upload($form, $this->validDocx('notes.docx', 'notes'), [
+            'revision_label' => 'Notes Draft',
+            'change_notes' => 'Initial description',
+        ], $monitor);
+        $hash = $draft->sha256_hash;
+        $content = app(FmQadTemplateStorage::class)->content($draft);
+        Sanctum::actingAs($monitor, ['role:monitor']);
+
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$draft->id}", [
+            'revisionLabel' => 'Notes Draft Renamed',
+        ])->assertOk()->assertJsonPath('data.changeNotes', 'Initial description');
+        $this->assertSame('Initial description', $draft->fresh()->change_notes);
+
+        $this->patchJson("/api/monitor/fm-qad/template-versions/{$draft->id}", [
+            'changeNotes' => '',
+        ])->assertOk()->assertJsonPath('data.changeNotes', '');
+
+        $draft->refresh();
+        $this->assertSame('', $draft->change_notes);
+        $this->assertSame('Notes Draft Renamed', $draft->revision_label);
+        $this->assertSame($hash, $draft->sha256_hash);
+        $this->assertSame($content, app(FmQadTemplateStorage::class)->content($draft));
+    }
+
+    public function test_change_notes_length_limit_remains_enforced_by_requests_and_manager(): void
+    {
+        $monitor = $this->user('monitor@example.test', 'monitor');
+        $form = FmQadForm::query()->firstOrFail();
+        Sanctum::actingAs($monitor, ['role:monitor']);
+
+        $accepted = $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Five Thousand Notes',
+            'changeNotes' => str_repeat('a', 5000),
+            'file' => $this->validDocx('five-thousand.docx', 'five-thousand'),
+        ])->assertCreated();
+        $this->assertSame(5000, mb_strlen((string) $accepted->json('data.changeNotes')));
+
+        $this->postJson("/api/monitor/fm-qad/forms/{$form->id}/versions", [
+            'revisionLabel' => 'Too Many Notes',
+            'changeNotes' => str_repeat('a', 5001),
+            'file' => $this->validDocx('too-many.docx', 'too-many'),
+        ])->assertUnprocessable()->assertJsonValidationErrors('changeNotes');
+
+        $draft = FmQadTemplateVersion::query()->findOrFail($accepted->json('data.id'));
+        try {
+            app(FmQadTemplateVersionManager::class)->updateMetadata($draft, [
+                'change_notes' => str_repeat('b', 5001),
+            ], $monitor);
+            $this->fail('Expected manager-level Change Notes length validation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('changeNotes', $exception->errors());
+        }
+
+        try {
+            app(FmQadTemplateVersionManager::class)->upload($form, $this->validDocx('manager-too-many.docx', 'manager-too-many'), [
+                'revision_label' => 'Manager Too Many Notes',
+                'change_notes' => str_repeat('c', 5001),
+            ], $monitor);
+            $this->fail('Expected manager-level upload Change Notes length validation.');
+        } catch (ValidationException $exception) {
+            $this->assertArrayHasKey('changeNotes', $exception->errors());
+        }
     }
 
     public function test_monitor_uploads_a_valid_docx_but_school_head_cannot_manage_versions(): void

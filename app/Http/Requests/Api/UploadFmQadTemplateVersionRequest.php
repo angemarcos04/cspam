@@ -17,7 +17,7 @@ class UploadFmQadTemplateVersionRequest extends FormRequest
         return [
             'revisionLabel' => ['required', 'string', 'max:50'],
             'academicYearId' => ['nullable', 'integer', 'exists:academic_years,id'],
-            'changeNotes' => ['required', 'string', 'max:5000'],
+            'changeNotes' => ['sometimes', 'nullable', 'string', 'max:5000'],
             'internalNote' => ['nullable', 'string', 'max:5000'],
             'file' => ['required', 'file', 'max:'.max(1, (int) config('fm_qad.max_upload_kb', 10240))],
             'activate' => ['sometimes', 'boolean'],

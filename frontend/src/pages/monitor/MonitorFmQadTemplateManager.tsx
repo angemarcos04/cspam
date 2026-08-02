@@ -236,9 +236,8 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
       !selectedForm
       || !file
       || !uploadDraft.revisionLabel.trim()
-      || !uploadDraft.changeNotes.trim()
     ) {
-      setError("Form, revision label, change notes, and a DOCX file are required.");
+      setError("Form, revision label, effective period, and a DOCX file are required.");
       return;
     }
     if (activate) {
@@ -374,7 +373,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
             <form className="mt-4 grid gap-3 rounded-sm bg-slate-50 p-4 md:grid-cols-2" onSubmit={(event) => void submitUpload(event, false)}>
               <label className="text-xs font-semibold">Revision Label<input aria-label="Revision Label" value={uploadDraft.revisionLabel} onChange={(e) => setUploadDraft((draft) => ({ ...draft, revisionLabel: e.target.value }))} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Effective Period<select aria-label="Effective period" value={uploadDraft.effectivePeriod} onChange={(e) => setUploadDraft((draft) => ({ ...draft, effectivePeriod: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value={UNSELECTED_EFFECTIVE_PERIOD}>Select effective period</option><option value={BASELINE_EFFECTIVE_PERIOD}>Baseline — used when no Academic-Year-specific revision exists</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
-              <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Change Notes" value={uploadDraft.changeNotes} onChange={(e) => setUploadDraft((draft) => ({ ...draft, changeNotes: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold md:col-span-2">Change Notes (optional)<textarea aria-label="Change Notes" value={uploadDraft.changeNotes} onChange={(e) => setUploadDraft((draft) => ({ ...draft, changeNotes: e.target.value }))} maxLength={5000} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Internal Note (optional)<input aria-label="Internal Note" value={uploadDraft.internalNote} onChange={(e) => setUploadDraft((draft) => ({ ...draft, internalNote: e.target.value }))} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Template File<input aria-label="Template File" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(e) => setUploadDraft((draft) => ({ ...draft, file: e.target.files?.[0] ?? null }))} className="mt-1 block w-full text-sm" /></label>
               <div className="flex gap-2 md:col-span-2"><button type="submit" disabled={isSaving} className="rounded-sm border bg-white px-3 py-2 text-xs font-semibold">Save Draft</button><button type="button" disabled={isSaving} onClick={(event) => void submitUpload(event as unknown as FormEvent, true)} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Upload and Activate</button></div>
@@ -384,7 +383,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
             <form className="mt-4 grid gap-3 rounded-sm bg-blue-50 p-4 md:grid-cols-2" onSubmit={(event) => void submitEdit(event)}>
               <label className="text-xs font-semibold">Revision Label<input aria-label="Edit Revision Label" value={editDraft.revisionLabel} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, revisionLabel: e.target.value }) : draft)} maxLength={50} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Effective Academic Year<select aria-label="Edit Effective Academic Year" value={editDraft.academicYearId} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, academicYearId: e.target.value }) : draft)} className="mt-1 w-full rounded-sm border p-2 text-sm"><option value="">Baseline</option>{years.map((year) => <option key={year.id} value={year.id}>{year.name}</option>)}</select></label>
-              <label className="text-xs font-semibold md:col-span-2">Change Notes<textarea aria-label="Edit Change Notes" value={editDraft.changeNotes} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, changeNotes: e.target.value }) : draft)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
+              <label className="text-xs font-semibold md:col-span-2">Change Notes (optional)<textarea aria-label="Edit Change Notes" value={editDraft.changeNotes} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, changeNotes: e.target.value }) : draft)} maxLength={5000} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <label className="text-xs font-semibold">Internal Note<input aria-label="Edit Internal Note" value={editDraft.internalNote} onChange={(e) => setEditDraft((draft) => draft ? ({ ...draft, internalNote: e.target.value }) : draft)} className="mt-1 w-full rounded-sm border p-2 text-sm" /></label>
               <div className="flex items-end gap-2"><button type="submit" disabled={isSaving} className="rounded-sm bg-primary px-3 py-2 text-xs font-semibold text-white">Save Details</button><button type="button" onClick={cancelEdit} className="rounded-sm border px-3 py-2 text-xs font-semibold">Cancel</button></div>
             </form>
@@ -404,7 +403,7 @@ export function MonitorFmQadTemplateManager({ onClose }: { onClose: () => void }
           <div className="mt-4 space-y-2">{versions.map((version) => (
             <article key={version.id} className="rounded-sm border p-3">
               <div className="flex flex-wrap justify-between gap-3">
-                <div><p className="font-bold">{version.revisionLabel} <span className="ml-2 text-xs uppercase text-slate-500">{version.status}</span></p><p className="text-xs text-slate-600">Academic Year: {version.academicYearLabel ?? "Baseline"} · {version.originalFilename} · {(version.sizeBytes / 1024).toFixed(1)} KB</p><p className="mt-1 text-xs">{version.changeNotes}</p></div>
+                <div><p className="font-bold">{version.revisionLabel} <span className="ml-2 text-xs uppercase text-slate-500">{version.status}</span></p><p className="text-xs text-slate-600">Academic Year: {version.academicYearLabel ?? "Baseline"} · {version.originalFilename} · {(version.sizeBytes / 1024).toFixed(1)} KB</p>{version.changeNotes.trim() !== "" && <p className="mt-1 text-xs">{version.changeNotes}</p>}</div>
                 <div className="flex flex-wrap gap-2">
                   <button type="button" onClick={() => void downloadFmQadVersion(apiToken, version)} className="inline-flex items-center gap-1 text-xs font-semibold"><Download className="h-3.5 w-3.5" /> Download</button>
                   {version.status === "draft" && <button type="button" onClick={() => openEdit(version)} className="inline-flex items-center gap-1 text-xs font-semibold"><Pencil className="h-3.5 w-3.5" /> Edit Details</button>}

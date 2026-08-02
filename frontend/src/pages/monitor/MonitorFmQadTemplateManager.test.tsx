@@ -315,6 +315,55 @@ describe("MonitorFmQadTemplateManager", () => {
     ));
   });
 
+  it("uploads and activates versions with blank optional Change Notes", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
+
+    expect(screen.getByText("Change Notes (optional)")).toBeTruthy();
+    expect((screen.getByLabelText("Change Notes") as HTMLTextAreaElement).maxLength).toBe(5000);
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "No Notes Draft" } });
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "__baseline__" } });
+    const draftFile = new File(["docx"], "no-notes-draft.docx");
+    fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [draftFile] } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+    await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
+      "monitor-token",
+      "form-1",
+      expect.objectContaining({ changeNotes: "", file: draftFile, activate: false }),
+    ));
+    expect(screen.queryByText(/change notes.*required/i)).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
+    fireEvent.change(screen.getByLabelText("Revision Label"), { target: { value: "No Notes Active" } });
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "year-1" } });
+    const activeFile = new File(["docx"], "no-notes-active.docx");
+    fireEvent.change(screen.getByLabelText("Template File"), { target: { files: [activeFile] } });
+    fireEvent.click(screen.getByRole("button", { name: "Upload and Activate" }));
+
+    await waitFor(() => expect(uploadFmQadVersion).toHaveBeenCalledWith(
+      "monitor-token",
+      "form-1",
+      expect.objectContaining({ changeNotes: "", file: activeFile, activate: true }),
+    ));
+    confirm.mockRestore();
+  });
+
+  it("lists only the actual required upload fields in validation", async () => {
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Upload New Version/i }));
+    fireEvent.change(screen.getByLabelText("Effective period"), { target: { value: "__baseline__" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Draft" }));
+
+    expect(await screen.findByText("Form, revision label, effective period, and a DOCX file are required.")).toBeTruthy();
+    expect(uploadFmQadVersion).not.toHaveBeenCalled();
+  });
+
   it("requires a deliberate effective period and resets it when reopened", async () => {
     render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
     await screen.findByText("FM-QAD-001");
@@ -537,5 +586,42 @@ describe("MonitorFmQadTemplateManager", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /Upload New Version/i }));
     expect((screen.getByLabelText("Revision Label") as HTMLInputElement).value).toBe("");
+  });
+
+  it("allows existing draft Change Notes to be cleared explicitly", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Details/i }));
+
+    expect(screen.getByText("Change Notes (optional)")).toBeTruthy();
+    const notes = screen.getByLabelText("Edit Change Notes") as HTMLTextAreaElement;
+    expect(notes.maxLength).toBe(5000);
+    expect(notes.value).toBe("Rev. 03 notes");
+    fireEvent.change(notes, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Details" }));
+
+    await waitFor(() => expect(updateFmQadVersionMetadata).toHaveBeenCalledWith(
+      "monitor-token",
+      "v3",
+      expect.objectContaining({ changeNotes: "" }),
+    ));
+  });
+
+  it("preserves unchanged Change Notes in the edit payload", async () => {
+    vi.mocked(fetchFmQadVersions).mockResolvedValue([draftVersion]);
+    render(<MonitorFmQadTemplateManager onClose={vi.fn()} />);
+    await screen.findByText("FM-QAD-001");
+    fireEvent.click(screen.getAllByRole("button", { name: "Manage" })[0]);
+    fireEvent.click(await screen.findByRole("button", { name: /Edit Details/i }));
+    fireEvent.change(screen.getByLabelText("Edit Revision Label"), { target: { value: "Rev. 03A" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save Details" }));
+
+    await waitFor(() => expect(updateFmQadVersionMetadata).toHaveBeenCalledWith(
+      "monitor-token",
+      "v3",
+      expect.objectContaining({ changeNotes: "Rev. 03 notes" }),
+    ));
   });
 });

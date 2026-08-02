@@ -73,7 +73,7 @@ class MonitorFmQadTemplateController extends Controller
         $version = $manager->upload($form, $request->file('file'), [
             'revision_label' => $request->string('revisionLabel')->toString(),
             'academic_year_id' => $request->filled('academicYearId') ? (int) $request->input('academicYearId') : null,
-            'change_notes' => $request->string('changeNotes')->toString(),
+            'change_notes' => trim((string) $request->input('changeNotes', '')),
             'internal_note' => $request->input('internalNote'),
         ], $request->user(), $request->boolean('activate'), $request);
 
@@ -90,8 +90,8 @@ class MonitorFmQadTemplateController extends Controller
         if ($request->has('academicYearId')) {
             $values['academic_year_id'] = $request->filled('academicYearId') ? (int) $request->input('academicYearId') : null;
         }
-        if ($request->has('changeNotes')) {
-            $values['change_notes'] = trim($request->string('changeNotes')->toString());
+        if ($request->exists('changeNotes')) {
+            $values['change_notes'] = trim((string) $request->input('changeNotes', ''));
         }
         if ($request->has('internalNote')) {
             $values['internal_note'] = trim((string) $request->input('internalNote')) ?: null;

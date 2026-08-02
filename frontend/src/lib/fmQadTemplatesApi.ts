@@ -109,7 +109,8 @@ export async function uploadFmQadVersion(token: string, formId: string, payload:
   const body = new FormData();
   body.append("revisionLabel", payload.revisionLabel);
   if (payload.academicYearId !== null) body.append("academicYearId", payload.academicYearId);
-  body.append("changeNotes", payload.changeNotes);
+  const normalizedChangeNotes = payload.changeNotes.trim();
+  if (normalizedChangeNotes !== "") body.append("changeNotes", normalizedChangeNotes);
   if (payload.internalNote) body.append("internalNote", payload.internalNote);
   body.append("file", payload.file);
   body.append("activate", payload.activate ? "1" : "0");

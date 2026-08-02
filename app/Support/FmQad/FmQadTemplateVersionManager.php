@@ -20,18 +20,19 @@ class FmQadTemplateVersionManager
         private readonly FmQadTemplateStorage $storage,
     ) {}
 
-    /** @param array{revision_label:string, academic_year_id?:int|null, change_notes:string, internal_note?:string|null} $metadata */
+    /** @param array{revision_label:string, academic_year_id?:int|null, change_notes?:string|null, internal_note?:string|null} $metadata */
     public function upload(FmQadForm $form, UploadedFile $file, array $metadata, ?User $actor, bool $activate = false, ?Request $request = null): FmQadTemplateVersion
     {
         $validatedFile = $this->validator->validateUploadedFile($file);
         $label = trim(preg_replace('/\s+/', ' ', $metadata['revision_label']) ?? '');
         $normalizedLabel = mb_strtolower($label);
+        $changeNotes = trim((string) ($metadata['change_notes'] ?? ''));
 
         if ($label === '' || mb_strlen($label) > 50) {
             throw ValidationException::withMessages(['revisionLabel' => 'Revision label is required and may not exceed 50 characters.']);
         }
-        if (trim($metadata['change_notes']) === '') {
-            throw ValidationException::withMessages(['changeNotes' => 'Change notes are required.']);
+        if (mb_strlen($changeNotes) > 5000) {
+            throw ValidationException::withMessages(['changeNotes' => 'Change notes may not exceed 5000 characters.']);
         }
         if ($form->versions()->where('normalized_revision_label', $normalizedLabel)->exists()) {
             throw ValidationException::withMessages(['revisionLabel' => 'This revision label already exists for the selected FM-QAD form.']);
@@ -40,7 +41,7 @@ class FmQadTemplateVersionManager
             throw ValidationException::withMessages(['file' => 'This exact template file has already been uploaded for the selected FM-QAD form.']);
         }
 
-        $version = DB::transaction(function () use ($form, $file, $metadata, $actor, $label, $normalizedLabel, $validatedFile): FmQadTemplateVersion {
+        $version = DB::transaction(function () use ($form, $file, $metadata, $actor, $label, $normalizedLabel, $changeNotes, $validatedFile): FmQadTemplateVersion {
             $version = $form->versions()->create([
                 'academic_year_id' => $metadata['academic_year_id'] ?? null,
                 'revision_label' => $label,
@@ -50,7 +51,7 @@ class FmQadTemplateVersionManager
                 'mime_type' => $validatedFile['mime_type'],
                 'size_bytes' => $validatedFile['size_bytes'],
                 'sha256_hash' => $validatedFile['sha256'],
-                'change_notes' => trim($metadata['change_notes']),
+                'change_notes' => $changeNotes,
                 'internal_note' => isset($metadata['internal_note']) ? trim((string) $metadata['internal_note']) ?: null : null,
                 'uploaded_by' => $actor?->id,
             ]);
@@ -187,9 +188,9 @@ class FmQadTemplateVersionManager
                 $values['normalized_revision_label'] = $normalized;
             }
             if (array_key_exists('change_notes', $values)) {
-                $notes = trim((string) $values['change_notes']);
-                if ($notes === '' || mb_strlen($notes) > 5000) {
-                    throw ValidationException::withMessages(['changeNotes' => 'Change notes are required and may not exceed 5000 characters.']);
+                $notes = trim((string) ($values['change_notes'] ?? ''));
+                if (mb_strlen($notes) > 5000) {
+                    throw ValidationException::withMessages(['changeNotes' => 'Change notes may not exceed 5000 characters.']);
                 }
                 $values['change_notes'] = $notes;
             }
