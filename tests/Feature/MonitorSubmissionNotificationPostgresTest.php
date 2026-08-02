@@ -31,13 +31,12 @@ class MonitorSubmissionNotificationPostgresTest extends TestCase
     {
         [$monitor, $schoolHead, $submission] = $this->fixture();
         $notificationKey = str_repeat('c', 64);
-        $barrierPath = tempnam(sys_get_temp_dir(), 'cspams-notification-barrier-');
-        $this->assertIsString($barrierPath);
+        $releaseAt = microtime(true) + 10;
 
         $command = [
             PHP_BINARY,
             base_path('tests/Support/dispatch_monitor_submission_notification.php'),
-            $barrierPath,
+            (string) $releaseAt,
             (string) $submission->id,
             (string) $schoolHead->id,
             'indicator_package_submitted',
@@ -45,23 +44,15 @@ class MonitorSubmissionNotificationPostgresTest extends TestCase
         ];
         $processes = [new Process($command, base_path()), new Process($command, base_path())];
 
-        try {
-            foreach ($processes as $process) {
-                $process->setTimeout(60);
-                $process->start();
-            }
-            usleep(200_000);
-            unlink($barrierPath);
+        foreach ($processes as $process) {
+            $process->setTimeout(60);
+            $process->start();
+        }
 
-            foreach ($processes as $process) {
-                $process->wait();
-                $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().' '.$process->getOutput());
-                $this->assertTrue((bool) json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR)['successful']);
-            }
-        } finally {
-            if (is_file($barrierPath)) {
-                unlink($barrierPath);
-            }
+        foreach ($processes as $process) {
+            $process->wait();
+            $this->assertTrue($process->isSuccessful(), $process->getErrorOutput().' '.$process->getOutput());
+            $this->assertTrue((bool) json_decode($process->getOutput(), true, 512, JSON_THROW_ON_ERROR)['successful']);
         }
 
         DB::purge();
@@ -118,7 +109,7 @@ class MonitorSubmissionNotificationPostgresTest extends TestCase
         $this->assertSame(0, DB::table('jobs')->where('queue', 'default')->count());
         $this->assertSame(1, DB::table('failed_jobs')->count());
         $this->assertSame(1, $monitor->fresh()->notifications()->count());
-        $this->assertSame('draft', $submission->fresh()->status);
+        $this->assertSame('draft', $submission->fresh()->status->value);
     }
 
     private function runOneDatabaseJob(): void

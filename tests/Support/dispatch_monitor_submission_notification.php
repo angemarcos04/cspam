@@ -10,15 +10,9 @@ require dirname(__DIR__, 2).'/vendor/autoload.php';
 $app = require dirname(__DIR__, 2).'/bootstrap/app.php';
 $app->make(Kernel::class)->bootstrap();
 
-[$script, $barrierPath, $submissionId, $schoolHeadId, $eventType, $notificationKey] = $argv;
-$deadline = microtime(true) + 20;
-while (is_file($barrierPath) && microtime(true) < $deadline) {
+[$script, $releaseAt, $submissionId, $schoolHeadId, $eventType, $notificationKey] = $argv;
+while (microtime(true) < (float) $releaseAt) {
     usleep(10_000);
-}
-
-if (is_file($barrierPath)) {
-    fwrite(STDERR, "Concurrency barrier timed out.\n");
-    exit(2);
 }
 
 $submission = IndicatorSubmission::query()->findOrFail((int) $submissionId);
