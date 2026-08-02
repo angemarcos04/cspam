@@ -405,13 +405,14 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         $this->assertDatabaseHas('audit_logs', [
             'action' => 'monitor.scope_unverified',
         ]);
-        $this->assertDatabaseHas('notifications', [
-            'type' => IndicatorScopeReviewOutcomeNotification::class,
-            'notifiable_type' => User::class,
-            'notifiable_id' => $schoolHead->id,
-            'data->eventType' => 'indicator_scope_unverified',
-            'data->status' => 'unverified',
-        ]);
+        $unverifiedNotification = $schoolHead->fresh()->notifications()
+            ->where('type', IndicatorScopeReviewOutcomeNotification::class)
+            ->get()
+            ->first(static fn ($notification): bool => (
+                data_get($notification->data, 'eventType') === 'indicator_scope_unverified'
+                && data_get($notification->data, 'status') === 'unverified'
+            ));
+        $this->assertNotNull($unverifiedNotification);
         $this->assertDatabaseHas('notifications', [
             'type' => IndicatorScopeReviewOutcomeNotification::class,
             'notifiable_type' => User::class,
@@ -480,7 +481,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
 
         $verifiedNotificationCountBeforeFinal = $schoolHead->fresh()->notifications()
             ->where('type', IndicatorScopeReviewOutcomeNotification::class)
-            ->where('data->eventType', 'indicator_scope_verified')
+            ->get()
+            ->filter(static fn ($notification): bool => data_get($notification->data, 'eventType') === 'indicator_scope_verified')
             ->count();
 
         $finalVerified = $this->withToken($monitorToken)->postJson("/api/indicators/submissions/{$submissionId}/scope-review", [
@@ -524,7 +526,8 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         ]);
         $this->assertSame($verifiedNotificationCountBeforeFinal + 1, $schoolHead->fresh()->notifications()
             ->where('type', IndicatorScopeReviewOutcomeNotification::class)
-            ->where('data->eventType', 'indicator_scope_verified')
+            ->get()
+            ->filter(static fn ($notification): bool => data_get($notification->data, 'eventType') === 'indicator_scope_verified')
             ->count());
         Event::assertDispatched(CspamsUpdateBroadcast::class, function (CspamsUpdateBroadcast $event): bool {
             return ($event->payload['eventType'] ?? null) === 'indicators.scope_verified'
@@ -1066,7 +1069,7 @@ class IndicatorSubmissionWorkflowTest extends TestCase
         /** @var User $schoolHeadTwo */
         $schoolHeadTwo = User::query()->where('email', 'schoolhead2@cspams.local')->firstOrFail();
         $academicYearId = (int) AcademicYear::query()->where('is_current', true)->value('id');
-        $metricId = (int) PerformanceMetric::query()->where('is_active', true)->value('id');
+        $metricId = (int) PerformanceMetric::query()->where('code', 'SALO')->value('id');
 
         $tokenOne = $this->loginToken('school_head', $this->schoolHeadLogin($schoolHeadOne));
         $created = $this->withToken($tokenOne)->postJson('/api/indicators/submissions', [

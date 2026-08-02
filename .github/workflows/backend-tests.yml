@@ -124,11 +124,11 @@ jobs:
       - name: Run PostgreSQL notification API tests
         run: php artisan test --filter=NotificationCenterApiTest
 
-      - name: Run PostgreSQL submission workflow tests
-        run: php artisan test --filter=IndicatorSubmissionWorkflowTest
-
       - name: Run PostgreSQL notification dispatcher tests
         run: php artisan test --filter=MonitorSubmissionNotification
 
       - name: Verify worker queue configuration
         run: php artisan test --filter=WorkerQueueConfigurationTest
+
+      - name: Run PostgreSQL submission workflow tests
+        run: php artisan test --filter=IndicatorSubmissionWorkflowTest
