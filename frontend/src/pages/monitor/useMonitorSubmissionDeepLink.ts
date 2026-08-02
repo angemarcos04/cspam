@@ -59,11 +59,15 @@ export function useMonitorSubmissionDeepLink({
     if (!filtersHydrated) return;
 
     const params = new URLSearchParams(location.search);
-    if (params.get("section") !== "reviews") return;
+    const section = params.get("section");
+    const submissionId = (params.get("submissionId") ?? "").trim();
+    if (section !== "reviews" || !submissionId) {
+      processedTargetRef.current = "";
+      setError(null);
+      return;
+    }
 
     setActiveTopNavigator("reviews");
-    const submissionId = (params.get("submissionId") ?? "").trim();
-    if (!submissionId) return;
 
     const requestedScopeId = (params.get("scopeId") ?? "").trim();
     const targetKey = `${location.key}:${submissionId}:${requestedScopeId}:${retryNonce}`;

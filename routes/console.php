@@ -1,20 +1,20 @@
 <?php
 
-use App\Models\School;
-use App\Models\User;
 use App\Models\AuditLog;
 use App\Models\FormSubmissionHistory;
 use App\Models\IndicatorSubmission;
+use App\Models\School;
+use App\Models\User;
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\FmQad\FmQadTemplateAudit;
 use App\Support\FmQad\LegacyFmQadTemplateImporter;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\SubmissionFileStorage;
-use App\Support\Indicators\SubmissionStorageAudit;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
-use App\Support\Notifications\MonitorSubmissionNotificationDispatcher;
+use App\Support\Indicators\SubmissionStorageAudit;
 use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
+use App\Support\Notifications\MonitorSubmissionNotificationDispatcher;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
@@ -84,14 +84,15 @@ Artisan::command('cspams:reconcile-submission-notifications {--submission=} {--d
         $scopeIds,
         $scopeLabels,
         (bool) $this->option('dry-run'),
+        false,
     );
 
-    $this->info(sprintf(
-        '%s: %d recipient(s), %d notification(s) already present or persisted.',
-        $this->option('dry-run') ? 'Dry run' : 'Reconciliation complete',
-        $result->recipientCount,
-        $result->persistedCount,
-    ));
+    $this->info($this->option('dry-run') ? 'Dry run complete.' : 'Reconciliation complete.');
+    $this->line('Recipients: '.$result->recipientCount);
+    $this->line('Existing: '.$result->existingCount);
+    $this->line('Would create: '.$result->wouldCreateCount);
+    $this->line('Created: '.$result->createdCount);
+    $this->line('Failed: '.$result->failedCount);
 
     return $result->successful ? self::SUCCESS : self::FAILURE;
 })->purpose('Idempotently restore a missing Monitor notification for the latest send action.');

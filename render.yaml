@@ -10,8 +10,6 @@ services:
         value: "8.2"
       - key: QUEUE_CONNECTION
         value: database
-      - key: CSPAMS_QUEUE_NAMES
-        value: mail,default,broadcasts
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
       - key: CSPAMS_SUBMISSION_FILE_MAX_KB
@@ -33,6 +31,8 @@ services:
         value: "8.2"
       - key: QUEUE_CONNECTION
         value: database
+      - key: CSPAMS_QUEUE_NAMES
+        value: mail,broadcasts,default
       - key: CSPAMS_MONITOR_MFA_QUEUE
         value: mail
       - key: CSPAMS_SUBMISSION_FILE_MAX_KB

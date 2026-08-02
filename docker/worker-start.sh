@@ -11,7 +11,7 @@ cd "${PROJECT_ROOT}"
 echo "CSPAMS queue worker starting..."
 echo "Date: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "PWD: $(pwd)"
-echo "Queue names: ${CSPAMS_QUEUE_NAMES:-mail,default,broadcasts}"
+echo "Queue names: ${CSPAMS_QUEUE_NAMES:-mail,broadcasts,default}"
 sanitize_runtime_environment
 
 mkdir -p \
@@ -35,7 +35,7 @@ php artisan app:check-verification-delivery || true
 echo "Queue worker started"
 exec php artisan queue:work \
   --verbose \
-  --queue="${CSPAMS_QUEUE_NAMES:-mail,default,broadcasts}" \
+  --queue="${CSPAMS_QUEUE_NAMES:-mail,broadcasts,default}" \
   --tries="${CSPAMS_QUEUE_TRIES:-3}" \
   --timeout="${CSPAMS_QUEUE_TIMEOUT:-90}" \
   --sleep="${CSPAMS_QUEUE_SLEEP:-3}"

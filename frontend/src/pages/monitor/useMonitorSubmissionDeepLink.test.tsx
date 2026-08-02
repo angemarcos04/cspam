@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { useMonitorSubmissionDeepLink } from "@/pages/monitor/useMonitorSubmissionDeepLink";
@@ -47,9 +47,13 @@ function setup(fetchSubmission = vi.fn().mockResolvedValue(submission())) {
   function Harness() {
     const deepLink = useMonitorSubmissionDeepLink(args);
     const location = useLocation();
+    const navigate = useNavigate();
     return <>
       <span data-testid="location">{location.pathname}{location.search}</span>
       {deepLink.error?.retryable && <button type="button" onClick={deepLink.retry}>Retry</button>}
+      <button type="button" onClick={() => navigate("/monitor?section=reviews")}>General reviews</button>
+      <button type="button" onClick={() => navigate("/monitor?section=schools")}>Schools</button>
+      <button type="button" onClick={() => navigate("/monitor?section=reviews&submissionId=456&scopeId=smea")}>Second target</button>
     </>;
   }
 
@@ -157,6 +161,31 @@ describe("useMonitorSubmissionDeepLink", () => {
     await waitFor(() => expect(fetchSubmission).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(args.openSchoolDrawer).toHaveBeenCalledTimes(1));
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it.each(["General reviews", "Schools"])("clears transient Retry state after navigating to %s", async (destination) => {
+    const fetchSubmission = vi.fn().mockRejectedValue(new ApiError("Server unavailable", 500, null));
+    const { Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: destination }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    expect(fetchSubmission).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears the first error and opens a second notification target", async () => {
+    const fetchSubmission = vi.fn()
+      .mockRejectedValueOnce(new ApiError("Server unavailable", 500, null))
+      .mockResolvedValueOnce(submission({ id: "456" }));
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "Second target" }));
+    await waitFor(() => expect(fetchSubmission).toHaveBeenLastCalledWith("456"));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
+    expect(args.openSchoolDrawer).toHaveBeenCalledWith("code:900001", "456");
   });
 
   it("normalizes a missing submission back to Reviews with a controlled message", async () => {

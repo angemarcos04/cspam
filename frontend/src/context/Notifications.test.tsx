@@ -64,6 +64,7 @@ function NotificationsHarness() {
   const {
     notifications,
     unreadCount,
+    isLoading,
     error,
     refreshNotifications,
     markAsRead,
@@ -77,6 +78,7 @@ function NotificationsHarness() {
       <p data-testid="unread-count">{unreadCount}</p>
       <p data-testid="notification-count">{notifications.length}</p>
       <p data-testid="notification-error">{error}</p>
+      <p data-testid="notification-loading">{isLoading ? "loading" : "idle"}</p>
       <button type="button" onClick={() => void refreshNotifications()}>Refresh</button>
       <button type="button" onClick={() => void markAsRead("n1")}>Read one</button>
       <button type="button" onClick={() => void markAllAsRead()}>Read all</button>
@@ -155,6 +157,64 @@ describe("NotificationProvider", () => {
     expect(screen.getByTestId("unread-count").textContent).toBe("2");
     expect(screen.getByTestId("notification-count").textContent).toBe("2");
     expect(screen.getByTestId("notification-error").textContent).toBe("");
+  });
+
+  it.each([
+    ["Read one", { data: { data: notificationRow("n1", "2026-06-26T01:00:00.000Z") } }, "1", "0"],
+    ["Read all", { data: { updated: 1 } }, "1", "0"],
+    ["Clear one", { data: { cleared: 1 } }, "0", "0"],
+    ["Clear all", { data: { cleared: 1 } }, "0", "0"],
+  ])("does not let an older list response undo %s", async (action, mutationResponse, expectedCount, expectedUnread) => {
+    const staleList = deferred<ReturnType<typeof listResponse>>();
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockReturnValueOnce(staleList.promise)
+      .mockResolvedValueOnce(mutationResponse);
+
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("notification-count").textContent).toBe("1"));
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: action }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-count").textContent).toBe(expectedCount);
+      expect(screen.getByTestId("unread-count").textContent).toBe(expectedUnread);
+    });
+
+    staleList.resolve(listResponse([notificationRow("n1")], 1));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(screen.getByTestId("notification-count").textContent).toBe(expectedCount);
+    expect(screen.getByTestId("unread-count").textContent).toBe(expectedUnread);
+    expect(screen.getByTestId("notification-loading").textContent).toBe("idle");
+  });
+
+  it("lets a newer silent refresh clear loading after superseding a manual refresh", async () => {
+    const staleManual = deferred<ReturnType<typeof listResponse>>();
+    apiRequestRawMock
+      .mockResolvedValueOnce(listResponse([notificationRow("n1")], 1))
+      .mockReturnValueOnce(staleManual.promise)
+      .mockResolvedValueOnce(listResponse([notificationRow("n1"), notificationRow("n2")], 2));
+
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(screen.getByTestId("notification-loading").textContent).toBe("idle"));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(screen.getByTestId("notification-loading").textContent).toBe("loading"));
+
+    window.dispatchEvent(new CustomEvent("cspams:update", {
+      detail: { entity: "indicators", eventType: "indicators.scopes_submitted" },
+    }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("notification-loading").textContent).toBe("idle");
+      expect(screen.getByTestId("unread-count").textContent).toBe("2");
+    });
+
+    staleManual.resolve(listResponse([notificationRow("old")], 1));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(screen.getByTestId("notification-loading").textContent).toBe("idle");
+    expect(screen.getByTestId("unread-count").textContent).toBe("2");
   });
 
   it("invalidates an in-flight notification request when the authenticated session changes", async () => {

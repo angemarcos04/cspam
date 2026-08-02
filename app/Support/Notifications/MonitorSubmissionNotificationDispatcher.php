@@ -2,13 +2,16 @@
 
 namespace App\Support\Notifications;
 
+use App\Jobs\RetryMonitorSubmissionNotification;
 use App\Models\IndicatorSubmission;
 use App\Models\User;
 use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Support\Auth\UserRoleResolver;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Schema;
+use RuntimeException;
 use Throwable;
 
 final class MonitorSubmissionNotificationDispatcher
@@ -24,44 +27,69 @@ final class MonitorSubmissionNotificationDispatcher
         array $scopeIds = [],
         array $scopeLabels = [],
         bool $dryRun = false,
+        bool $queueRetryOnFailure = true,
+        ?string $notificationKeyOverride = null,
     ): NotificationDispatchResult {
+        $notificationKey = $notificationKeyOverride ?? $this->notificationKey($submission, $eventType, $scopeIds);
+
         try {
             $recipients = $this->recipients();
-            $notificationKey = $this->notificationKey($submission, $eventType, $scopeIds);
-            $persistedCount = 0;
-            $successful = true;
+            $existingCount = 0;
+            $wouldCreateCount = 0;
+            $createdCount = 0;
+            $failedCount = 0;
 
             foreach ($recipients as $recipient) {
-                if ($this->alreadyPersisted($recipient, $notificationKey)) {
-                    $persistedCount++;
-                    continue;
-                }
-
                 if ($dryRun) {
+                    if ($this->notificationExists($recipient, $notificationKey)) {
+                        $existingCount++;
+                    } else {
+                        $wouldCreateCount++;
+                    }
+
                     continue;
                 }
 
                 try {
-                    Notification::sendNow($recipient, new IndicatorSubmissionReceivedNotification(
+                    $outcome = $this->persistForRecipient(
+                        $recipient,
                         $submission,
                         $schoolHead,
                         $eventType,
                         $scopeIds,
                         $scopeLabels,
                         $notificationKey,
-                    ), ['database']);
-                    $persistedCount++;
+                    );
+                    $outcome === 'created' ? $createdCount++ : $existingCount++;
                 } catch (Throwable $exception) {
-                    $successful = false;
+                    $failedCount++;
                     $this->logFailure($submission, $eventType, $scopeIds, $recipient, $exception);
                 }
             }
 
-            return new NotificationDispatchResult($recipients->count(), $persistedCount, $successful);
+            $result = new NotificationDispatchResult(
+                recipientCount: $recipients->count(),
+                existingCount: $existingCount,
+                wouldCreateCount: $wouldCreateCount,
+                createdCount: $createdCount,
+                failedCount: $failedCount,
+                persistedCount: $existingCount + $createdCount,
+                successful: $failedCount === 0,
+            );
+
+            if (! $dryRun && ! $result->successful && $queueRetryOnFailure) {
+                $this->queueRetry($submission, $schoolHead, $eventType, $scopeIds, $scopeLabels, $notificationKey);
+            }
+
+            return $result;
         } catch (Throwable $exception) {
             $this->logFailure($submission, $eventType, $scopeIds, null, $exception);
 
-            return new NotificationDispatchResult(0, 0, false);
+            if (! $dryRun && $queueRetryOnFailure) {
+                $this->queueRetry($submission, $schoolHead, $eventType, $scopeIds, $scopeLabels, $notificationKey);
+            }
+
+            return new NotificationDispatchResult(0, 0, 0, 0, 1, 0, false);
         }
     }
 
@@ -100,13 +128,103 @@ final class MonitorSubmissionNotificationDispatcher
         ], JSON_THROW_ON_ERROR));
     }
 
-    private function alreadyPersisted(User $recipient, string $notificationKey): bool
+    private function persistForRecipient(
+        User $recipient,
+        IndicatorSubmission $submission,
+        User $schoolHead,
+        string $eventType,
+        array $scopeIds,
+        array $scopeLabels,
+        string $notificationKey,
+    ): string {
+        return DB::transaction(function () use (
+            $recipient,
+            $submission,
+            $schoolHead,
+            $eventType,
+            $scopeIds,
+            $scopeLabels,
+            $notificationKey,
+        ): string {
+            $now = now();
+            DB::table('monitor_submission_notification_deliveries')->insertOrIgnore([
+                'recipient_id' => $recipient->id,
+                'submission_id' => $submission->id,
+                'notification_key' => $notificationKey,
+                'event_type' => $eventType,
+                'scope_ids' => json_encode(array_values($scopeIds), JSON_THROW_ON_ERROR),
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+
+            $reservation = DB::table('monitor_submission_notification_deliveries')
+                ->where('recipient_id', $recipient->id)
+                ->where('notification_key', $notificationKey)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $reservation) {
+                throw new RuntimeException('Monitor notification delivery reservation could not be acquired.');
+            }
+
+            if ($this->notificationExists($recipient, $notificationKey)) {
+                return 'existing';
+            }
+
+            Notification::sendNow($recipient, new IndicatorSubmissionReceivedNotification(
+                $submission,
+                $schoolHead,
+                $eventType,
+                $scopeIds,
+                $scopeLabels,
+                $notificationKey,
+            ), ['database']);
+
+            return 'created';
+        });
+    }
+
+    private function notificationExists(User $recipient, string $notificationKey): bool
     {
         return $recipient->notifications()
             ->get(['data'])
             ->contains(static fn ($notification): bool => (
                 (string) (($notification->data ?? [])['notificationKey'] ?? '') === $notificationKey
             ));
+    }
+
+    /** @param list<string> $scopeIds @param list<string> $scopeLabels */
+    private function queueRetry(
+        IndicatorSubmission $submission,
+        User $schoolHead,
+        string $eventType,
+        array $scopeIds,
+        array $scopeLabels,
+        string $notificationKey,
+    ): void {
+        try {
+            RetryMonitorSubmissionNotification::dispatch(
+                (int) $submission->id,
+                (int) $schoolHead->id,
+                $eventType,
+                array_values($scopeIds),
+                array_values($scopeLabels),
+                $notificationKey,
+            );
+        } catch (Throwable $exception) {
+            try {
+                Log::error('Monitor submission notification retry queueing failed.', [
+                    'submission_id' => (string) $submission->id,
+                    'school_id' => (string) $submission->school_id,
+                    'academic_year_id' => (string) $submission->academic_year_id,
+                    'event_type' => $eventType,
+                    'scope_ids' => array_values($scopeIds),
+                    'exception_class' => $exception::class,
+                ]);
+            } catch (Throwable) {
+                // Submission success must not depend on queue or logging infrastructure.
+            }
+        }
     }
 
     /** @param list<string> $scopeIds */

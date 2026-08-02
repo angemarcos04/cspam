@@ -70,3 +70,65 @@ jobs:
 
       - name: Verify worker queue configuration
         run: php artisan test --filter=WorkerQueueConfigurationTest
+
+  postgres-notification-reliability:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: cspams_test
+          POSTGRES_USER: cspams
+          POSTGRES_PASSWORD: cspams
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+      APP_MAINTENANCE_DRIVER: file
+      BCRYPT_ROUNDS: 4
+      BROADCAST_CONNECTION: log
+      CACHE_STORE: array
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: cspams_test
+      DB_USERNAME: cspams
+      DB_PASSWORD: cspams
+      MAIL_MAILER: array
+      CSPAMS_MONITOR_MFA_ENABLED: false
+      PULSE_ENABLED: false
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: array
+      TELESCOPE_ENABLED: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup PHP with PostgreSQL
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.2"
+          extensions: mbstring, pdo_pgsql
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --prefer-dist --no-progress
+
+      - name: Run PostgreSQL notification API tests
+        run: php artisan test --filter=NotificationCenterApiTest
+
+      - name: Run PostgreSQL submission workflow tests
+        run: php artisan test --filter=IndicatorSubmissionWorkflowTest
+
+      - name: Run PostgreSQL notification dispatcher tests
+        run: php artisan test --filter=MonitorSubmissionNotification
+
+      - name: Verify worker queue configuration
+        run: php artisan test --filter=WorkerQueueConfigurationTest

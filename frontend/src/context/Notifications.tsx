@@ -90,6 +90,11 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const realtimeRefreshTimerRef = useRef<number | null>(null);
   const notificationRequestSequenceRef = useRef(0);
 
+  const invalidateNotificationListRequests = useCallback(() => {
+    notificationRequestSequenceRef.current += 1;
+    setIsLoading(false);
+  }, []);
+
   const handleApiError = useCallback(
     async (err: unknown) => {
       if (isApiError(err)) {
@@ -144,7 +149,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         if (requestId !== notificationRequestSequenceRef.current) return;
         await handleApiError(err);
       } finally {
-        if (!silent && requestId === notificationRequestSequenceRef.current) {
+        if (requestId === notificationRequestSequenceRef.current) {
           setIsLoading(false);
         }
       }
@@ -181,12 +186,15 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     async (id: string) => {
       if (!token) return;
 
+      invalidateNotificationListRequests();
+
       try {
         const response = await apiRequestRaw<NotificationReadResponse>(`/api/notifications/${id}/read`, {
           method: "POST",
           token,
         });
         const next = response.data?.data;
+        invalidateNotificationListRequests();
 
         if (next) {
           setNotifications((current) => current.map((entry) => (entry.id === id ? next : entry)));
@@ -198,17 +206,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         await handleApiError(err);
       }
     },
-    [token, syncNotifications, handleApiError],
+    [token, syncNotifications, handleApiError, invalidateNotificationListRequests],
   );
 
   const markAllAsRead = useCallback(async () => {
     if (!token) return;
+
+    invalidateNotificationListRequests();
 
     try {
       await apiRequestRaw<NotificationReadAllResponse>("/api/notifications/read-all", {
         method: "POST",
         token,
       });
+      invalidateNotificationListRequests();
       const nowIso = new Date().toISOString();
       setNotifications((current) =>
         current.map((entry) => (entry.readAt ? entry : { ...entry, readAt: nowIso })),
@@ -217,18 +228,20 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       await handleApiError(err);
     }
-  }, [token, handleApiError]);
+  }, [token, handleApiError, invalidateNotificationListRequests]);
 
   const clearNotification = useCallback(
     async (id: string) => {
       if (!token) return;
       const target = notifications.find((entry) => entry.id === id);
+      invalidateNotificationListRequests();
 
       try {
         await apiRequestRaw<NotificationClearResponse>(`/api/notifications/${id}/clear`, {
           method: "POST",
           token,
         });
+        invalidateNotificationListRequests();
 
         setNotifications((current) => current.filter((entry) => entry.id !== id));
 
@@ -239,23 +252,26 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         await handleApiError(err);
       }
     },
-    [token, notifications, handleApiError],
+    [token, notifications, handleApiError, invalidateNotificationListRequests],
   );
 
   const clearAllNotifications = useCallback(async () => {
     if (!token) return;
+
+    invalidateNotificationListRequests();
 
     try {
       await apiRequestRaw<NotificationClearResponse>("/api/notifications/clear", {
         method: "POST",
         token,
       });
+      invalidateNotificationListRequests();
       setNotifications([]);
       setUnreadCount(0);
     } catch (err) {
       await handleApiError(err);
     }
-  }, [token, handleApiError]);
+  }, [token, handleApiError, invalidateNotificationListRequests]);
 
   useEffect(() => {
     if (!token || !isSyncActive) return;

@@ -78,7 +78,7 @@ Immediate School Head, Monitor, and Audit Trail updates require both the databas
 
 2. Run these processes under the host's process supervisor. Do not rely on an interactive terminal:
    ```powershell
-   php artisan queue:work database --queue=mail,default,broadcasts --sleep=1 --tries=3 --timeout=90
+   php artisan queue:work database --queue=mail,broadcasts,default --sleep=1 --tries=3 --timeout=90
    php artisan reverb:start --host=0.0.0.0 --port=8080
    ```
    Use your deployment platform's restart policy, log retention, and alerting to restart either process after failure. Configure Reverb app keys and database credentials through the deployment environment, never this document.

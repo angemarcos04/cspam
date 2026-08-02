@@ -196,6 +196,15 @@ test("refreshes an open Monitor drawer after School Head sends a saved file scop
     await expect(savedFileRow.getByRole("button", { name: "Download" })).toHaveCount(0);
     await expect(unsentSiblingRow.getByText("Missing", { exact: true })).toBeVisible();
     await expect(unsentSiblingRow.getByRole("button", { name: "View" })).toBeDisabled();
+
+    const notificationsButton = monitorPage.getByRole("button", { name: "Notifications" });
+    await expect(notificationsButton.locator("span")).toBeVisible({ timeout: 30_000 });
+    await notificationsButton.click();
+    const submissionNotification = monitorPage.locator("button", { hasText: "FM-QAD-002 sent for review" }).first();
+    await expect(submissionNotification).toBeVisible();
+    await submissionNotification.click();
+    await expect(monitorPage).toHaveURL(/section=reviews.*submissionId=.*scopeId=fm_qad_002/);
+    await expect(drawer.locator("tr", { hasText: "FM-QAD-002" }).first()).toBeVisible();
   } finally {
     if (!schoolHeadClosed) {
       await schoolHeadContext.close();
