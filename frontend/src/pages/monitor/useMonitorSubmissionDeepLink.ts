@@ -1,4 +1,4 @@
-import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
+import { useCallback, useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import type { IndicatorDataContextType } from "@/context/IndicatorData";
 import { isApiError } from "@/lib/api";
@@ -21,6 +21,16 @@ interface UseMonitorSubmissionDeepLinkArgs {
   pushToast: (message: string, tone?: ToastTone) => void;
 }
 
+export interface SubmissionDeepLinkError {
+  message: string;
+  retryable: boolean;
+}
+
+export interface UseMonitorSubmissionDeepLinkResult {
+  error: SubmissionDeepLinkError | null;
+  retry: () => void;
+}
+
 export function useMonitorSubmissionDeepLink({
   filtersHydrated,
   fetchSubmission,
@@ -32,10 +42,18 @@ export function useMonitorSubmissionDeepLink({
   setSelectedSchoolDrawerYear,
   setHighlightedDrawerIndicatorKey,
   pushToast,
-}: UseMonitorSubmissionDeepLinkArgs): void {
+}: UseMonitorSubmissionDeepLinkArgs): UseMonitorSubmissionDeepLinkResult {
   const location = useLocation();
   const navigate = useNavigate();
   const processedTargetRef = useRef("");
+  const [retryNonce, setRetryNonce] = useState(0);
+  const [error, setError] = useState<SubmissionDeepLinkError | null>(null);
+
+  const retry = useCallback(() => {
+    if (!error?.retryable) return;
+    setError(null);
+    setRetryNonce((value) => value + 1);
+  }, [error]);
 
   useEffect(() => {
     if (!filtersHydrated) return;
@@ -48,9 +66,10 @@ export function useMonitorSubmissionDeepLink({
     if (!submissionId) return;
 
     const requestedScopeId = (params.get("scopeId") ?? "").trim();
-    const targetKey = `${location.key}:${submissionId}:${requestedScopeId}`;
+    const targetKey = `${location.key}:${submissionId}:${requestedScopeId}:${retryNonce}`;
     if (processedTargetRef.current === targetKey) return;
     processedTargetRef.current = targetKey;
+    setError(null);
 
     let active = true;
     void Promise.allSettled([refreshReviewInbox(), refreshSubmissions()])
@@ -85,14 +104,11 @@ export function useMonitorSubmissionDeepLink({
           return;
         }
 
-        const knownScopeIds = new Set([
-          ...(submission.scopeProgress?.requiredScopeIds ?? []),
-          ...(submission.scopeProgress?.submittedScopeIds ?? []),
-          ...(submission.scopeReviews ?? []).map((review) => review.scopeId),
-        ]);
-        if (!knownScopeIds.has(requestedScopeId)) {
+        const submittedScopeIds = new Set(submission.scopeProgress?.submittedScopeIds ?? []);
+        const reviewedScopeIds = new Set((submission.scopeReviews ?? []).map((review) => review.scopeId));
+        if (!submittedScopeIds.has(requestedScopeId) && !reviewedScopeIds.has(requestedScopeId)) {
           setHighlightedDrawerIndicatorKey(null);
-          pushToast("The referenced requirement is no longer available in this submission.", "warning");
+          pushToast("The referenced requirement has not been submitted or is no longer available for review.", "warning");
           return;
         }
 
@@ -106,13 +122,27 @@ export function useMonitorSubmissionDeepLink({
         if (!active) return;
         setActiveTopNavigator("reviews");
 
+        if (isApiError(error) && error.status === 401) {
+          return;
+        }
+
         if (isApiError(error) && error.status === 404) {
           navigate("/monitor?section=reviews", { replace: true });
           pushToast("The referenced submission is no longer available.", "warning");
           return;
         }
 
+        if (isApiError(error) && error.status === 403) {
+          navigate("/monitor?section=reviews", { replace: true });
+          pushToast("The referenced submission could not be opened.", "warning");
+          return;
+        }
+
         pushToast("The referenced submission could not be opened.", "warning");
+        setError({
+          message: "The referenced submission could not be opened.",
+          retryable: true,
+        });
       });
 
     return () => {
@@ -128,9 +158,12 @@ export function useMonitorSubmissionDeepLink({
     pushToast,
     refreshReviewInbox,
     refreshSubmissions,
+    retryNonce,
     setActiveSchoolDrawerTab,
     setActiveTopNavigator,
     setHighlightedDrawerIndicatorKey,
     setSelectedSchoolDrawerYear,
   ]);
+
+  return { error, retry };
 }

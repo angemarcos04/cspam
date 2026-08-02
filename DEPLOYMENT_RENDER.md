@@ -240,7 +240,7 @@ CSPAMS_MONITOR_MFA_QUEUE_CONNECTION=database
 CSPAMS_MONITOR_MFA_QUEUE=mail
 ```
 
-Queued delivery requires the `cspam-backend-worker` service from `render.yaml` to be deployed, running, and configured with the same `APP_KEY`, database, queue, and mail settings as the web service. The worker runs `docker/worker-start.sh` and consumes the `mail` queue. If the worker is stopped or misconfigured, Monitor MFA messages will remain queued; do not expose codes or switch off MFA as a workaround.
+Queued delivery requires the `cspam-backend-worker` service from `render.yaml` to be deployed, running, and configured with the same `APP_KEY`, database, queue, and mail settings as the web service. The worker runs `docker/worker-start.sh` and consumes `mail,default,broadcasts`; the `broadcasts` queue carries CSPAMS realtime refresh signals. If the worker is stopped or misconfigured, Monitor MFA messages and realtime updates can remain queued; do not expose codes or switch off MFA as a workaround. Verify safely with `php artisan queue:monitor broadcasts` and `php artisan queue:failed`.
 
 The permanent school-removal endpoint commits deletion before it queues the School Head removal email. Its response reports `queued`, not `sent`; later delivery failures are handled by Laravel queue retry and failed-job operations and cannot roll back or restore the deleted school. School Head authentication does not use the Monitor MFA queue and is unchanged.
 

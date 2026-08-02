@@ -2,6 +2,9 @@
 
 use App\Models\School;
 use App\Models\User;
+use App\Models\AuditLog;
+use App\Models\FormSubmissionHistory;
+use App\Models\IndicatorSubmission;
 use App\Providers\AppServiceProvider;
 use App\Support\Auth\UserRoleResolver;
 use App\Support\FmQad\FmQadTemplateAudit;
@@ -9,6 +12,8 @@ use App\Support\FmQad\LegacyFmQadTemplateImporter;
 use App\Support\Indicators\RollingIndicatorYearWindow;
 use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionStorageAudit;
+use App\Support\Indicators\SubmissionScopeProgressResolver;
+use App\Support\Notifications\MonitorSubmissionNotificationDispatcher;
 use App\Support\Integrity\SchoolHeadDataIntegrityAudit;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -20,6 +25,76 @@ use Illuminate\Support\Facades\Storage;
 Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
+
+Artisan::command('cspams:reconcile-submission-notifications {--submission=} {--dry-run}', function (
+    MonitorSubmissionNotificationDispatcher $dispatcher,
+    SubmissionScopeProgressResolver $scopeResolver,
+): int {
+    $submissionId = trim((string) $this->option('submission'));
+    if ($submissionId === '' || ! ctype_digit($submissionId)) {
+        $this->error('Provide a numeric --submission ID.');
+
+        return self::FAILURE;
+    }
+
+    $submission = IndicatorSubmission::query()->with(['submittedBy', 'school', 'academicYear'])->find($submissionId);
+    if (! $submission) {
+        $this->error('Submission is unavailable.');
+
+        return self::FAILURE;
+    }
+
+    $history = FormSubmissionHistory::query()
+        ->where('form_type', IndicatorSubmission::FORM_TYPE)
+        ->where('submission_id', $submission->id)
+        ->whereIn('action', ['submitted', 'scope_submitted'])
+        ->latest('id')
+        ->first();
+    if (! $history) {
+        $this->error('No eligible submission send history was found.');
+
+        return self::FAILURE;
+    }
+
+    $schoolHead = User::query()->find($history->actor_id) ?? $submission->submittedBy;
+    if (! $schoolHead) {
+        $this->error('The submitting School Head is unavailable.');
+
+        return self::FAILURE;
+    }
+
+    $scopeIds = $history->action === 'scope_submitted'
+        ? array_values(array_filter(array_map('strval', (array) (($history->metadata ?? [])['targets'] ?? []))))
+        : [];
+    $wasResent = $scopeIds !== [] && AuditLog::query()
+        ->where('auditable_type', IndicatorSubmission::class)
+        ->where('auditable_id', $submission->id)
+        ->whereIn('action', ['submission.file_resent', 'submission.scope_resent'])
+        ->where('created_at', '>=', $history->created_at->copy()->subSecond())
+        ->exists();
+    $eventType = $scopeIds !== []
+        ? ($wasResent ? 'indicator_scope_resent' : 'indicator_scope_submitted')
+        : ($history->from_status === 'returned' ? 'indicator_package_resubmitted' : 'indicator_package_submitted');
+    $scopeLabels = array_map([$scopeResolver, 'scopeLabel'], $scopeIds);
+
+    $result = $dispatcher->dispatch(
+        $submission,
+        $schoolHead,
+        $eventType,
+        $scopeIds,
+        $scopeLabels,
+        (bool) $this->option('dry-run'),
+    );
+
+    $this->info(sprintf(
+        '%s: %d recipient(s), %d notification(s) already present or persisted.',
+        $this->option('dry-run') ? 'Dry run' : 'Reconciliation complete',
+        $result->recipientCount,
+        $result->persistedCount,
+    ));
+
+    return $result->successful ? self::SUCCESS : self::FAILURE;
+})->purpose('Idempotently restore a missing Monitor notification for the latest send action.');
 
 Artisan::command('cspams:import-fm-qad-templates {--dry-run} {--force} {--form=}', function (LegacyFmQadTemplateImporter $importer): int {
     $result = $importer->run((bool) $this->option('dry-run'), $this->option('form') ?: null, (bool) $this->option('force'));

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Events\CspamsUpdateBroadcast;
 use App\Models\AcademicYear;
 use App\Models\IndicatorSubmission;
 use App\Models\PerformanceMetric;
@@ -16,6 +17,9 @@ use Illuminate\Contracts\Notifications\Dispatcher as NotificationDispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
@@ -871,6 +875,61 @@ class NotificationCenterApiTest extends TestCase
         $this->assertSame('BMEF file reopened for review', data_get($notification?->data, 'title'));
         $this->assertStringContainsString('reopened for review', (string) data_get($notification?->data, 'message'));
         $this->assertNotSame('indicator_scope_returned', data_get($notification?->data, 'eventType'));
+    }
+
+    public function test_committed_scope_submission_succeeds_and_broadcasts_when_notification_persistence_fails(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+        [, $schoolHeadToken] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')->assertOk();
+
+        Event::fake([CspamsUpdateBroadcast::class]);
+        Log::spy();
+        Notification::shouldReceive('sendNow')->once()->andThrow(new \RuntimeException('simulated database notification failure'));
+
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $this->assertDatabaseHas('indicator_submission_scope_submissions', [
+            'indicator_submission_id' => $submissionId,
+            'scope_id' => 'bmef',
+        ]);
+        Log::shouldHaveReceived('error')->withArgs(static fn (string $message, array $context): bool => (
+            $message === 'Monitor submission notification persistence failed.'
+            && (string) ($context['submission_id'] ?? '') === (string) $submissionId
+            && ! array_key_exists('exception_message', $context)
+        ));
+        Event::assertDispatched(CspamsUpdateBroadcast::class, static fn (CspamsUpdateBroadcast $event): bool => (
+            (string) ($event->payload['submissionId'] ?? '') === (string) $submissionId
+        ));
+    }
+
+    public function test_submission_notification_reconciliation_is_dry_run_safe_and_idempotent(): void
+    {
+        Storage::fake('local');
+        $this->seed();
+        [, $schoolHeadToken, $monitor] = $this->submissionNotificationActors();
+        $submissionId = $this->bootstrapIndicatorSubmission($schoolHeadToken);
+        $this->uploadSubmissionDocument($schoolHeadToken, $submissionId, 'bmef', 'bmef.pdf', 'application/pdf')->assertOk();
+        $this->withToken($schoolHeadToken)->postJson("/api/indicators/submissions/{$submissionId}/submit-scopes", [
+            'targets' => ['bmef'],
+        ])->assertOk();
+
+        $monitor->notifications()->where('type', IndicatorSubmissionReceivedNotification::class)->delete();
+        $dryRunExit = Artisan::call('cspams:reconcile-submission-notifications', [
+            '--submission' => $submissionId,
+            '--dry-run' => true,
+        ]);
+        $this->assertSame(0, $dryRunExit, Artisan::output());
+        $this->assertSame(0, $monitor->fresh()->notifications()->where('type', IndicatorSubmissionReceivedNotification::class)->count());
+
+        $this->artisan('cspams:reconcile-submission-notifications', ['--submission' => $submissionId])->assertSuccessful();
+        $this->assertSame(1, $monitor->fresh()->notifications()->where('type', IndicatorSubmissionReceivedNotification::class)->count());
+        $this->artisan('cspams:reconcile-submission-notifications', ['--submission' => $submissionId])->assertSuccessful();
+        $this->assertSame(1, $monitor->fresh()->notifications()->where('type', IndicatorSubmissionReceivedNotification::class)->count());
     }
 
     private function loginToken(string $role, string $login): string

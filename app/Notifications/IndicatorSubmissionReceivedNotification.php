@@ -22,6 +22,7 @@ class IndicatorSubmissionReceivedNotification extends Notification implements Sh
         private readonly string $eventType,
         private readonly array $scopeIds = [],
         private readonly array $scopeLabels = [],
+        private readonly ?string $notificationKey = null,
     ) {
     }
 
@@ -60,6 +61,7 @@ class IndicatorSubmissionReceivedNotification extends Notification implements Sh
             'targetSection' => 'reviews',
             'primaryScopeId' => $primaryScopeId,
             'actionUrl' => $this->buildActionUrl($primaryScopeId),
+            'notificationKey' => $this->notificationKey,
             'createdAt' => now()->toISOString(),
         ];
     }

@@ -50,6 +50,16 @@ function apiError(status: number, message = `Request failed with status ${status
   return Object.assign(new Error(message), { status });
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 function NotificationsHarness() {
   const {
     notifications,
@@ -125,6 +135,47 @@ describe("NotificationProvider", () => {
       expect(apiRequestRawMock).toHaveBeenCalledTimes(2);
       expect(screen.getByTestId("notification-count").textContent).toBe("1");
     });
+  });
+
+  it("keeps the newest notification response when an older request resolves last", async () => {
+    const older = deferred<ReturnType<typeof listResponse>>();
+    const newer = deferred<ReturnType<typeof listResponse>>();
+    apiRequestRawMock.mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise);
+
+    render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(2));
+
+    newer.resolve(listResponse([notificationRow("new-1"), notificationRow("new-2")], 2));
+    await waitFor(() => expect(screen.getByTestId("unread-count").textContent).toBe("2"));
+    older.resolve(listResponse([notificationRow("old")], 1));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+
+    expect(screen.getByTestId("unread-count").textContent).toBe("2");
+    expect(screen.getByTestId("notification-count").textContent).toBe("2");
+    expect(screen.getByTestId("notification-error").textContent).toBe("");
+  });
+
+  it("invalidates an in-flight notification request when the authenticated session changes", async () => {
+    const previousSession = deferred<ReturnType<typeof listResponse>>();
+    apiRequestRawMock
+      .mockReturnValueOnce(previousSession.promise)
+      .mockResolvedValueOnce(listResponse([notificationRow("next-session")], 1));
+
+    const view = render(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(1));
+
+    authState.user = { id: "monitor-2", name: "Next Monitor" };
+    authState.apiToken = "next-token";
+    view.rerender(<NotificationProvider><NotificationsHarness /></NotificationProvider>);
+    await waitFor(() => expect(apiRequestRawMock).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId("notification-count").textContent).toBe("1"));
+
+    previousSession.resolve(listResponse([notificationRow("previous-1"), notificationRow("previous-2")], 2));
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+    expect(screen.getByTestId("notification-count").textContent).toBe("1");
+    expect(screen.getByTestId("unread-count").textContent).toBe("1");
   });
 
   it("debounces a burst of submission realtime events into one notification refresh", async () => {

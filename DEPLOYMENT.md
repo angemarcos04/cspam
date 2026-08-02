@@ -195,7 +195,7 @@ php artisan queue:work
 **Production (long-lived process):**
 
 ```bash
-php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90
+php artisan queue:work --verbose --queue=mail,default,broadcasts --tries=3 --timeout=90
 ```
 
 On Render, Railway, Fly.io, or similar PaaS platforms, run this as a separate worker service so it restarts automatically on failure. This repo now includes `docker/worker-start.sh` for that purpose. Make sure the worker's environment variables match the API server's (same `APP_KEY`, same `QUEUE_CONNECTION`, same DB connection).
@@ -222,12 +222,12 @@ composer install --prefer-dist --no-dev --no-interaction --optimize-autoloader
 bash docker/worker-start.sh
 ```
 
-Copy all web service environment variables to the worker, especially `APP_KEY`, all `DB_*` values, `QUEUE_CONNECTION=database`, `CSPAMS_MONITOR_MFA_QUEUE=mail`, all `MAIL_*` values, `LOG_CHANNEL=stderr`, and `LOG_LEVEL=info`. Prefer a Render Environment Group if available so the web and worker services cannot drift.
+Copy all web service environment variables to the worker, especially `APP_KEY`, all `DB_*` values, `QUEUE_CONNECTION=database`, `CSPAMS_QUEUE_NAMES=mail,default,broadcasts`, `CSPAMS_MONITOR_MFA_QUEUE=mail`, all `MAIL_*` values, `LOG_CHANNEL=stderr`, and `LOG_LEVEL=info`. Prefer a Render Environment Group if available so the web and worker services cannot drift.
 
 The worker script does not run migrations or seeders. It prepares Laravel cache and runs:
 
 ```bash
-php artisan queue:work --verbose --queue=mail,default --tries=3 --timeout=90 --sleep=3
+php artisan queue:work --verbose --queue=mail,default,broadcasts --tries=3 --timeout=90 --sleep=3
 ```
 
 The included `render.yaml` defines both `cspam-backend` and `cspam-backend-worker`. If you do not see a separate Background Worker service in the Render dashboard, the worker is missing. MFA OTP email cannot send until that service exists, is deployed from `main`, and shows `CSPAMS queue worker starting...` followed by `Queue worker started` in its logs.

@@ -173,6 +173,10 @@ describe("NotificationCenter", () => {
     "javascript:alert(1)",
     "/school-admin",
     "/monitoring",
+    "/monitor/other",
+    "/monitor?section=reviews&submissionId=123&next=https%3A%2F%2Fexample.com",
+    "/monitor?section=reviews&submissionId=",
+    "not a valid internal url",
   ])("rejects unsafe monitor notification action url %s", (actionUrl) => {
     expect(notificationActionUrl({
       id: "unsafe",
@@ -184,6 +188,27 @@ describe("NotificationCenter", () => {
       createdAt: null,
       data: { actionUrl },
     })).toBeNull();
+  });
+
+  it("accepts the exact legacy monitor path and approved reminder path", () => {
+    const base = {
+      id: "safe",
+      type: "database",
+      title: "Safe",
+      message: "Safe",
+      readAt: null,
+      createdAt: null,
+    };
+    expect(notificationActionUrl({
+      ...base,
+      eventType: "indicator_scope_submitted",
+      data: { actionUrl: "/monitor" },
+    })).toBe("/monitor");
+    expect(notificationActionUrl({
+      ...base,
+      eventType: "school_records.reminder_sent",
+      data: { actionUrl: "/school-admin" },
+    })).toBe("/school-admin");
   });
 
   it("does not crash or navigate when mark as read fails", async () => {

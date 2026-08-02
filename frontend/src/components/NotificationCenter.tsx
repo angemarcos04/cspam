@@ -29,15 +29,37 @@ export function notificationActionUrl(notification: AppNotification): string | n
   if (typeof value !== "string") return null;
 
   const trimmed = value.trim();
-  if (trimmed === "/monitor" || trimmed.startsWith("/monitor?")) {
-    return trimmed;
-  }
+  if (!trimmed) return null;
 
-  if (
-    trimmed === "/school-admin"
-    && (notification.eventType === "reminder_sent" || notification.eventType === "school_records.reminder_sent")
-  ) {
-    return trimmed;
+  try {
+    const internalOrigin = "https://cspams.invalid";
+    const parsed = new URL(trimmed, internalOrigin);
+    if (parsed.origin !== internalOrigin || parsed.hash) return null;
+
+    if (parsed.pathname === "/monitor") {
+      if (parsed.search === "") return "/monitor";
+
+      const allowedKeys = new Set(["section", "submissionId", "schoolId", "academicYearId", "scopeId"]);
+      if ([...parsed.searchParams.keys()].some((key) => !allowedKeys.has(key))) return null;
+
+      const isSubmissionNotification = notification.eventType.startsWith("indicator_");
+      if (isSubmissionNotification && (
+        parsed.searchParams.get("section") !== "reviews"
+        || !(parsed.searchParams.get("submissionId") ?? "").trim()
+      )) return null;
+
+      return `${parsed.pathname}${parsed.search}`;
+    }
+
+    if (
+      parsed.pathname === "/school-admin"
+      && parsed.search === ""
+      && (notification.eventType === "reminder_sent" || notification.eventType === "school_records.reminder_sent")
+    ) {
+      return "/school-admin";
+    }
+  } catch {
+    return null;
   }
 
   return null;

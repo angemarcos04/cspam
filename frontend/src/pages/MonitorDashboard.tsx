@@ -893,7 +893,10 @@ export function MonitorDashboard() {
     listTeachers,
   });
 
-  useMonitorSubmissionDeepLink({
+  const {
+    error: submissionDeepLinkError,
+    retry: retrySubmissionDeepLink,
+  } = useMonitorSubmissionDeepLink({
     filtersHydrated,
     fetchSubmission,
     refreshSubmissions,
@@ -1433,6 +1436,19 @@ export function MonitorDashboard() {
         >
           <span className="font-semibold">{dashboardError.label} failed to refresh.</span>{" "}
           {dashboardError.message}
+        </section>
+      )}
+
+      {submissionDeepLinkError?.retryable && (
+        <section role="alert" className="mb-5 flex items-center justify-between gap-3 border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span>{submissionDeepLinkError.message}</span>
+          <button
+            type="button"
+            onClick={retrySubmissionDeepLink}
+            className="rounded-sm border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-800 hover:bg-amber-100"
+          >
+            Retry
+          </button>
         </section>
       )}
 

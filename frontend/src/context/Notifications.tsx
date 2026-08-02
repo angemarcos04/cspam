@@ -88,6 +88,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(null);
   const [isSyncActive, setIsSyncActive] = useState(false);
   const realtimeRefreshTimerRef = useRef<number | null>(null);
+  const notificationRequestSequenceRef = useRef(0);
 
   const handleApiError = useCallback(
     async (err: unknown) => {
@@ -110,6 +111,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
 
   const syncNotifications = useCallback(
     async (silent = false) => {
+      const requestId = ++notificationRequestSequenceRef.current;
       if (!token) {
         setNotifications([]);
         setUnreadCount(0);
@@ -132,13 +134,17 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
         const rows = Array.isArray(response.data?.data) ? response.data.data : [];
         const meta = normalizeMeta(response.data?.meta, rows);
 
+        if (requestId !== notificationRequestSequenceRef.current) return;
+
         setNotifications(rows);
         setUnreadCount(meta.unreadCount);
+        setError("");
         setLastSyncedAt(new Date().toISOString());
       } catch (err) {
+        if (requestId !== notificationRequestSequenceRef.current) return;
         await handleApiError(err);
       } finally {
-        if (!silent) {
+        if (!silent && requestId === notificationRequestSequenceRef.current) {
           setIsLoading(false);
         }
       }
@@ -150,6 +156,16 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     setIsSyncActive(true);
     await syncNotifications(false);
   }, [syncNotifications]);
+
+  useEffect(() => {
+    notificationRequestSequenceRef.current++;
+    setNotifications([]);
+    setUnreadCount(0);
+    setError("");
+    setLastSyncedAt(null);
+    setIsLoading(false);
+    setIsSyncActive(Boolean(token));
+  }, [token, user?.id]);
 
   useEffect(() => {
     if (!token) {

@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
@@ -45,9 +45,12 @@ function setup(fetchSubmission = vi.fn().mockResolvedValue(submission())) {
   };
 
   function Harness() {
-    useMonitorSubmissionDeepLink(args);
+    const deepLink = useMonitorSubmissionDeepLink(args);
     const location = useLocation();
-    return <span data-testid="location">{location.pathname}{location.search}</span>;
+    return <>
+      <span data-testid="location">{location.pathname}{location.search}</span>
+      {deepLink.error?.retryable && <button type="button" onClick={deepLink.retry}>Retry</button>}
+    </>;
   }
 
   return { args, Harness };
@@ -82,9 +85,78 @@ describe("useMonitorSubmissionDeepLink", () => {
     await waitFor(() => expect(args.openSchoolDrawer).toHaveBeenCalled());
     expect(args.setHighlightedDrawerIndicatorKey).toHaveBeenCalledWith(null);
     expect(args.pushToast).toHaveBeenCalledWith(
-      "The referenced requirement is no longer available in this submission.",
+      "The referenced requirement has not been submitted or is no longer available for review.",
       "warning",
     );
+  });
+
+  it.each(["fm_qad_003", "smea", "targets_met"])("accepts submitted scope %s", async (scopeId) => {
+    const fetchSubmission = vi.fn().mockResolvedValue(submission({
+      scopeProgress: { requiredScopeIds: [scopeId], submittedScopeIds: [scopeId] },
+    }));
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={[`/monitor?section=reviews&submissionId=123&scopeId=${scopeId}`]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(args.setHighlightedDrawerIndicatorKey).toHaveBeenCalledWith(scopeId));
+  });
+
+  it("rejects a required scope that was never submitted", async () => {
+    const fetchSubmission = vi.fn().mockResolvedValue(submission({
+      scopeProgress: { requiredScopeIds: ["fm_qad_003"], submittedScopeIds: [] },
+    }));
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123&scopeId=fm_qad_003"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(args.setHighlightedDrawerIndicatorKey).toHaveBeenCalledWith(null));
+    expect(args.pushToast).toHaveBeenCalledWith(
+      "The referenced requirement has not been submitted or is no longer available for review.",
+      "warning",
+    );
+  });
+
+  it("accepts a previously reviewed scope even when it is no longer submitted", async () => {
+    const fetchSubmission = vi.fn().mockResolvedValue(submission({
+      scopeProgress: { requiredScopeIds: ["smea"], submittedScopeIds: [] },
+      scopeReviews: [{ scopeId: "smea", decision: "verified" } as never],
+    }));
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123&scopeId=smea"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(args.setHighlightedDrawerIndicatorKey).toHaveBeenCalledWith("smea"));
+    expect(args.pushToast).toHaveBeenCalledWith("This requirement has already been reviewed.", "info");
+  });
+
+  it("opens a package target as a summary without selecting a scope", async () => {
+    const { args, Harness } = setup();
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(args.openSchoolDrawer).toHaveBeenCalled());
+    expect(args.setHighlightedDrawerIndicatorKey).toHaveBeenCalledWith(null);
+  });
+
+  it("normalizes a forbidden submission without disclosing target existence", async () => {
+    const fetchSubmission = vi.fn().mockRejectedValue(new ApiError("Forbidden", 403, null));
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=forbidden"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("/monitor?section=reviews"));
+    expect(args.pushToast).toHaveBeenCalledWith("The referenced submission could not be opened.", "warning");
+  });
+
+  it("keeps a transient target and retries it successfully", async () => {
+    const fetchSubmission = vi.fn()
+      .mockRejectedValueOnce(new ApiError("Server unavailable", 500, null))
+      .mockResolvedValueOnce(submission());
+    const { args, Harness } = setup(fetchSubmission);
+    render(<MemoryRouter initialEntries={["/monitor?section=reviews&submissionId=123&scopeId=smea"]}><Harness /></MemoryRouter>);
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Retry" })).toBeTruthy());
+    expect(screen.getByTestId("location").textContent).toContain("submissionId=123");
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+
+    await waitFor(() => expect(fetchSubmission).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(args.openSchoolDrawer).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it("normalizes a missing submission back to Reviews with a controlled message", async () => {

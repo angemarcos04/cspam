@@ -156,19 +156,16 @@ export function mergeLatestSchoolDrawerSubmission(
   latestSubmission: IndicatorSubmission | null,
   listRows: IndicatorSubmission[],
 ): IndicatorSubmission[] {
-  if (!latestSubmission) {
-    return listRows;
-  }
+  const rows = latestSubmission ? [latestSubmission, ...listRows] : listRows;
+  const seen = new Set<string>();
 
-  const latestId = String(latestSubmission.id ?? "").trim();
-  if (!latestId) {
-    return [latestSubmission, ...listRows];
-  }
-
-  return [
-    latestSubmission,
-    ...listRows.filter((row) => String(row.id ?? "").trim() !== latestId),
-  ];
+  return rows.filter((row, index) => {
+    const id = String(row.id ?? "").trim();
+    const key = id || `missing:${index}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export function useSchoolDrawer({
@@ -374,6 +371,7 @@ export function useSchoolDrawer({
       setSchoolDrawerSubmissionsError("");
 
       let latestSubmission: IndicatorSubmission | null = null;
+      let hydratedTargetId = "";
 
       if (preferredSubmissionDetailId) {
         try {
@@ -385,11 +383,13 @@ export function useSchoolDrawer({
           if (latestSubmissionYearId) {
             setSelectedSchoolDrawerYearState((current) => current ?? latestSubmissionYearId);
           }
-          setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, []));
+          setSchoolDrawerSubmissions((current) => mergeLatestSchoolDrawerSubmission(
+            latestSubmission,
+            targetSubmissionDetailId ? current : [],
+          ));
           setSchoolDrawerSubmissionsError("");
           if (targetSubmissionDetailId) {
-            setIsSchoolDrawerSubmissionsLoading(false);
-            return;
+            hydratedTargetId = targetSubmissionDetailId;
           }
         } catch (err) {
           if (!active) {
@@ -406,6 +406,9 @@ export function useSchoolDrawer({
 
       if (!schoolSubmissionLookupKey) {
         if (active) {
+          if (hydratedTargetId) {
+            setTargetSubmissionDetailId((current) => current === hydratedTargetId ? "" : current);
+          }
           setIsSchoolDrawerSubmissionsLoading(false);
         }
         return;
@@ -420,7 +423,10 @@ export function useSchoolDrawer({
         if (!active) {
           return;
         }
-        setSchoolDrawerSubmissions(mergeLatestSchoolDrawerSubmission(latestSubmission, allRows));
+        setSchoolDrawerSubmissions((current) => mergeLatestSchoolDrawerSubmission(
+          latestSubmission,
+          hydratedTargetId ? [...allRows, ...current] : allRows,
+        ));
       } catch (err) {
         if (!active) {
           return;
@@ -442,6 +448,9 @@ export function useSchoolDrawer({
         }
       } finally {
         if (active) {
+          if (hydratedTargetId) {
+            setTargetSubmissionDetailId((current) => current === hydratedTargetId ? "" : current);
+          }
           setIsSchoolDrawerSubmissionsLoading(false);
         }
       }

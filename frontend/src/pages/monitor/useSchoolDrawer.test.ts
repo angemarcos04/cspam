@@ -514,6 +514,50 @@ describe("useSchoolDrawer", () => {
     });
   });
 
+  it("releases an exact notification target after hydration and keeps normal drawer browsing available", async () => {
+    const exact = {
+      id: "submission-target",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-target", name: "2025-2026" },
+    } as unknown as IndicatorSubmission;
+    const older = {
+      id: "submission-older",
+      school: { schoolCode: "401777" },
+      academicYear: { id: "ay-older", name: "2024-2025" },
+    } as unknown as IndicatorSubmission;
+    const fetchSubmission = vi.fn().mockResolvedValue(exact);
+    const listSubmissionsForSchool = vi.fn().mockResolvedValue([older, exact]);
+    const queryStudents = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+    const listTeachers = vi.fn().mockResolvedValue({ data: [], meta: { total: 0 } });
+    const resolveRecordId = vi.fn().mockReturnValue("");
+    const resolveSchoolCode = vi.fn().mockReturnValue("401777");
+    const resolveLatestIndicatorSubmissionId = vi.fn().mockReturnValue("");
+    const { result } = renderHook(() => useSchoolDrawer({
+      authSessionKey: "monitor:1",
+      isAuthenticated: true,
+      latestRealtimeBatch: null,
+      resolveRecordId,
+      resolveSchoolCode,
+      resolveLatestIndicatorSubmissionId,
+      fetchSubmission,
+      listSubmissionsForSchool,
+      queryStudents,
+      listTeachers,
+    }));
+
+    act(() => result.current.openSchoolDrawer("code:401777", "submission-target"));
+
+    await waitFor(() => expect(fetchSubmission).toHaveBeenCalledWith("submission-target"));
+    await waitFor(() => expect(result.current.schoolDrawerSubmissions.map((row) => row.id)).toEqual([
+      "submission-target",
+      "submission-older",
+    ]));
+    expect(listSubmissionsForSchool).toHaveBeenCalled();
+
+    act(() => result.current.setSelectedSchoolDrawerYear("ay-older"));
+    expect(result.current.selectedSchoolDrawerYear).toBe("ay-older");
+  });
+
   it("merges latest drawer detail ahead of duplicate list rows", () => {
     const latestSubmission = { id: "submission-latest" } as IndicatorSubmission;
     const listRows = [

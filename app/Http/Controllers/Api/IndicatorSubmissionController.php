@@ -20,7 +20,6 @@ use App\Models\PerformanceMetric;
 use App\Models\User;
 use App\Notifications\IndicatorReviewOutcomeNotification;
 use App\Notifications\IndicatorScopeReviewOutcomeNotification;
-use App\Notifications\IndicatorSubmissionReceivedNotification;
 use App\Services\FilterService;
 use App\Support\Audit\WorkflowAuditLogger;
 use App\Support\Auth\ApiUserResolver;
@@ -36,6 +35,7 @@ use App\Support\Indicators\SubmissionFileStorage;
 use App\Support\Indicators\SubmissionScopeProgressResolver;
 use App\Support\Indicators\TargetsMetAutoCalculator;
 use App\Support\Indicators\TargetsMetReportBuilder;
+use App\Support\Notifications\MonitorSubmissionNotificationDispatcher;
 use Carbon\Carbon;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Builder;
@@ -1829,40 +1829,13 @@ class IndicatorSubmissionController extends Controller
         array $scopeIds = [],
         array $scopeLabels = [],
     ): void {
-        $monitors = $this->monitorRecipientsForNotifications();
-        if ($monitors->isEmpty()) {
-            return;
-        }
-
-        Notification::sendNow($monitors, new IndicatorSubmissionReceivedNotification(
+        app(MonitorSubmissionNotificationDispatcher::class)->dispatch(
             $submission,
             $schoolHead,
             $eventType,
             $scopeIds,
             $scopeLabels,
-        ), ['database']);
-    }
-
-    /**
-     * @return Collection<int, User>
-     */
-    private function monitorRecipientsForNotifications(): Collection
-    {
-        $monitorQuery = User::query()->with('roles');
-
-        if ($this->usersHaveAccountTypeColumn()) {
-            $monitorQuery->where('account_type', UserRoleResolver::MONITOR);
-        } else {
-            $aliases = UserRoleResolver::roleAliases(UserRoleResolver::MONITOR);
-            $monitorQuery->whereHas('roles', static function ($builder) use ($aliases): void {
-                $builder->whereIn('name', $aliases);
-            });
-        }
-
-        return $monitorQuery
-            ->get()
-            ->filter(static fn (User $user): bool => $user->canAuthenticate())
-            ->values();
+        );
     }
 
     /**

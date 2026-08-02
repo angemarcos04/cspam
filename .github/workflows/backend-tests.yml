@@ -58,3 +58,15 @@ jobs:
 
       - name: Run FM-QAD integrity tests
         run: php artisan test --filter=FmQad
+
+      - name: Run notification center tests
+        run: php artisan test --filter=NotificationCenterApiTest
+
+      - name: Run indicator submission workflow tests
+        run: php artisan test --filter=IndicatorSubmissionWorkflowTest
+
+      - name: Run Monitor review inbox tests
+        run: php artisan test --filter=MonitorReviewInboxTest
+
+      - name: Verify worker queue configuration
+        run: php artisan test --filter=WorkerQueueConfigurationTest
