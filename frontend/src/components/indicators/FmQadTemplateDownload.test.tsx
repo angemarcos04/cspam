@@ -64,7 +64,7 @@ afterEach(() => {
 describe("FmQadTemplateDownload", () => {
   it("loads API templates without displaying revision metadata", () => {
     render(<FmQadTemplateDownload academicYearId="year-1" />);
-    fireEvent.change(screen.getByLabelText("FM-QAD template"), {
+    fireEvent.change(screen.getByLabelText("Select a template"), {
       target: { value: template.id },
     });
     expect(screen.queryByText("Rev. 03")).toBeNull();
@@ -83,7 +83,7 @@ describe("FmQadTemplateDownload", () => {
         <FmQadTemplateDownload academicYearId="year-1" />
       </form>,
     );
-    fireEvent.change(screen.getByLabelText("FM-QAD template"), {
+    fireEvent.change(screen.getByLabelText("Select a template"), {
       target: { value: template.id },
     });
     fireEvent.click(screen.getByRole("button", { name: "Download Current Template" }));
@@ -104,7 +104,7 @@ describe("FmQadTemplateDownload", () => {
       refresh,
     });
     render(<FmQadTemplateDownload academicYearId="year-1" />);
-    fireEvent.change(screen.getByLabelText("FM-QAD template"), {
+    fireEvent.change(screen.getByLabelText("Select a template"), {
       target: { value: template.id },
     });
     expect(screen.getByText(/No active template revision is configured/i)).toBeTruthy();

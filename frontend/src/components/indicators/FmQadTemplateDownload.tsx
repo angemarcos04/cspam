@@ -60,7 +60,6 @@ export function FmQadTemplateDownload({
   return (
     <section aria-labelledby="fm-qad-template-download-heading" className="rounded-sm border border-slate-200 bg-white p-3">
       <h2 id="fm-qad-template-download-heading" className="text-sm font-semibold text-slate-900">Download FM-QAD Template</h2>
-      <p className="mt-1 text-xs text-slate-500">Select the effective official form for this Academic Year, complete it, then upload the accomplished file in its matching section.</p>
       {isLoading && <p className="mt-3 text-sm text-slate-600">Loading templates...</p>}
       {(error || downloadError) && (
         <div className="mt-3 flex items-center gap-2 text-sm text-rose-700">
@@ -71,9 +70,9 @@ export function FmQadTemplateDownload({
       {!isLoading && !error && (
         <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
           <div className="min-w-0 flex-1">
-            <label htmlFor="fm-qad-template-select" className="mb-1 block text-[12px] font-medium text-slate-500">FM-QAD template</label>
             <select
               id="fm-qad-template-select"
+              aria-label="Select a template"
               value={selectedTemplateId}
               onChange={(event) => setSelectedTemplateId(event.target.value)}
               className="w-full rounded-sm border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-900"
