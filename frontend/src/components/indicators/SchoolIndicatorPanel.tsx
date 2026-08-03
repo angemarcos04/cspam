@@ -6683,35 +6683,6 @@ function SchoolIndicatorPanelComponent({
               onDownloaded={recordFmQadDownload}
               onTemplateStateChange={setFmQadTemplateState}
             />
-            {Object.entries(activeWorkspaceSubmission?.files ?? {})
-              .filter(([type, entry]) => type.startsWith("fm_qad_") && entry?.uploaded)
-              .map(([type, entry]) => {
-                const currentVersion = fmQadTemplates.find((template) => template.scopeId === type)?.activeVersion ?? null;
-                const downloadedGrant = fmQadDownloadGrants[type] ?? null;
-                const revisionsMatch = Boolean(
-                  entry?.fmQadTemplateVersionId
-                  && currentVersion
-                  && entry.fmQadTemplateVersionId === currentVersion.id
-                  && (!downloadedGrant || downloadedGrant.versionId === currentVersion.id),
-                );
-                return (
-                  <div key={type} className="rounded-sm border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                    <p className="font-semibold uppercase tracking-wide">{type.replace(/_/g, "-")}</p>
-                    {revisionsMatch ? (
-                      <p>Template revision: {currentVersion?.revisionLabel}</p>
-                    ) : (
-                      <>
-                        <p>Current active template: {currentVersion?.revisionLabel ?? "Not available"}</p>
-                        {downloadedGrant && <p>Downloaded template: {downloadedGrant.revisionLabel}</p>}
-                        <p>Uploaded file version: {entry?.fmQadTemplateRevisionLabel ?? "Template revision not recorded"}</p>
-                      </>
-                    )}
-                    {entry?.fmQadTemplateVersionId && currentVersion && entry.fmQadTemplateVersionId !== currentVersion.id && (
-                      <p className="mt-1 text-amber-700">A newer template revision is available. Your existing uploaded file has not been changed.</p>
-                    )}
-                  </div>
-                );
-              })}
           </>
         )}
 

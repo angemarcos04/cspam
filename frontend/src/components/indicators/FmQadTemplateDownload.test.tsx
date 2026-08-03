@@ -62,14 +62,15 @@ afterEach(() => {
 });
 
 describe("FmQadTemplateDownload", () => {
-  it("loads API templates and displays current version metadata", () => {
+  it("loads API templates without displaying revision metadata", () => {
     render(<FmQadTemplateDownload academicYearId="year-1" />);
     fireEvent.change(screen.getByLabelText("FM-QAD template"), {
       target: { value: template.id },
     });
-    expect(screen.getByText("Rev. 03")).toBeTruthy();
-    expect(screen.getByText("20262027")).toBeTruthy();
-    expect(screen.getByText("Updated signature section")).toBeTruthy();
+    expect(screen.queryByText("Rev. 03")).toBeNull();
+    expect(screen.queryByText("20262027")).toBeNull();
+    expect(screen.queryByText("Updated signature section")).toBeNull();
+    expect(screen.getByRole("button", { name: "Download Current Template" })).toBeTruthy();
   });
 
   it("downloads the authorized version without submitting a surrounding form", async () => {
@@ -146,8 +147,8 @@ describe("FmQadTemplateDownload", () => {
       />,
     );
     fireEvent.change(screen.getByLabelText("FM-QAD template"), { target: { value: template.id } });
-    expect(screen.getByText(/Downloaded template:/)).toBeTruthy();
-    expect(screen.getByText(/A newer revision is available/)).toBeTruthy();
+    expect(screen.queryByText(/Downloaded template:/)).toBeNull();
+    expect(screen.queryByText(/Current active template:/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Download Rev. 03" }));
     await waitFor(() => expect(onDownloaded).toHaveBeenCalledWith(template.activeVersion, "grant-3"));
   });

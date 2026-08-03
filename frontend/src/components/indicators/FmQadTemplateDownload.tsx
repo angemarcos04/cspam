@@ -82,21 +82,6 @@ export function FmQadTemplateDownload({
               ))}
             </select>
             {selectedTemplate && !version && <p className="mt-2 text-xs text-amber-700">No active template is configured for this Academic Year.</p>}
-            {version && (
-              <dl className="mt-2 grid gap-1 text-xs text-slate-600">
-                {downloadedGrant && downloadedGrant.versionId !== version.id ? (
-                  <>
-                    <div><dt className="inline font-semibold">Downloaded template: </dt><dd className="inline">{downloadedGrant.revisionLabel}</dd></div>
-                    <div><dt className="inline font-semibold">Current active template: </dt><dd className="inline">{version.revisionLabel}</dd></div>
-                    <div className="text-amber-700">A newer revision is available. Your existing downloaded or uploaded file has not been changed.</div>
-                  </>
-                ) : (
-                  <div><dt className="inline font-semibold">Template revision: </dt><dd className="inline">{version.revisionLabel}</dd></div>
-                )}
-                <div><dt className="inline font-semibold">Effective Academic Year: </dt><dd className="inline">{version.academicYearLabel ?? "Baseline"}</dd></div>
-                <div><dt className="inline font-semibold">Change notes: </dt><dd className="inline">{version.changeNotes}</dd></div>
-              </dl>
-            )}
           </div>
           <button type="button" onClick={() => void handleDownload()} disabled={!version || isDownloading} className="inline-flex shrink-0 items-center justify-center rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
             {isDownloading ? "Downloading..." : downloadedGrant && version && downloadedGrant.versionId !== version.id ? `Download ${version.revisionLabel}` : "Download Current Template"}
