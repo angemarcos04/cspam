@@ -1740,7 +1740,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     render(<SchoolIndicatorPanel initialAcademicYearId="year-1" />);
 
     expect((await screen.findAllByText("Locked after monitor verification.")).length).toBeGreaterThan(0);
-    expect(screen.getByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).not.toBeNull();
+    expect(screen.queryByText("Final submission is unavailable while verified items are present.")).toBeNull();
 
     const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
     const saveButton = screen.getByRole("button", { name: "Save" }) as HTMLButtonElement;
@@ -1751,6 +1751,7 @@ describe("SchoolIndicatorPanel batch submit", () => {
     expect(saveButton.disabled).toBe(true);
     expect(sendButton.disabled).toBe(true);
     expect(finalSubmitButton.disabled).toBe(true);
+    expect(finalSubmitButton.title).toBe("Final submission is unavailable while verified items are present.");
   }, 10_000);
 
   it("locks upload replacement and toolbar actions when the active file scope is verified", async () => {
@@ -1870,11 +1871,10 @@ describe("SchoolIndicatorPanel batch submit", () => {
     await waitFor(() => {
       expect(screen.queryByText("Locked after monitor verification.")).toBeNull();
     });
-    expect(screen.queryByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.")).toBeNull();
     const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
     expect(sendButton.disabled).toBe(false);
-    expect(finalSubmitButton.title).not.toBe("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.");
+    expect(finalSubmitButton.title).not.toBe("Final submission is unavailable while verified items are present.");
   }, 10_000);
 
   it("only blocks final submit when a verified scope is outside the active tab", async () => {
@@ -1904,15 +1904,15 @@ describe("SchoolIndicatorPanel batch submit", () => {
     }
     fireEvent.click(fileTab);
 
-    await screen.findByText("This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.");
     expect(screen.queryByText("Locked after monitor verification.")).toBeNull();
 
     const resetButton = screen.getByRole("button", { name: "Reset" }) as HTMLButtonElement;
     const sendButton = screen.getByRole("button", { name: "Send" }) as HTMLButtonElement;
     const finalSubmitButton = screen.getByRole("button", { name: "Final Submit Package" }) as HTMLButtonElement;
+    await waitFor(() => expect(finalSubmitButton.disabled).toBe(true));
     expect(resetButton.disabled).toBe(false);
     expect(sendButton.disabled).toBe(false);
-    expect(finalSubmitButton.disabled).toBe(true);
+    expect(finalSubmitButton.title).toBe("Final submission is unavailable while verified items are present.");
   }, 10_000);
 
   it("removes stale verified scopes from batch selections after refreshed state arrives", async () => {

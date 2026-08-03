@@ -160,7 +160,7 @@ export function confirmAcademicYearSwitchWithUnsavedChanges(
   return !hasUnsavedChanges || confirmFn(ACADEMIC_YEAR_UNSAVED_SWITCH_CONFIRM_MESSAGE);
 }
 const VERIFIED_SCOPE_LOCK_MESSAGE = "Locked after monitor verification.";
-const VERIFIED_PACKAGE_LOCK_MESSAGE = "This package contains verified files or indicators. Ask the Monitor to unverify them before final submission.";
+const VERIFIED_PACKAGE_LOCK_MESSAGE = "Final submission is unavailable while verified items are present.";
 
 function waitForWorkspaceDetailHydrationRetry(attempt: number): Promise<void> {
   return new Promise((resolve) => {
@@ -7415,11 +7415,6 @@ function SchoolIndicatorPanelComponent({
         {isCurrentScopeVerified && (
           <p className="rounded-sm border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
             {VERIFIED_SCOPE_LOCK_MESSAGE}
-          </p>
-        )}
-        {hasAnyVerifiedScope && (
-          <p className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
-            {VERIFIED_PACKAGE_LOCK_MESSAGE}
           </p>
         )}
         <div className="flex flex-wrap items-center gap-2">
