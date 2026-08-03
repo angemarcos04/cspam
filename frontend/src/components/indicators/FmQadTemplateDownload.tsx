@@ -84,13 +84,6 @@ export function FmQadTemplateDownload({
               ))}
             </select>
             {selectedTemplate && !version && <p className="mt-2 text-xs text-amber-700">No active template revision is configured for this form and Academic Year.</p>}
-            {version && (
-              <dl className="mt-2 grid gap-1 text-xs text-slate-600">
-                <div><dt className="inline font-semibold">Current revision: </dt><dd className="inline">{version.revisionLabel}</dd></div>
-                <div><dt className="inline font-semibold">Effective Academic Year: </dt><dd className="inline">{version.academicYearLabel ?? "Baseline"}</dd></div>
-                <div><dt className="inline font-semibold">Change notes: </dt><dd className="inline">{version.changeNotes}</dd></div>
-              </dl>
-            )}
           </div>
           <button type="button" onClick={() => void handleDownload()} disabled={!version || isDownloading} className="inline-flex shrink-0 items-center justify-center rounded-sm bg-primary px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
             {isDownloading ? "Downloading..." : "Download Current Template"}
